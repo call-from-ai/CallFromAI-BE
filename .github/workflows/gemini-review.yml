@@ -1,0 +1,30 @@
+name: AI Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ai_agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gemini Agent
+        uses: daizzah/gemini-pr-agent@v1.0.0
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Post Comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f pr_output.md ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file pr_output.md
+          fi
