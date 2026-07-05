@@ -12,7 +12,7 @@
 - 절대 `ResponseEntity<ErrorResponse>` 같은 별도 에러 객체를 루트로 직접 반환하지 마십시오.
 
 ## 3. Exception Handling
-- 비즈니스 로직에서 의도적인 예외를 발생시킬 때는 반드시 `BusinessException`을 사용합니다.
+- 비즈니스 로직에서 의도적인 예외를 발생시킬 때는 반드시 `BaseException`을 사용합니다.
 - 예시: `throw new BusinessException(ErrorCode.USER_NOT_FOUND);`
 - 새로운 에러 상황이 필요하면 `com.example.umcCall.global.error.ErrorCode` enum에 규칙에 맞는 에러 코드를 먼저 추가하십시오.
 
