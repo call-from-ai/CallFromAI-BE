@@ -67,14 +67,38 @@
 ---
 
 ## 🚀 Pull Request (PR) Rules
-모든 코드는 PR을 통한 코드 리뷰 후 `develop` 브랜치에 병합됩니다.
 
-1. **Issue 연동** : PR 생성 시 본문에 해결하려는 Issue 번호를 반드시 명시합니다. (`Closes #이슈번호`)
-2. **PR 템플릿 준수** :
+PR 제목:
+```
+Gitmoji + Type: 작업 내용
+```
+
+PR 본문:
+
+```
+## Summary
+- 요약
+
+## Related Issue
+- close #이슈번호
+
+## Describe your code
    * **작업 내용 (What I Did)** : 구현한 기능의 요약 설명 작성
    * **스크린샷/결과 (Optional)** : API 테스트 결과 첨부
    * **논의사항/질문 (To Reviewers)** : 리뷰어들이 집중해서 봐주었으면 하는 부분 기술
-3. **충돌 해결** : 로컬에서 먼저 `develop` 브랜치를 pull 받아 충돌(Conflict)이 없는 것을 확인한 후 푸시합니다.
+   
+## Checklist
+- [ ] 리뷰어 등록
+```
+Related Issue의 close #이슈번호 는 PR이 main에 Merge될 때 연결된 이슈를 자동으로 닫아주는 키워드입니다.
+
+- **Reviewers**에는 리뷰어를 한명 이상 지정해주세요.
+- **Assignees**에는 PR을 작성한 본인을 지정해주세요.
+
+**병합 전 확인**
+
+로컬에서 먼저 develop을 pull 받아 충돌(Conflict) 없음을 확인 후 push
+CI 빌드/테스트가 모두 통과했는지 확인 후 병합
 
 ---
 
