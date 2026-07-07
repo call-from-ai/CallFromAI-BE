@@ -55,12 +55,50 @@ jobs:
           ssh -i private_key.pem -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_HOST '
             set -e
             chmod 600 /home/'"$EC2_USERNAME"'/.env
-            export $(grep -v "^#" /home/'"$EC2_USERNAME"'/.env | xargs)
 
-            pgrep -f "BackEnd.jar" | xargs -r kill -15
-            sleep 10
+            OLD_PID=$(pgrep -f "BackEnd.jar" || true)
 
-            nohup java -Dspring.profiles.active=prod -jar /home/'"$EC2_USERNAME"'/BackEnd.jar > app.log 2>&1 &
+            if [ -n "$OLD_PID" ]; then
+              echo "기존 프로세스($OLD_PID) 종료 요청"
+              kill -15 "$OLD_PID"
+
+              for i in $(seq 1 10); do
+                if ! kill -0 "$OLD_PID" 2>/dev/null; then
+                  echo "기존 프로세스 정상 종료됨"
+                  break
+                fi
+                echo "종료 대기 중... ($i/10)"
+                sleep 1
+              done
+
+              if kill -0 "$OLD_PID" 2>/dev/null; then
+                echo "기존 프로세스가 10초 내에 종료되지 않아 강제 종료합니다"
+                kill -9 "$OLD_PID"
+                sleep 2
+              fi
+            else
+              echo "기존에 실행 중인 프로세스 없음"
+            fi
+
+            set -a
+            source /home/'"$EC2_USERNAME"'/.env
+            set +a
+
+            nohup java -Dspring.profiles.active=prod -jar /home/'"$EC2_USERNAME"'/BackEnd.jar > app.log 2>&1 < /dev/null &
+
+            echo "새 애플리케이션 기동 대기 중..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8080/health > /dev/null; then
+                echo "헬스체크 성공"
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "헬스체크 실패: 30초 내에 정상 기동되지 않음"
+            echo "----- app.log 마지막 50줄 -----"
+            tail -n 50 app.log
+            exit 1
           '
 
           rm -f private_key.pem deploy.env
