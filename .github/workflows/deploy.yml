@@ -40,8 +40,8 @@ jobs:
 
           echo "$EC2_SSH_KEY" > private_key.pem
           chmod 600 private_key.pem
+
           jar_file=$(find build/libs -name '*.jar' ! -name '*plain.jar' | head -n 1)
-          scp -i private_key.pem -o StrictHostKeyChecking=no "$jar_file" $EC2_USERNAME@$EC2_HOST:/home/$EC2_USERNAME/BackEnd.jar
 
           cat > deploy.env <<EOF
           DB_URL=$DB_URL
@@ -50,55 +50,36 @@ jobs:
           JWT_SECRET=$JWT_SECRET
           EOF
 
+          scp -i private_key.pem -o StrictHostKeyChecking=no "$jar_file" $EC2_USERNAME@$EC2_HOST:/home/$EC2_USERNAME/BackEnd.jar.new
           scp -i private_key.pem -o StrictHostKeyChecking=no deploy.env $EC2_USERNAME@$EC2_HOST:/home/$EC2_USERNAME/.env
 
-          ssh -i private_key.pem -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_HOST '
-            set -e
-            chmod 600 /home/'"$EC2_USERNAME"'/.env
+          ssh -i private_key.pem -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_HOST 'bash -s' <<'REMOTE_SCRIPT'
+          set -e
 
-            OLD_PID=$(pgrep -f "BackEnd.jar" || true)
+          APP_DIR="$HOME"
+          chmod 600 "$APP_DIR/.env"
+          mv "$APP_DIR/BackEnd.jar.new" "$APP_DIR/BackEnd.jar"
+          
+          sudo systemctl restart backend
 
-            if [ -n "$OLD_PID" ]; then
-              echo "기존 프로세스($OLD_PID) 종료 요청"
-              kill -15 "$OLD_PID"
-
-              for i in $(seq 1 10); do
-                if ! kill -0 "$OLD_PID" 2>/dev/null; then
-                  echo "기존 프로세스 정상 종료됨"
-                  break
-                fi
-                echo "종료 대기 중... ($i/10)"
-                sleep 1
-              done
-
-              if kill -0 "$OLD_PID" 2>/dev/null; then
-                echo "기존 프로세스가 10초 내에 종료되지 않아 강제 종료합니다"
-                kill -9 "$OLD_PID"
-                sleep 2
-              fi
-            else
-              echo "기존에 실행 중인 프로세스 없음"
+          echo "새 애플리케이션 기동 대기 중..."
+          SUCCESS=0
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /dev/null; then
+              echo "헬스체크 성공"
+              SUCCESS=1
+              break
             fi
+            echo "기동 대기 중... ($i/30)"
+            sleep 2
+          done
 
-            set -a
-            source /home/'"$EC2_USERNAME"'/.env
-            set +a
-
-            nohup java -Dspring.profiles.active=prod -jar /home/'"$EC2_USERNAME"'/BackEnd.jar > app.log 2>&1 < /dev/null &
-
-            echo "새 애플리케이션 기동 대기 중..."
-            for i in $(seq 1 30); do
-              if curl -sf http://localhost:8080/health > /dev/null; then
-                echo "헬스체크 성공"
-                exit 0
-              fi
-              sleep 2
-            done
-
-            echo "헬스체크 실패: 30초 내에 정상 기동되지 않음"
-            echo "----- app.log 마지막 50줄 -----"
-            tail -n 50 app.log
+          if [ "$SUCCESS" -ne 1 ]; then
+            echo "헬스체크 실패: 60초 내에 정상 기동되지 않음"
+            echo "----- backend 서비스 로그 마지막 50줄 -----"
+            sudo journalctl -u backend -n 50 --no-pager
             exit 1
-          '
+          fi
+          REMOTE_SCRIPT
 
           rm -f private_key.pem deploy.env
