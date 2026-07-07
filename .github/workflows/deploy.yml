@@ -2,7 +2,7 @@ name: Deploy Spring Boot to EC2
 
 on:
   push:
-    branches: [ "develop" ]
+    branches: [ "main" ]
 
 jobs:
   deploy:
@@ -53,6 +53,7 @@ jobs:
           scp -i private_key.pem -o StrictHostKeyChecking=no deploy.env $EC2_USERNAME@$EC2_HOST:/home/$EC2_USERNAME/.env
 
           ssh -i private_key.pem -o StrictHostKeyChecking=no $EC2_USERNAME@$EC2_HOST '
+            set -e
             chmod 600 /home/'"$EC2_USERNAME"'/.env
             export $(grep -v "^#" /home/'"$EC2_USERNAME"'/.env | xargs)
 
