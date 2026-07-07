@@ -1,12 +1,12 @@
 name: AI Agent
-
 on:
   pull_request:
     types: [opened, synchronize]
+    branches:
+      - develop
 permissions:
   contents: read
   pull-requests: write
-
 jobs:
   ai_agent:
     runs-on: ubuntu-latest
@@ -21,10 +21,45 @@ jobs:
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
 
+      - name: Refine Output (Korean, code-only)
+        if: ${{ hashFiles('pr_output.md') != '' }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          RAW_CONTENT=$(cat pr_output.md)
+
+          jq -n --arg content "$RAW_CONTENT" '{
+            contents: [{
+              parts: [{
+                text: ("다음은 AI 코드 리뷰 봇이 생성한 원본 리뷰입니다. 아래 규칙에 따라 다시 작성해 주세요.\n" +
+                "1. 반드시 한국어로만 작성한다.\n" +
+                "2. 코드/PR과 직접 관련 없는 잡담, 사담, 무관한 조언은 모두 제거한다.\n" +
+                "3. 코드 품질, 버그, 스타일, 보안 관련 피드백만 남긴다.\n" +
+                "4. 마크다운 형식은 유지한다.\n" +
+                "5. 결과 텍스트 외에 다른 설명은 붙이지 않는다.\n\n" +
+                "원본 리뷰:\n" + $content)
+              }]
+            }]
+          }' > payload.json
+
+          RESPONSE=$(curl -s -X POST \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d @payload.json)
+
+          echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text' > pr_output_ko.md
+
+          if [ ! -s pr_output_ko.md ]; then
+            echo "번역 실패, 원본 사용" >&2
+            cp pr_output.md pr_output_ko.md
+          fi
+
       - name: Post Comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f pr_output.md ]; then
+          if [ -f pr_output_ko.md ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body-file pr_output_ko.md
+          elif [ -f pr_output.md ]; then
             gh pr comment ${{ github.event.pull_request.number }} --body-file pr_output.md
           fi
