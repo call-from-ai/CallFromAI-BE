@@ -13,6 +13,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.lang.NonNull;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -141,11 +142,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private String createValidationMessage(BindingResult bindingResult) {
         String message = bindingResult.getAllErrors().stream()
-                .map(ObjectError::getDefaultMessage)
+                .map(this::formatValidationError)
                 .filter(errorMessage -> errorMessage != null && !errorMessage.isBlank())
                 .distinct()
-                .collect(Collectors.joining(" "));
+                .collect(Collectors.joining(", "));
 
         return message.isBlank() ? ErrorCode.INVALID_INPUT_VALUE.getMessage() : message;
+    }
+
+    private String formatValidationError(ObjectError error) {
+        if (error instanceof FieldError fieldError) {
+            return fieldError.getField() + ": " + fieldError.getDefaultMessage();
+        }
+
+        return error.getDefaultMessage();
     }
 }
