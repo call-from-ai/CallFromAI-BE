@@ -21,6 +21,7 @@ public enum ErrorCode {
     MISSING_REQUEST_PARAMETER(HttpStatus.BAD_REQUEST, "C007", "필수 요청 파라미터가 누락되었습니다."),
     INVALID_HTTP_BODY(HttpStatus.BAD_REQUEST, "C008", "HTTP 요청 바디(JSON) 파싱에 실패했습니다."),
     MULTIPART_FILE_ERROR(HttpStatus.BAD_REQUEST, "C009", "파일 업로드 처리 중 오류가 발생했습니다."),
+    DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "C010", "이미 존재하는 리소스입니다."),
 
 
     // Auth (A)
