@@ -20,3 +20,9 @@ jwt:
   secret: ${JWT_SECRET}
   access-token-expiration: 3600000
   refresh-token-expiration: 1209600000
+
+# 통화 오디오 관련 설정
+call:
+  audio:
+    # 수신한 raw PCM을 저장할 디렉토리 (STT 연동 전 검증용). 환경변수로 override 가능.
+    recording-dir: ${CALL_AUDIO_RECORDING_DIR:./recordings}

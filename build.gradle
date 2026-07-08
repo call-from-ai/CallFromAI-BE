@@ -26,6 +26,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 
+	// WebSocket (통화 오디오 업스트림/다운스트림 채널)
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
 	// JPA / MySQL
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'com.mysql:mysql-connector-j'
