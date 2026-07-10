@@ -19,7 +19,7 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             where m.chatRoom.id in :roomIds
               and m.read = false
               and m.deleted = false
-              and m.senderType <> com.example.umcCall.domain.chat.entity.SenderType.USER
+              and m.senderType <> com.example.umcCall.domain.chat.enums.SenderType.USER
               and (m.chatRoom.messageVisibleAfterId is null
                    or m.id > m.chatRoom.messageVisibleAfterId)
             group by m.chatRoom.id

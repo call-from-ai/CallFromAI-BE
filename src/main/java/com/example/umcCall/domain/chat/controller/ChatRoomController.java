@@ -1,9 +1,8 @@
 package com.example.umcCall.domain.chat.controller;
 
-import com.example.umcCall.domain.chat.dto.response.ChatRoomSummaryResponse;
+import com.example.umcCall.domain.chat.dto.response.ChatRoomListResponse;
 import com.example.umcCall.domain.chat.service.ChatRoomService;
-import com.example.umcCall.global.common.ApiResponse;
-import java.util.List;
+import com.example.umcCall.global.apiPayload.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,7 +20,7 @@ public class ChatRoomController {
 
     /** 채팅방 목록 조회. is_main 최상단 → 나머지 최신순. */
     @GetMapping
-    public ApiResponse<List<ChatRoomSummaryResponse>> getChatRooms() {
-        return ApiResponse.success(chatRoomService.getChatRooms(TEMP_MEMBER_ID));
+    public ApiResponse<ChatRoomListResponse> getChatRooms() {
+        return ApiResponse.onSuccess(ChatRoomListResponse.of(chatRoomService.getChatRooms(TEMP_MEMBER_ID)));
     }
 }

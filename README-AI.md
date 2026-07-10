@@ -74,10 +74,10 @@ com.example.umcCall
     ├── chat
     ├── call
     └── notification
-        └── 각 도메인: controller / service / repository / entity / dto / exception / enum
+        └── 각 도메인: controller / service / repository / entity / dto / exception / enums
 ```
 
-- enum은 도메인 내부 `enum` 패키지로 묶어 관리한다.
+- enum은 도메인 내부 `enums` 패키지로 묶어 관리한다.
 - enum ↔ DB 매핑에 Converter를 둘 수 있으나 필수는 아니다(선택).
 
 ---

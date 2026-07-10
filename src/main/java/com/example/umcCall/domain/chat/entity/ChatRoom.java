@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.chat.entity;
 
-import com.example.umcCall.global.common.BaseTimeEntity;
+import com.example.umcCall.domain.chat.enums.RoomType;
+import com.example.umcCall.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,7 +19,6 @@ import lombok.NoArgsConstructor;
 /**
  * 채팅방. 방 생성 자체는 캐릭터 생성(용환님 도메인)에서 수행하고,
  * 채팅 도메인은 이미 만들어진 방을 받아 조회/전송/상태관리를 담당한다.
- *
  * 외부 도메인(member, relationship)으로 나가는 FK는 지금은 Long 값으로만 보유한다.
  * 상대 엔티티가 만들어지면 이 파일만 수정해 @ManyToOne으로 승격한다.
  */

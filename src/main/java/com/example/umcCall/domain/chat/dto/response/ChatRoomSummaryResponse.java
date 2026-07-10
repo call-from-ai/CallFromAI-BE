@@ -8,7 +8,7 @@ import lombok.Builder;
  *
  * @param chatRoomId           채팅방 ID
  * @param characterName        캐릭터 이름(캐릭터 정보 없으면 null)
- * @param characterProfileUrl  캐릭터 프로필 URL(없으면 null)
+ * @param characterImageUrl    캐릭터 이미지 URL(없으면 null)
  * @param isMain               메인 연인 여부(최상단 정렬 대상)
  * @param isMuted              음소거 여부
  * @param lastMessage          마지막 메시지 미리보기(사진만이면 "[사진]", 없으면 null)
@@ -19,7 +19,7 @@ import lombok.Builder;
 public record ChatRoomSummaryResponse(
         Long chatRoomId,
         String characterName,
-        String characterProfileUrl,
+        String characterImageUrl,
         boolean isMain,
         boolean isMuted,
         String lastMessage,

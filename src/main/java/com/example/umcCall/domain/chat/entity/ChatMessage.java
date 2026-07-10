@@ -1,6 +1,8 @@
 package com.example.umcCall.domain.chat.entity;
 
-import com.example.umcCall.global.common.BaseTimeEntity;
+import com.example.umcCall.domain.chat.enums.MessageType;
+import com.example.umcCall.domain.chat.enums.SenderType;
+import com.example.umcCall.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

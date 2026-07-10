@@ -3,8 +3,8 @@ package com.example.umcCall.domain.chat.service;
 import com.example.umcCall.domain.chat.dto.response.ChatRoomSummaryResponse;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
-import com.example.umcCall.domain.chat.entity.MessageType;
-import com.example.umcCall.domain.chat.entity.RoomType;
+import com.example.umcCall.domain.chat.enums.MessageType;
+import com.example.umcCall.domain.chat.enums.RoomType;
 import com.example.umcCall.domain.chat.port.CharacterSummary;
 import com.example.umcCall.domain.chat.port.CharacterSummaryProvider;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
@@ -84,7 +84,7 @@ public class ChatRoomService {
         return ChatRoomSummaryResponse.builder()
                 .chatRoomId(room.getId())
                 .characterName(summary != null ? summary.characterName() : null)
-                .characterProfileUrl(summary != null ? summary.profileUrl() : null)
+                .characterImageUrl(summary != null ? summary.profileUrl() : null)
                 .isMain(summary != null && summary.isMain())
                 .isMuted(room.isMuted())
                 .lastMessage(buildPreview(lastMessage))
@@ -98,7 +98,7 @@ public class ChatRoomService {
      */
     private String buildPreview(ChatMessage message) {
         /*채팅방에 존재하는 모든 메시지를 유저가 삭제 하거나 캐릭터가 아직 메시지를 보내지 않았을때
-        null을 리턴하도록 했으나 백에서 정하맂 vs 프론트에서 처리를 할 지에 따라 수정하겠음.
+        null을 리턴하도록 했으나 백에서 정할지 vs 프론트에서 처리를 할 지에 따라 수정하겠음.
          */
         if (message == null) {
             return null;

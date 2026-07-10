@@ -1,4 +1,4 @@
-package com.example.umcCall.domain.chat.entity;
+package com.example.umcCall.domain.chat.enums;
 
 /**
  * 메시지 타입.
