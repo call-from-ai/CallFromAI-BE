@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.chat.repository;
 
 import com.example.umcCall.domain.chat.entity.ChatMessage;
+import com.example.umcCall.domain.chat.enums.SenderType;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,12 +20,13 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             where m.chatRoom.id in :roomIds
               and m.read = false
               and m.deleted = false
-              and m.senderType <> com.example.umcCall.domain.chat.enums.SenderType.USER
+              and m.senderType <> :excludedSender
               and (m.chatRoom.messageVisibleAfterId is null
                    or m.id > m.chatRoom.messageVisibleAfterId)
             group by m.chatRoom.id
             """)
-    List<UnreadCountRow> countUnreadByRoomIds(@Param("roomIds") Collection<Long> roomIds);
+    List<UnreadCountRow> countUnreadByRoomIds(@Param("roomIds") Collection<Long> roomIds,
+                                              @Param("excludedSender") SenderType excludedSender);
 
     /**
      * 방별 "보이는 마지막 메시지 id" 일괄 조회

@@ -5,6 +5,7 @@ import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
 import com.example.umcCall.domain.chat.enums.MessageType;
 import com.example.umcCall.domain.chat.enums.RoomType;
+import com.example.umcCall.domain.chat.enums.SenderType;
 import com.example.umcCall.domain.chat.port.CharacterSummary;
 import com.example.umcCall.domain.chat.port.CharacterSummaryProvider;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
@@ -47,7 +48,7 @@ public class ChatRoomService {
         List<Long> roomIds = rooms.stream().map(ChatRoom::getId).toList();
 
         // 2. 방별 안읽음 수 배치 집계
-        Map<Long, Long> unreadByRoom = chatMessageRepository.countUnreadByRoomIds(roomIds).stream()
+        Map<Long, Long> unreadByRoom = chatMessageRepository.countUnreadByRoomIds(roomIds, SenderType.USER).stream()
                 .collect(Collectors.toMap(UnreadCountRow::getRoomId, UnreadCountRow::getUnreadCount));
 
         // 3. 방별 마지막 메시지 조회 (id → 본문)
