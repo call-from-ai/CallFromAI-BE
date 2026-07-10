@@ -33,7 +33,8 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"
                         ).permitAll()
-                        .anyRequest().authenticated()
+//                        .anyRequest().authenticated()
+                                .anyRequest().permitAll()
                 );
 
         return http.build();
