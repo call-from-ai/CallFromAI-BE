@@ -101,13 +101,25 @@ public class ChatRoomService {
         /*채팅방에 존재하는 모든 메시지를 유저가 삭제 하거나 캐릭터가 아직 메시지를 보내지 않았을때
         null을 리턴하도록 했으나 백에서 정할지 vs 프론트에서 처리를 할 지에 따라 수정하겠음.
          */
-        if (message == null) {
-            return null;
-        }
-        if (message.getMessageType() == MessageType.IMAGE) {
-            return PHOTO_PREVIEW;
-        }
+        if (message == null) return null;
         String content = message.getContent();
-        return (content == null || content.isBlank()) ? PHOTO_PREVIEW : content;
+        if (content != null && !content.isBlank()) {
+            return content;// 텍스트 우선 (TEXT, TEXT_IMAGE)
+        }
+        return switch (message.getMessageType()) {
+            case IMAGE, TEXT_IMAGE -> PHOTO_PREVIEW;
+            case TEXT -> null;//빈 TEXT
+        };
+    }
+
+    public Long createRoom(Long memberId, Long relationshipId, RoomType roomType) {
+        ChatRoom room = ChatRoom.builder()
+                .memberId(memberId)
+                .relationshipId(relationshipId)
+                .roomType(roomType)
+                .muted(false)
+                .deleted(false)
+                .build();
+        return chatRoomRepository.save(room).getId();   // 저장하고 chatRoomId 반환
     }
 }
