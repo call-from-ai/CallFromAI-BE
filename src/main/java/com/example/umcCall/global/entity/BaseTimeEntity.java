@@ -1,4 +1,4 @@
-package com.example.umcCall.global.common;
+package com.example.umcCall.global.entity;
 
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;
