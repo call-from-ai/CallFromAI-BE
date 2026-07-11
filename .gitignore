@@ -34,3 +34,10 @@ bin/
 
 ### Env ###
 .env
+
+### CLAUDE ###
+CLAUDE.local.md
+
+### 통화 오디오 녹음 (검증용, 커밋 금지) ###
+recordings/
+*.pcm
