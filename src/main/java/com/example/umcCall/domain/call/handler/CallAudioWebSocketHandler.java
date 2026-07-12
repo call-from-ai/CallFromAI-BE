@@ -1,6 +1,8 @@
 package com.example.umcCall.domain.call.handler;
 
 import com.example.umcCall.domain.call.client.ClovaSpeechClient;
+import com.example.umcCall.domain.call.dto.NestRecognizeResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestConfig;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestData;
@@ -43,20 +45,22 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private static final String CONFIG_JSON = "{\"transcription\":{\"language\":\"ko\"}}";
 
     private final ClovaSpeechClient clovaSpeechClient;
+    private final ObjectMapper objectMapper;
 
     /** 세션 ID → 해당 세션의 CLOVA 업스트림 옵저버(요청을 밀어넣는 통로). */
     private final ConcurrentHashMap<String, StreamObserver<NestRequest>> sessionStreams =
             new ConcurrentHashMap<>();
 
-    public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient) {
+    public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient, ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
+        this.objectMapper = objectMapper;
     }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         String sessionId = session.getId();
         StreamObserver<NestRequest> requestObserver =
-                clovaSpeechClient.openRecognizeStream(new ClovaResponseObserver(sessionId));
+                clovaSpeechClient.openRecognizeStream(new ClovaResponseObserver(sessionId, objectMapper));
 
         // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
         requestObserver.onNext(NestRequest.newBuilder()
@@ -117,12 +121,29 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    /** CLOVA 인식 결과 콜백. 이번 단계는 로그만. (프론트 전달은 4단계) */
-    private record ClovaResponseObserver(String sessionId) implements StreamObserver<NestResponse> {
+    /**
+     * CLOVA 인식 결과 콜백. contents JSON을 파싱해 partial/final을 구분해 로그한다.
+     * (프론트 전달은 4단계. 지금은 로그만.)
+     */
+    private record ClovaResponseObserver(String sessionId, ObjectMapper objectMapper)
+            implements StreamObserver<NestResponse> {
 
         @Override
         public void onNext(NestResponse response) {
-            log.info("[Clova] 인식 결과. session={}, contents={}", sessionId, response.getContents());
+            String contents = response.getContents();
+            try {
+                NestRecognizeResult result = objectMapper.readValue(contents, NestRecognizeResult.class);
+                if (!result.isTranscription()) {
+                    // config 응답 등 전사가 아닌 메시지. 원문만 남긴다.
+                    log.debug("[Clova] 비전사 응답. session={}, contents={}", sessionId, contents);
+                    return;
+                }
+                String tag = result.isFinal() ? "final" : "partial";
+                log.info("[Clova] [{}] session={}, text={}", tag, sessionId, result.text());
+            } catch (Exception e) {
+                // 파싱 실패 시 원문 로그로 폴백(형식이 예상과 다르면 여기서 드러남).
+                log.warn("[Clova] 응답 파싱 실패. session={}, contents={}", sessionId, contents, e);
+            }
         }
 
         @Override
