@@ -21,8 +21,10 @@ jwt:
   access-token-expiration: 3600000
   refresh-token-expiration: 1209600000
 
-# 통화 오디오 관련 설정
-call:
-  audio:
-    # 수신한 raw PCM을 저장할 디렉토리 (STT 연동 전 검증용). 환경변수로 override 가능.
-    recording-dir: ${CALL_AUDIO_RECORDING_DIR:./recordings}
+# CLOVA Speech 실시간 스트리밍(gRPC) 접속 설정 (CLAUDE.md 4장)
+clova:
+  speech:
+    host: clovaspeech-gw.ncloud.com
+    port: 50051
+    # 콘솔 발급 secret key. 코드/깃에 노출 금지 — 환경변수(.env)로만 주입.
+    secret-key: ${CLOVA_SECRET_KEY}
