@@ -4,12 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 
 /**
- * CLOVA {@code recognize} 응답({@code NestResponse.contents}) JSON을 파싱한 결과. (CLAUDE.md 5장 3단계)
- *
- * <p>필요한 필드만 담고 나머지(alignInfos, confidence, timestamp 등)는 무시한다.
- * partial(중간)/final(확정) 구분은 EPD 신호인 {@code transcription.epdType}로 판정한다:
- * EPD가 구간을 끊었으면(=값이 채워지면) final, 아직 흐르는 중이면(=빈 값) partial.
- * (EPD를 언제 끊을지는 CONFIG에서 조절 — 이 판정 코드는 그와 무관하게 동작.)
+ * CLOVA {@code recognize} 응답({@code NestResponse.contents}) JSON 파싱 결과.
+ * partial/final은 {@code transcription.epdType}로 판정: 값이 채워지면(EPD가 끊음) final, 비면 partial.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record NestRecognizeResult(List<String> responseType, Transcription transcription) {

@@ -21,27 +21,15 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
 /**
- * 통화 오디오 업스트림 수신 → CLOVA STT 중계 핸들러. (CLAUDE.md 5장 2-3)
- *
- * <p>프론트가 WebSocket으로 올리는 raw PCM(16kHz / 모노 / 16-bit) 바이너리 프레임을
- * 세션별 CLOVA {@code recognize} gRPC 스트림으로 중계한다. WebSocket ↔ gRPC 변환기 역할.
- *
- * <ul>
- *   <li>연결 시: gRPC 스트림을 열고 {@code CONFIG}를 1회 전송.
- *   <li>바이너리 프레임 → {@code DATA}로 CLOVA에 중계.
- *   <li>텍스트(JSON) 프레임 → 제어 신호(통화 시작/끝 등). 이번 주는 로그만.
- *   <li>종료 시: gRPC 스트림을 {@code onCompleted()}로 닫는다.
- * </ul>
- *
- * <p>CLOVA 인식 결과는 이번 단계에선 <b>로그만</b> 남긴다. (partial/final 구분은 3단계,
- * 프론트로 내려보내기는 4단계.) 세션마다 스트림을 분리해 오디오가 섞이지 않게 한다. (CLAUDE.md 7장)
- * <p>이번 주 단순화: WebSocket 인증은 생략하고 "연결되면 받는다". (CLAUDE.md 5장)
+ * 통화 오디오 업스트림(WebSocket) → CLOVA STT(gRPC) 중계 핸들러.
+ * 바이너리 프레임(raw PCM 16kHz/모노/16-bit)을 세션별 gRPC 스트림으로 중계하고,
+ * 인식 결과는 partial/final을 구분해 로그로 남긴다. (세션마다 스트림 분리)
  */
 @Slf4j
 @Component
 public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
-    /** CLOVA 인식 설정(JSON). 이번 주는 한국어 인식만. (튜닝 파라미터는 후순위) */
+    /** CLOVA 인식 설정. 한국어. (EPD 등 튜닝은 후순위) */
     private static final String CONFIG_JSON = "{\"transcription\":{\"language\":\"ko\"}}";
 
     private final ClovaSpeechClient clovaSpeechClient;
@@ -92,7 +80,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-        // 제어 신호(통화 시작/끝 등)는 JSON 텍스트로 온다. 이번 주는 로그만. (파싱/상태머신은 후순위)
+        // 제어 신호(통화 시작/끝). 파싱/상태머신은 후순위 — 지금은 로그만.
         log.info("[Call] 제어 메시지 수신. session={}, payload={}", session.getId(), message.getPayload());
     }
 
@@ -121,10 +109,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    /**
-     * CLOVA 인식 결과 콜백. contents JSON을 파싱해 partial/final을 구분해 로그한다.
-     * (프론트 전달은 4단계. 지금은 로그만.)
-     */
+    /** CLOVA 인식 결과 콜백. partial/final을 구분해 로그. */
     private record ClovaResponseObserver(String sessionId, ObjectMapper objectMapper)
             implements StreamObserver<NestResponse> {
 
@@ -133,16 +118,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             String contents = response.getContents();
             try {
                 NestRecognizeResult result = objectMapper.readValue(contents, NestRecognizeResult.class);
-                if (!result.isTranscription()) {
-                    // config 응답 등 전사가 아닌 메시지. 원문만 남긴다.
+                if (!result.isTranscription()) { // config 응답 등
                     log.debug("[Clova] 비전사 응답. session={}, contents={}", sessionId, contents);
                     return;
                 }
                 String tag = result.isFinal() ? "final" : "partial";
                 log.info("[Clova] [{}] session={}, text={}", tag, sessionId, result.text());
             } catch (Exception e) {
-                // 파싱 실패 시 원문 로그로 폴백(형식이 예상과 다르면 여기서 드러남).
-                log.warn("[Clova] 응답 파싱 실패. session={}, contents={}", sessionId, contents, e);
+                log.warn("[Clova] 응답 파싱 실패. session={}, contents={}", sessionId, contents, e); // 원문 폴백
             }
         }
 

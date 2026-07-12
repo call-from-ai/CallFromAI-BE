@@ -21,7 +21,7 @@ jwt:
   access-token-expiration: 3600000
   refresh-token-expiration: 1209600000
 
-# CLOVA Speech 실시간 스트리밍(gRPC) 접속 설정 (CLAUDE.md 4장)
+# CLOVA Speech 실시간 스트리밍(gRPC) 접속 설정
 clova:
   speech:
     host: clovaspeech-gw.ncloud.com

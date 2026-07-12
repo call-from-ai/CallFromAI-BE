@@ -1,9 +1,5 @@
-// CLOVA Speech 실시간 스트리밍(gRPC)용 프로토콜 정의. (CLAUDE.md 4장)
-// 출처: NAVER Cloud Platform CLOVA Speech gRPC 공식 문서. 임의 수정 금지.
-//
-// 흐름: 클라이언트가 recognize 양방향 스트림을 열고,
-//   1) CONFIG 요청 1회(인식 설정 JSON) → 2) DATA 요청 N회(raw PCM 청크)
-// 를 보내면, 서버가 NestResponse(contents = 인식 결과 JSON)를 스트림으로 돌려준다.
+// CLOVA Speech 실시간 스트리밍(gRPC) 프로토콜 정의.
+// 출처: NAVER Cloud Platform 공식 문서 — 임의 수정 금지.
 syntax = "proto3";
 
 option java_multiple_files = true;

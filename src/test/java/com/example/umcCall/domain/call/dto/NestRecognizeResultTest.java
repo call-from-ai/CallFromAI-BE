@@ -5,10 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
-/**
- * CLOVA {@code recognize} 응답 파싱 및 partial/final 판정 검증. (CLAUDE.md 5장 3단계)
- * 실제 CLOVA 응답 예시를 기준으로 한다.
- */
+/** CLOVA {@code recognize} 응답 파싱 및 partial/final 판정 검증. (실제 응답 예시 기준) */
 class NestRecognizeResultTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();

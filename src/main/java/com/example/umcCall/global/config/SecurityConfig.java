@@ -29,7 +29,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
                                 "/health", // Health Check도 인증 제외 필수!
-                                "/ws/**",   // 통화 WebSocket: 이번 주는 인증 생략 (CLAUDE.md 5장)
+                                "/ws/**",   // 통화 WebSocket: 인증 임시 생략. ⚠ main(자동배포) 전 반드시 인증 추가 (과금 API 노출)
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"
