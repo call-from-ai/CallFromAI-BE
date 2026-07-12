@@ -24,13 +24,19 @@ import lombok.NoArgsConstructor;
 public class CharacterCreateRequest {
 
     @NotBlank
-    @Size(max = 10)
-    private String name;
+    @Size(max = 5)
+    private String lastName;
+
+    @NotBlank
+    @Size(max = 5)
+    private String firstName;
 
     @NotNull
     private Gender gender;
 
     @NotNull
+    @Min(0)
+    @Max(99)
     private Integer age;
 
     @NotNull

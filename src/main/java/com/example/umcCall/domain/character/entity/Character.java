@@ -32,7 +32,11 @@ public class Character extends BaseTimeEntity {
     @Column(name = "character_id")
     private Long id;
 
-    private String name;
+    @Column(name = "last_name")
+    private String lastName;
+
+    @Column(name = "first_name")
+    private String firstName;
 
     @Enumerated(EnumType.STRING)
     private Gender gender;
@@ -52,14 +56,19 @@ public class Character extends BaseTimeEntity {
     private boolean edited;
 
     @Builder
-    public Character(String name, Gender gender, Integer age, Job job,
+    public Character(String lastName, String firstName, Gender gender, Integer age, Job job,
                       PreferTime preferTime, String mbti) {
-        this.name = name;
+        this.lastName = lastName;
+        this.firstName = firstName;
         this.gender = gender;
         this.age = age;
         this.job = job;
         this.preferTime = preferTime;
         this.mbti = mbti;
         this.edited = false;
+    }
+
+    public String getName() {
+        return lastName + firstName;
     }
 }

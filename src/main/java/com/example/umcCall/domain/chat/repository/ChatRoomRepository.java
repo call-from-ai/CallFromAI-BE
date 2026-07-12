@@ -16,4 +16,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
      */
     List<ChatRoom> findByMemberIdAndRoomTypeAndDeletedFalseOrderByLastMessageAtDesc(
             Long memberId, RoomType roomType);
+
+    // 캐릭터 삭제 시 연결된 채팅방도 함께 삭제
+    void deleteByRelationshipId(Long relationshipId);
 }

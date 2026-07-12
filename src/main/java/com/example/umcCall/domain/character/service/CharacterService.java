@@ -24,6 +24,7 @@ import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import com.example.umcCall.global.exception.BaseException;
+import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -50,6 +51,7 @@ public class CharacterService {
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final ChatRoomService chatRoomService;
     private final ChatRoomRepository chatRoomRepository;
+    private final EntityManager entityManager;
 
     // 매력 키워드 목록 조회
     public List<TraitOptionResponse> getTraitOptions() {
@@ -74,6 +76,9 @@ public class CharacterService {
         // TODO: Member 엔티티에 characterCreatedAt 필드 생기면 24시간 재생성 제한 검증 추가
         // member.getCharacterCreatedAt() 기준으로 24시간 안 지났으면 CharacterErrorCode.CHARACTER_RECREATE_TOO_SOON 던지기
 
+        // 동시 요청으로 인한 개수 초과/메인 중복 생성을 막기 위해 회원 행에 락을 건다
+        lockMember(memberId);
+
         if (relationshipRepository.countByMemberId(memberId) >= MAX_CHARACTER_COUNT) {
             throw new BaseException(CharacterErrorCode.CHARACTER_LIMIT_EXCEEDED);
         }
@@ -86,7 +91,8 @@ public class CharacterService {
 
         Character character = characterRepository.save(
                 Character.builder()
-                        .name(request.getName())
+                        .lastName(request.getLastName())
+                        .firstName(request.getFirstName())
                         .gender(request.getGender())
                         .age(request.getAge())
                         .job(request.getJob())
@@ -172,6 +178,9 @@ public class CharacterService {
     // 활성 캐릭터 변경
     @Transactional
     public void activateCharacter(Long memberId, Long characterId) {
+        // 동시 요청으로 인한 메인 캐릭터 중복 지정을 막기 위해 회원 행에 락을 건다
+        lockMember(memberId);
+
         Relationship target = getOwnedRelationship(memberId, characterId);
 
         relationshipRepository.findByMemberIdAndMainTrue(memberId)
@@ -204,6 +213,7 @@ public class CharacterService {
         characterImageRepository.deleteByCharacterId(characterId);
         characterTraitRepository.deleteByCharacterId(characterId);
         relationshipStatusRepository.deleteByRelationshipId(relationship.getId());
+        chatRoomRepository.deleteByRelationshipId(relationship.getId());
         relationshipRepository.delete(relationship);
         characterRepository.deleteById(characterId);
     }
@@ -213,6 +223,14 @@ public class CharacterService {
         return characterImageRepository.findByCharacterId(characterId)
                 .map(CharacterImage::getImageUrl)
                 .orElse(null);
+    }
+
+    // 회원 행에 비관적 락을 걸어 캐릭터 개수/메인 지정 동시성 문제를 막는다.
+    // TODO: Member 엔티티가 생기면 MemberRepository에 @Lock(PESSIMISTIC_WRITE) 조회 메서드를 만들어 이 네이티브 쿼리를 대체할 것
+    private void lockMember(Long memberId) {
+        entityManager.createNativeQuery("SELECT member_id FROM member WHERE member_id = :memberId FOR UPDATE")
+                .setParameter("memberId", memberId)
+                .getSingleResult();
     }
 
     // 본인 소유 캐릭터의 관계인지 확인 후 반환
