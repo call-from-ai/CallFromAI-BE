@@ -27,7 +27,7 @@ public class ClovaSpeechClient {
 
     /** 인증 메타데이터 키. CLOVA 요구사항상 소문자 {@code authorization} 필수. (CLAUDE.md 4장) */
     private static final Metadata.Key<String> AUTHORIZATION =
-            Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
+            Metadata.Key.of("Authorization", Metadata.ASCII_STRING_MARSHALLER);
 
     private final ClovaSpeechProperties properties;
     private ManagedChannel channel;
