@@ -134,7 +134,7 @@ public class CharacterService {
         );
 
         // 캐릭터 생성 시 채팅방도 함께 생성 (ChatRoomService 로직 재사용)
-        chatRoomService.createChatRoom(memberId, RoomType.CHARACTER, relationship.getId());
+        chatRoomService.createRoom(memberId, relationship.getId(), RoomType.CHARACTER);
     }
 
     // 현재 메인 캐릭터 조회
