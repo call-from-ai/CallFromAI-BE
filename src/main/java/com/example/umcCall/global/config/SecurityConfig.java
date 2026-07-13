@@ -33,7 +33,8 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"
                         ).permitAll()
-                        .anyRequest().authenticated()
+                        // TODO: [LOCAL 테스트 임시] JWT 없어서 permitAll로 임시 변경 — 커밋 전 authenticated()로 되돌릴 것
+                        .anyRequest().permitAll()
                 );
 
         return http.build();
