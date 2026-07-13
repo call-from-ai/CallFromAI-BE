@@ -10,9 +10,6 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -62,7 +59,6 @@ public class Member extends BaseTimeEntity {
     @Column(name = "call_ticket_balance", nullable = false)
     private int callTicketBalance;
 
-    @CreatedDate
     @Column(name = "character_created_at")
     private LocalDateTime characterCreatedAt;
 

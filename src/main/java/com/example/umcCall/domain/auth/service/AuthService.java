@@ -49,7 +49,10 @@ public class AuthService {
             throw new BaseException(GeneralErrorCode.INVALID_TOKEN, "이미 사용되었거나 유효하지 않은 리프레시 토큰입니다.");
         }
 
-        return issueTokens(memberId, false);
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BaseException(GeneralErrorCode.MEMBER_NOT_FOUND));
+
+        return issueTokens(memberId, !member.isOnboardingCompleted());
     }
 
     @Transactional
