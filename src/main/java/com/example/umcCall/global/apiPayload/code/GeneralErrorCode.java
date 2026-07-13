@@ -44,7 +44,10 @@ public enum GeneralErrorCode implements BaseErrorCode {
     FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "EXTERNAL500_1", "S3 파일 업로드에 실패했습니다."),
     FILE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "EXTERNAL400_1", "파일 업로드 용량을 초과했습니다."),
     INVALID_FILE_EXTENSION(HttpStatus.BAD_REQUEST, "EXTERNAL400_2", "허용되지 않는 파일 확장자입니다."),
-    EXTERNAL_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "EXTERNAL500_2", "외부 연동 API 호출에 실패했습니다.");
+    EXTERNAL_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "EXTERNAL500_2", "외부 연동 API 호출에 실패했습니다."),
+
+    // Term
+    REQUIRED_TERM_NOT_AGREED(HttpStatus.BAD_REQUEST, "TERM400_1", "필수 약관에 동의해야 합니다.");
 
     private final HttpStatus status;
     private final String code;
