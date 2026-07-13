@@ -63,7 +63,7 @@ public class Member extends BaseTimeEntity {
     private int callTicketBalance;
 
     @CreatedDate
-    @Column(name = "character_created_at", nullable = false)
+    @Column(name = "character_created_at")
     private LocalDateTime charcterCreatedAt;
 
     @Column(name = "is_inactive", nullable = false)
