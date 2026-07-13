@@ -10,9 +10,12 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+<<<<<<< HEAD
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+=======
+>>>>>>> 43c68315a26528615e08753ac018024c2d145fd4
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -62,9 +65,9 @@ public class Member extends BaseTimeEntity {
     @Column(name = "call_ticket_balance", nullable = false)
     private int callTicketBalance;
 
-    @CreatedDate
+
     @Column(name = "character_created_at")
-    private LocalDateTime charcterCreatedAt;
+    private LocalDateTime characterCreatedAt;
 
     @Column(name = "is_inactive", nullable = false)
     private Boolean isInactive;
@@ -88,6 +91,7 @@ public class Member extends BaseTimeEntity {
         return this.lastName != null;
     }
 
+<<<<<<< HEAD
     public void updateProfile(String lastName, String firstName, String profilePhotoUrl,
                               Gender gender, LocalDate birth, Mbti mbti, Job job) {
         if (lastName != null) this.lastName = lastName;
@@ -103,3 +107,16 @@ public class Member extends BaseTimeEntity {
         this.isInactive = true;
     }
 }
+=======
+    public void completeOnboarding(String lastName, String firstName, String profilePhotoUrl,
+                                   Gender gender, LocalDate birth, Mbti mbti, Job job) {
+        this.lastName = lastName;
+        this.firstName = firstName;
+        this.profilePhotoUrl = profilePhotoUrl;
+        this.gender = gender;
+        this.birth = birth;
+        this.mbti = mbti;
+        this.job = job;
+    }
+}
+>>>>>>> 43c68315a26528615e08753ac018024c2d145fd4
