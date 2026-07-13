@@ -10,12 +10,6 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-<<<<<<< HEAD
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-=======
->>>>>>> 43c68315a26528615e08753ac018024c2d145fd4
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
