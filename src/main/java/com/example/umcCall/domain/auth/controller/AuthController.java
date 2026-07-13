@@ -7,12 +7,15 @@ import com.example.umcCall.domain.auth.service.AuthService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -30,5 +33,11 @@ public class AuthController {
     public ResponseEntity<ApiResponse<TokenResponse>> refresh(@Valid @RequestBody RefreshTokenRequest request) {
         TokenResponse tokenResponse = authService.reissueToken(request.refreshToken());
         return ResponseEntity.ok(ApiResponse.onSuccess(tokenResponse));
+    }
+
+    @PostMapping("/auth/logout")
+    public ResponseEntity<Void> logout(@AuthenticationPrincipal Long memberId) {
+        log.info("로그아웃 요청: memberId={}", memberId);
+        return ResponseEntity.noContent().build();
     }
 }
