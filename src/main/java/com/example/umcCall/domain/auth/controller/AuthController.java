@@ -1,8 +1,8 @@
 package com.example.umcCall.domain.auth.controller;
 
-import com.example.umcCall.domain.auth.dto.KakaoLoginRequest;
-import com.example.umcCall.domain.auth.dto.RefreshTokenRequest;
-import com.example.umcCall.domain.auth.dto.TokenResponse;
+import com.example.umcCall.domain.auth.dto.request.KakaoLoginRequest;
+import com.example.umcCall.domain.auth.dto.request.RefreshTokenRequest;
+import com.example.umcCall.domain.auth.dto.response.TokenResponse;
 import com.example.umcCall.domain.auth.service.AuthService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import jakarta.validation.Valid;
@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/auth")
 @RequiredArgsConstructor
 public class AuthController {
 

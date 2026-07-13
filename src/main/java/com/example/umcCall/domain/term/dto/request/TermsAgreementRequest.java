@@ -1,4 +1,4 @@
-package com.example.umcCall.domain.term.dto;
+package com.example.umcCall.domain.term.dto.request;
 
 
 import jakarta.validation.Valid;

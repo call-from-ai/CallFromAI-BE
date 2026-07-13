@@ -1,7 +1,7 @@
 package com.example.umcCall.domain.term.controller;
 
-import com.example.umcCall.domain.term.dto.TermResponse;
-import com.example.umcCall.domain.term.dto.TermsAgreementRequest;
+import com.example.umcCall.domain.term.dto.response.TermResponse;
+import com.example.umcCall.domain.term.dto.request.TermsAgreementRequest;
 import com.example.umcCall.domain.term.service.TermService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import jakarta.validation.Valid;

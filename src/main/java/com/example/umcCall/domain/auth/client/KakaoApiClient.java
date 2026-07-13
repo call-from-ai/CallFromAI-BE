@@ -1,6 +1,6 @@
 package com.example.umcCall.domain.auth.client;
 
-import com.example.umcCall.domain.auth.dto.KakaoUserResponse;
+import com.example.umcCall.domain.auth.dto.response.KakaoUserResponse;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.example.umcCall.global.exception.BaseException;
 import org.springframework.beans.factory.annotation.Value;

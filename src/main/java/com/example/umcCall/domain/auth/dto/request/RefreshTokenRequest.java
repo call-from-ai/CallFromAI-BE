@@ -1,4 +1,4 @@
-package com.example.umcCall.domain.auth.dto;
+package com.example.umcCall.domain.auth.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 

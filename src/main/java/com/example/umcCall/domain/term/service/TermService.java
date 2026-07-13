@@ -2,8 +2,8 @@ package com.example.umcCall.domain.term.service;
 
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.repository.MemberRepository;
-import com.example.umcCall.domain.term.dto.TermResponse;
-import com.example.umcCall.domain.term.dto.TermsAgreementRequest;
+import com.example.umcCall.domain.term.dto.response.TermResponse;
+import com.example.umcCall.domain.term.dto.request.TermsAgreementRequest;
 import com.example.umcCall.domain.term.entity.MemberTerm;
 import com.example.umcCall.domain.term.entity.Term;
 import com.example.umcCall.domain.term.repository.MemberTermRepository;

@@ -1,8 +1,8 @@
 package com.example.umcCall.domain.auth.service;
 
 import com.example.umcCall.domain.auth.client.KakaoApiClient;
-import com.example.umcCall.domain.auth.dto.KakaoUserResponse;
-import com.example.umcCall.domain.auth.dto.TokenResponse;
+import com.example.umcCall.domain.auth.dto.response.KakaoUserResponse;
+import com.example.umcCall.domain.auth.dto.response.TokenResponse;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.enums.SocialType;
 import com.example.umcCall.domain.member.repository.MemberRepository;
@@ -43,5 +43,18 @@ public class AuthService {
         String newRefreshToken = jwtProvider.createRefreshToken(memberId);
 
         return new TokenResponse(newAccessToken, newRefreshToken, false);
+    }
+
+    @Transactional
+    public TokenResponse testLogin(String socialUid) {
+        Member member = memberRepository.findBySocialUidAndSocialType(socialUid, SocialType.KAKAO)
+                .orElseGet(() -> memberRepository.save(
+                        Member.createBySocialLogin(socialUid, SocialType.KAKAO)
+                ));
+
+        String accessToken = jwtProvider.createAccessToken(member.getId());
+        String refreshToken = jwtProvider.createRefreshToken(member.getId());
+
+        return new TokenResponse(accessToken, refreshToken, !member.isOnboardingCompleted());
     }
 }
