@@ -34,6 +34,8 @@ public enum GeneralErrorCode implements BaseErrorCode {
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "AUTH403_1", "접근 권한이 없습니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH401_4", "아이디 또는 비밀번호가 올바르지 않습니다."),
     TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "AUTH401_5", "헤더에 토큰이 존재하지 않습니다."),
+    INVALID_KAKAO_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH401_6", "유효하지 않거나 만료된 카카오 액세스 토큰입니다."),
+
 
     // Member
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER404_1", "존재하지 않는 사용자입니다."),
@@ -48,6 +50,8 @@ public enum GeneralErrorCode implements BaseErrorCode {
 
     // Term
     REQUIRED_TERM_NOT_AGREED(HttpStatus.BAD_REQUEST, "TERM400_1", "필수 약관에 동의해야 합니다.");
+
+
 
     private final HttpStatus status;
     private final String code;

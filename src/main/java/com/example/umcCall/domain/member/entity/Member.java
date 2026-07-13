@@ -64,7 +64,7 @@ public class Member extends BaseTimeEntity {
 
     @CreatedDate
     @Column(name = "character_created_at")
-    private LocalDateTime charcterCreatedAt;
+    private LocalDateTime characterCreatedAt;
 
     @Column(name = "is_inactive", nullable = false)
     private Boolean isInactive;

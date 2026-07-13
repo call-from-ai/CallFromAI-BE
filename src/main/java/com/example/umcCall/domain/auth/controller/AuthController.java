@@ -35,7 +35,7 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.onSuccess(tokenResponse));
     }
 
-    @PostMapping("/auth/logout")
+    @PostMapping("/logout")
     public ResponseEntity<Void> logout(@AuthenticationPrincipal Long memberId) {
         log.info("로그아웃 요청: memberId={}", memberId);
         return ResponseEntity.noContent().build();

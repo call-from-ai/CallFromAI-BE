@@ -3,9 +3,13 @@ package com.example.umcCall.domain.auth.service;
 import com.example.umcCall.domain.auth.client.KakaoApiClient;
 import com.example.umcCall.domain.auth.dto.response.KakaoUserResponse;
 import com.example.umcCall.domain.auth.dto.response.TokenResponse;
+import com.example.umcCall.domain.auth.entity.RefreshToken;
+import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.enums.SocialType;
 import com.example.umcCall.domain.member.repository.MemberRepository;
+import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
+import com.example.umcCall.global.exception.BaseException;
 import com.example.umcCall.global.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,6 +22,7 @@ public class AuthService {
     private final KakaoApiClient kakaoApiClient;
     private final MemberRepository memberRepository;
     private final JwtProvider jwtProvider;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @Transactional
     public TokenResponse kakaoLogin(String kakaoAccessToken) {
@@ -29,20 +34,22 @@ public class AuthService {
                         Member.createBySocialLogin(socialUid, SocialType.KAKAO)
                 ));
 
-        String accessToken = jwtProvider.createAccessToken(member.getId());
-        String refreshToken = jwtProvider.createRefreshToken(member.getId());
-
-        return new TokenResponse(accessToken, refreshToken, !member.isOnboardingCompleted());
+        return issueTokens(member.getId(), !member.isOnboardingCompleted());
     }
 
+    @Transactional
     public TokenResponse reissueToken(String refreshToken) {
         jwtProvider.validateRefreshToken(refreshToken);
         Long memberId = jwtProvider.getMemberId(refreshToken);
 
-        String newAccessToken = jwtProvider.createAccessToken(memberId);
-        String newRefreshToken = jwtProvider.createRefreshToken(memberId);
+        RefreshToken saved = refreshTokenRepository.findByMemberId(memberId)
+                .orElseThrow(() -> new BaseException(GeneralErrorCode.INVALID_TOKEN));
 
-        return new TokenResponse(newAccessToken, newRefreshToken, false);
+        if (!saved.getToken().equals(refreshToken)) {
+            throw new BaseException(GeneralErrorCode.INVALID_TOKEN, "이미 사용되었거나 유효하지 않은 리프레시 토큰입니다.");
+        }
+
+        return issueTokens(memberId, false);
     }
 
     @Transactional
@@ -52,9 +59,24 @@ public class AuthService {
                         Member.createBySocialLogin(socialUid, SocialType.KAKAO)
                 ));
 
-        String accessToken = jwtProvider.createAccessToken(member.getId());
-        String refreshToken = jwtProvider.createRefreshToken(member.getId());
+        return issueTokens(member.getId(), !member.isOnboardingCompleted());
+    }
 
-        return new TokenResponse(accessToken, refreshToken, !member.isOnboardingCompleted());
+    @Transactional
+    public void logout(Long memberId) {
+        refreshTokenRepository.findByMemberId(memberId)
+                .ifPresent(refreshTokenRepository::delete);
+    }
+
+    private TokenResponse issueTokens(Long memberId, boolean needsOnboarding) {
+        String accessToken = jwtProvider.createAccessToken(memberId);
+        String refreshToken = jwtProvider.createRefreshToken(memberId);
+
+        RefreshToken tokenEntity = refreshTokenRepository.findByMemberId(memberId)
+                .orElse(new RefreshToken(memberId, refreshToken));
+        tokenEntity.updateToken(refreshToken);
+        refreshTokenRepository.save(tokenEntity);
+
+        return new TokenResponse(accessToken, refreshToken, needsOnboarding);
     }
 }
