@@ -14,6 +14,9 @@ spring:
         format_sql: true
         default_batch_fetch_size: 100
     open-in-view: false
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
 
 cors:
   allowed-origins: http://localhost:3000,http://localhost:5173

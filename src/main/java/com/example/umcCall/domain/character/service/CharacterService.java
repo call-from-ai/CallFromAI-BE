@@ -46,6 +46,7 @@ public class CharacterService {
 
     private final CharacterRepository characterRepository;
     private final CharacterTraitRepository characterTraitRepository;
+    private final CharacterAiProfileService characterAiProfileService;
     private final CharacterImageRepository characterImageRepository;
     private final RelationshipRepository relationshipRepository;
     private final RelationshipStatusRepository relationshipStatusRepository;
@@ -110,15 +111,15 @@ public class CharacterService {
             );
         }
 
-        request.getTraits().forEach(traitRequest ->
-                characterTraitRepository.save(
+        List<CharacterTrait> savedTraits = request.getTraits().stream()
+                .map(traitRequest -> characterTraitRepository.save(
                         CharacterTrait.builder()
                                 .character(character)
                                 .trait(traitRequest.getTrait())
                                 .priority(traitRequest.getPriority())
-                                .build()
-                )
-        );
+                                .build()))
+                .toList();
+        characterAiProfileService.calculateAndSave(character, savedTraits);
 
         relationshipRepository.findByMemberIdAndMainTrue(memberId)
                 .ifPresent(Relationship::deactivate);

@@ -10,6 +10,21 @@ public record AiCharacterSnapshot(
         String job,
         String preferTime,
         String mbti,
+        String mind,
+        String responseStyle,
+        String lifeType,
+        Integer romanceStyleScore,
+        Integer humor,
+        Integer playfulness,
+        Integer affection,
+        Integer empathy,
+        Integer attachment,
+        Integer jealousy,
+        Integer dominance,
+        Integer confidence,
+        Integer expressiveness,
+        Integer emotionalStability,
+        Integer calculationVersion,
         List<TraitItem> traits
 ) {
     public AiCharacterSnapshot {
