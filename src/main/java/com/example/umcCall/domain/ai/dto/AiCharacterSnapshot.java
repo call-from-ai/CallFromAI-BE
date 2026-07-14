@@ -3,7 +3,6 @@ package com.example.umcCall.domain.ai.dto;
 public record AiCharacterSnapshot(
         Long characterId,
         String name,
-        String mind,
         String responseStyle,
         String job,
         String lifeType,

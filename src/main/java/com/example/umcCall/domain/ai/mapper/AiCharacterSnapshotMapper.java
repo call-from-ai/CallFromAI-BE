@@ -17,7 +17,6 @@ public class AiCharacterSnapshotMapper {
         return new AiCharacterSnapshot(
                 character.getId(),
                 character.getName(),
-                null,
                 relationship.getSpeechStyle().name(),
                 character.getJob().name(),
                 profile.getLifeType(),
