@@ -13,11 +13,8 @@ import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentHashMap;
-
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -134,7 +131,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /**
      * 세션 종료 공용: 스트림을 맵에서 제거해 이후 전송을 막고(terminate) WebSocket도 닫는다.
      * (CLOVA 에러/완료 · 초기 개설 실패 · 오디오 중계 실패 공용. 원인/로그는 호출부에서.)
-     * 재개설(투명 복원)은 후순위 — 지금은 닫아서 클라이언트가 재연결하도록 둔다. (CLAUDE.md 6장)
+     * 재개설(투명 복원)은 지금 범위 밖 — 닫아서 클라이언트가 재연결하도록 둔다.
      * 맵에서 먼저 제거하므로, close가 부르는 afterConnectionClosed → completeStream은 no-op이 된다.
      */
     private void endSession(WebSocketSession session, CloseStatus status) {
