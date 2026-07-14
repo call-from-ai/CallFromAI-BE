@@ -28,3 +28,5 @@ clova:
     port: 50051
     # 콘솔 발급 secret key. 코드/깃에 노출 금지 — 환경변수(.env)로만 주입.
     secret-key: ${CLOVA_SECRET_KEY}
+kakao:
+  base-url: https://kapi.kakao.com
