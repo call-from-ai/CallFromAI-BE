@@ -14,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
@@ -45,6 +46,10 @@ public class Relationship extends BaseTimeEntity {
 
     private Integer affinityScore;
 
+    private Integer floorScore;
+
+    private String emotion;
+
     private Integer spiceLevel;
 
     @Enumerated(EnumType.STRING)
@@ -57,6 +62,9 @@ public class Relationship extends BaseTimeEntity {
     private boolean main;
 
     private LocalDateTime becameMainAt;
+
+    @Version
+    private Long version;
 
     @Builder
     public Relationship(Long memberId, Character character, RelationshipStage relationshipStage,

@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface RelationshipRepository extends JpaRepository<Relationship, Long> {
 
+    boolean existsByIdAndVersion(Long id, Long version);
+
     Optional<Relationship> findByCharacterId(Long characterId);
 
     Optional<Relationship> findByMemberIdAndMainTrue(Long memberId);
