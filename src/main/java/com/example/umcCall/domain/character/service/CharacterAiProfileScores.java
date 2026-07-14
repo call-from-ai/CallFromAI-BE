@@ -1,24 +1,21 @@
 package com.example.umcCall.domain.character.service;
 
 public record CharacterAiProfileScores(
-        String mind,
-        String responseStyle,
         String lifeType,
-        int romanceStyleScore,
-        int humor,
-        int playfulness,
-        int affection,
-        int empathy,
-        int attachment,
-        int jealousy,
-        int dominance,
-        int confidence,
-        int expressiveness,
-        int emotionalStability
+        double humor,
+        double playfulness,
+        double affection,
+        double empathy,
+        double attachment,
+        double jealousy,
+        double dominance,
+        double confidence,
+        double expressiveness,
+        double emotionalStability
 ) {
-    public static CharacterAiProfileScores baseline() {
+    public static CharacterAiProfileScores baseline(String lifeType) {
         return new CharacterAiProfileScores(
-                null, null, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                lifeType, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
         );
     }
 }

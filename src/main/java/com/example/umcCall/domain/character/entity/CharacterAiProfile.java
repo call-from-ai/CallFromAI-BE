@@ -29,20 +29,17 @@ public class CharacterAiProfile extends BaseTimeEntity {
     @JoinColumn(name = "character_id")
     private Character character;
 
-    private String mind;
-    private String responseStyle;
     private String lifeType;
-    private Integer romanceStyleScore;
-    private Integer humor;
-    private Integer playfulness;
-    private Integer affection;
-    private Integer empathy;
-    private Integer attachment;
-    private Integer jealousy;
-    private Integer dominance;
-    private Integer confidence;
-    private Integer expressiveness;
-    private Integer emotionalStability;
+    private Double humor;
+    private Double playfulness;
+    private Double affection;
+    private Double empathy;
+    private Double attachment;
+    private Double jealousy;
+    private Double dominance;
+    private Double confidence;
+    private Double expressiveness;
+    private Double emotionalStability;
     private Integer calculationVersion;
 
     private CharacterAiProfile(Character character) {
@@ -54,10 +51,7 @@ public class CharacterAiProfile extends BaseTimeEntity {
     }
 
     public void update(CharacterAiProfileScores scores, int calculationVersion) {
-        this.mind = scores.mind();
-        this.responseStyle = scores.responseStyle();
         this.lifeType = scores.lifeType();
-        this.romanceStyleScore = scores.romanceStyleScore();
         this.humor = scores.humor();
         this.playfulness = scores.playfulness();
         this.affection = scores.affection();

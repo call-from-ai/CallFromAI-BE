@@ -29,6 +29,8 @@ import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.context.ApplicationEventPublisher;
@@ -92,6 +94,7 @@ public class CharacterService {
                 && !PresetImages.contains(request.getGender(), request.getImageUrl())) {
             throw new BaseException(CharacterErrorCode.INVALID_PRESET_IMAGE);
         }
+        validateTraits(request);
 
         Character character = characterRepository.save(
                 Character.builder()
@@ -236,6 +239,20 @@ public class CharacterService {
         entityManager.createNativeQuery("SELECT member_id FROM member WHERE member_id = :memberId FOR UPDATE")
                 .setParameter("memberId", memberId)
                 .getSingleResult();
+    }
+
+    private void validateTraits(CharacterCreateRequest request) {
+        Set<Trait> traits = request.getTraits().stream()
+                .map(trait -> trait.getTrait())
+                .collect(Collectors.toSet());
+        Set<Integer> priorities = request.getTraits().stream()
+                .map(trait -> trait.getPriority())
+                .collect(Collectors.toSet());
+        boolean continuous = priorities.size() == request.getTraits().size()
+                && priorities.stream().allMatch(priority -> priority >= 1 && priority <= request.getTraits().size());
+        if (traits.size() != request.getTraits().size() || !continuous) {
+            throw new BaseException(CharacterErrorCode.INVALID_TRAIT_SELECTION);
+        }
     }
 
     // 본인 소유 캐릭터의 관계인지 확인 후 반환

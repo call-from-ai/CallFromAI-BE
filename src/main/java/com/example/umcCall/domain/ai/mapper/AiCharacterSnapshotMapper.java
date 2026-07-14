@@ -15,11 +15,8 @@ public class AiCharacterSnapshotMapper {
         return new AiCharacterSnapshot(
                 character.getId(),
                 character.getName(),
-                profile.getMind(),
-                profile.getResponseStyle(),
                 character.getJob().name(),
                 profile.getLifeType(),
-                profile.getRomanceStyleScore(),
                 new AiCharacterSnapshot.TraitProfile(
                         profile.getHumor(),
                         profile.getPlayfulness(),

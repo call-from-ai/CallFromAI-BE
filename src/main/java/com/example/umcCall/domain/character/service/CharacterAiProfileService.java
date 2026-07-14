@@ -7,4 +7,6 @@ import java.util.List;
 public interface CharacterAiProfileService {
 
     void calculateAndSave(Character character, List<CharacterTrait> traits);
+
+    void recalculateOutdatedProfiles();
 }
