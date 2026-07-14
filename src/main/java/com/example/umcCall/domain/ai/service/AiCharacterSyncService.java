@@ -8,6 +8,8 @@ import com.example.umcCall.domain.character.entity.CharacterAiProfile;
 import com.example.umcCall.domain.character.exception.CharacterErrorCode;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
 import com.example.umcCall.domain.character.repository.CharacterRepository;
+import com.example.umcCall.domain.relationship.entity.Relationship;
+import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.global.exception.BaseException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,7 @@ public class AiCharacterSyncService {
     private final AiServerClient aiServerClient;
     private final CharacterRepository characterRepository;
     private final CharacterAiProfileRepository characterAiProfileRepository;
+    private final RelationshipRepository relationshipRepository;
     private final AiCharacterSnapshotMapper snapshotMapper;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -36,8 +39,11 @@ public class AiCharacterSyncService {
             CharacterAiProfile profile = characterAiProfileRepository.findById(event.characterId())
                     .orElseThrow(() -> new IllegalStateException(
                             "Character AI profile not found: " + event.characterId()));
+            Relationship relationship = relationshipRepository.findByCharacterId(event.characterId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Relationship not found for character: " + event.characterId()));
 
-            aiServerClient.syncCharacter(snapshotMapper.toSnapshot(character, profile));
+            aiServerClient.syncCharacter(snapshotMapper.toSnapshot(character, profile, relationship));
         } catch (RuntimeException exception) {
             // TODO(AI 연동): outbox 또는 재시도 큐로 전환해 커밋 이후 동기화 실패를 복구할 것.
             log.error("AI 캐릭터 snapshot 동기화 실패. characterId={}", event.characterId(), exception);

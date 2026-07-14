@@ -13,8 +13,12 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import java.nio.charset.StandardCharsets;
+import org.springframework.util.StreamUtils;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
+@Slf4j
 @EnableConfigurationProperties(AiServerProperties.class)
 public class AiServerClient {
 
@@ -82,6 +86,10 @@ public class AiServerClient {
                     .body(snapshot)
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        String responseBody = StreamUtils.copyToString(
+                                httpResponse.getBody(), StandardCharsets.UTF_8);
+                        log.error("AI snapshot API 오류. status={}, body={}",
+                                httpResponse.getStatusCode(), responseBody);
                         throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
                     })
                     .toBodilessEntity();

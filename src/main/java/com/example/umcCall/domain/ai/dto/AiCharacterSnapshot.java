@@ -3,21 +3,24 @@ package com.example.umcCall.domain.ai.dto;
 public record AiCharacterSnapshot(
         Long characterId,
         String name,
+        String mind,
+        String responseStyle,
         String job,
         String lifeType,
+        Integer romanceStyleScore,
         TraitProfile traits
 ) {
     public record TraitProfile(
-            Double humor,
-            Double playfulness,
-            Double affection,
-            Double empathy,
-            Double attachment,
-            Double jealousy,
-            Double dominance,
-            Double confidence,
-            Double expressiveness,
-            Double emotionalStability,
+            Integer humor,
+            Integer playfulness,
+            Integer affection,
+            Integer empathy,
+            Integer attachment,
+            Integer jealousy,
+            Integer dominance,
+            Integer confidence,
+            Integer expressiveness,
+            Integer emotionalStability,
             Integer calculationVersion
     ) {
     }
