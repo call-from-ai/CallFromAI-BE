@@ -30,6 +30,9 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 @Component
 public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
+    // TODO(AI 연동): STT final 결과를 AiConversationService로 연결 필요.
+    // partial은 AI로 보내지 말고 클라이언트 자막 전용으로만 사용.
+
     /** CLOVA 인식 설정. 한국어. (EPD 등 튜닝은 후순위) */
     private static final String CONFIG_JSON = "{\"transcription\":{\"language\":\"ko\"}}";
 

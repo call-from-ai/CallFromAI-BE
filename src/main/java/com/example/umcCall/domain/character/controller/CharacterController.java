@@ -56,7 +56,7 @@ public class CharacterController {
     public ApiResponse<Void> createCharacter(
             Authentication authentication,
             @RequestBody @Valid CharacterCreateRequest request) {
-        Long memberId = 1L; // TODO: [LOCAL 테스트 임시] JWT 없어서 하드코딩 — 커밋 전 원래대로 되돌릴 것
+        Long memberId = (Long) authentication.getPrincipal();
         characterService.createCharacter(memberId, request);
         return ApiResponse.onSuccess();
     }
@@ -65,7 +65,7 @@ public class CharacterController {
     @Operation(summary = "현재 활성 캐릭터 조회", description = "회원의 현재 활성화된 캐릭터 상세 정보를 반환한다.")
     @GetMapping("/active")
     public ApiResponse<CharacterResponse> getActiveCharacter(Authentication authentication) {
-        Long memberId = 1L; // TODO: [LOCAL 테스트 임시] JWT 없어서 하드코딩 — 커밋 전 원래대로 되돌릴 것
+        Long memberId = (Long) authentication.getPrincipal();
         return ApiResponse.onSuccess(characterService.getActiveCharacter(memberId));
     }
 
@@ -73,7 +73,7 @@ public class CharacterController {
     @Operation(summary = "내 캐릭터 목록 조회", description = "회원이 생성한 캐릭터 목록을 반환한다. 최대 5개라 페이지네이션은 없다.")
     @GetMapping
     public ApiResponse<List<CharacterSummaryResponse>> getMyCharacters(Authentication authentication) {
-        Long memberId = 1L; // TODO: [LOCAL 테스트 임시] JWT 없어서 하드코딩 — 커밋 전 원래대로 되돌릴 것
+        Long memberId = (Long) authentication.getPrincipal();
         return ApiResponse.onSuccess(characterService.getMyCharacters(memberId));
     }
 
@@ -82,7 +82,7 @@ public class CharacterController {
     @PatchMapping("/{characterId}/activate")
     public ApiResponse<Void> activateCharacter(
             Authentication authentication, @PathVariable Long characterId) {
-        Long memberId = 1L; // TODO: [LOCAL 테스트 임시] JWT 없어서 하드코딩 — 커밋 전 원래대로 되돌릴 것
+        Long memberId = (Long) authentication.getPrincipal();
         characterService.activateCharacter(memberId, characterId);
         return ApiResponse.onSuccess();
     }
@@ -92,7 +92,7 @@ public class CharacterController {
     @DeleteMapping("/{characterId}")
     public ApiResponse<Void> deleteCharacter(
             Authentication authentication, @PathVariable Long characterId) {
-        Long memberId = 1L; // TODO: [LOCAL 테스트 임시] JWT 없어서 하드코딩 — 커밋 전 원래대로 되돌릴 것
+        Long memberId = (Long) authentication.getPrincipal();
         characterService.deleteCharacter(memberId, characterId);
         return ApiResponse.onSuccess();
     }
