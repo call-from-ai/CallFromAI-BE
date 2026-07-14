@@ -2,6 +2,7 @@ package com.example.umcCall.domain.ai.client;
 
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
+import com.example.umcCall.domain.ai.dto.AiHealthResponse;
 import com.example.umcCall.domain.ai.exception.AiErrorCode;
 import com.example.umcCall.domain.ai.exception.AiServerException;
 import java.time.Duration;
@@ -16,7 +17,7 @@ import org.springframework.web.client.RestClientException;
 @EnableConfigurationProperties(AiServerProperties.class)
 public class AiServerClient {
 
-    private static final String INTERNAL_TOKEN_HEADER = "internal-token";
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Api-Key";
 
     private final RestClient restClient;
 
@@ -42,6 +43,26 @@ public class AiServerClient {
                         throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
                     })
                     .body(AiChatResponse.class);
+            if (response == null) {
+                throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
+            }
+            return response;
+        } catch (AiServerException exception) {
+            throw exception;
+        } catch (RestClientException exception) {
+            throw new AiServerException(AiErrorCode.AI_SERVER_UNAVAILABLE, exception);
+        }
+    }
+
+    public AiHealthResponse health() {
+        try {
+            AiHealthResponse response = restClient.get()
+                    .uri("/actuator/health")
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
+                    })
+                    .body(AiHealthResponse.class);
             if (response == null) {
                 throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
             }
