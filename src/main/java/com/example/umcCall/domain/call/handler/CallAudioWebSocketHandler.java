@@ -10,10 +10,14 @@ import com.nbp.cdncp.nest.grpc.proto.v1.NestRequest;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
 import com.nbp.cdncp.nest.grpc.proto.v1.RequestType;
 import io.grpc.stub.StreamObserver;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentHashMap;
+
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -35,8 +39,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final ClovaSpeechClient clovaSpeechClient;
     private final ObjectMapper objectMapper;
 
-    /** 세션 ID → 해당 세션의 CLOVA 업스트림 옵저버(요청을 밀어넣는 통로). */
-    private final ConcurrentHashMap<String, StreamObserver<NestRequest>> sessionStreams =
+    /** 세션 ID → 해당 세션의 CLOVA 업스트림(전송/종료를 직렬화하는 래퍼). */
+    private final ConcurrentHashMap<String, SessionStream> sessionStreams =
             new ConcurrentHashMap<>();
 
     public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient, ObjectMapper objectMapper) {
@@ -47,35 +51,53 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         String sessionId = session.getId();
-        StreamObserver<NestRequest> requestObserver =
-                clovaSpeechClient.openRecognizeStream(new ClovaResponseObserver(sessionId, objectMapper));
+        try {
+            StreamObserver<NestRequest> requestObserver =
+                    clovaSpeechClient.openRecognizeStream(new ClovaResponseObserver(session));
+            SessionStream stream = new SessionStream(requestObserver);
+            sessionStreams.put(sessionId, stream);
 
-        // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
-        requestObserver.onNext(NestRequest.newBuilder()
-                .setType(RequestType.CONFIG)
-                .setConfig(NestConfig.newBuilder().setConfig(CONFIG_JSON).build())
-                .build());
+            // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
+            stream.send(NestRequest.newBuilder()
+                    .setType(RequestType.CONFIG)
+                    .setConfig(NestConfig.newBuilder().setConfig(CONFIG_JSON).build())
+                    .build());
 
-        sessionStreams.put(sessionId, requestObserver);
-        log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}", sessionId);
+            log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}", sessionId);
+        } catch (RuntimeException e) {
+            // CLOVA 스트림 개설 자체가 실패한 경우. 스트림 없는 세션을 남기지 않도록 즉시 닫는다.
+            // (비동기 연결 실패는 ClovaResponseObserver.onError로 따로 처리됨)
+            log.error("[Call] CLOVA 스트림 개설 실패 → WebSocket 종료. session={}", sessionId, e);
+            endSession(session, CloseStatus.SERVER_ERROR);
+        }
     }
 
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) {
-        StreamObserver<NestRequest> requestObserver = sessionStreams.get(session.getId());
-        if (requestObserver == null) {
+        SessionStream stream = sessionStreams.get(session.getId());
+        if (stream == null) {
             log.warn("[Call] CLOVA 스트림이 없어 오디오를 버림. session={}", session.getId());
             return;
         }
         ByteBuffer payload = message.getPayload();
+        if (!payload.hasRemaining()) {
+            log.debug("[Call] 빈 오디오 프레임 무시. session={}", session.getId());
+            return;
+        }
         byte[] chunk = new byte[payload.remaining()];
         payload.get(chunk);
 
-        requestObserver.onNext(NestRequest.newBuilder()
-                .setType(RequestType.DATA)
-                .setData(NestData.newBuilder().setChunk(ByteString.copyFrom(chunk)).build())
-                .build());
-        log.debug("[Call] 오디오 {} bytes 중계. session={}", chunk.length, session.getId());
+        try {
+            stream.send(NestRequest.newBuilder()
+                    .setType(RequestType.DATA)
+                    .setData(NestData.newBuilder().setChunk(ByteString.copyFrom(chunk)).build())
+                    .build());
+            log.debug("[Call] 오디오 {} bytes 중계. session={}", chunk.length, session.getId());
+        } catch (RuntimeException e) {
+            // 종료 플래그로 대부분 걸러지지만, 그 밖의 전송 실패는 여기서 세션을 정리·종료한다.
+            log.error("[Call] 오디오 중계 실패 → WebSocket 종료. session={}", session.getId(), e);
+            endSession(session, CloseStatus.SERVER_ERROR);
+        }
     }
 
     @Override
@@ -96,25 +118,88 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         completeStream(session.getId());
     }
 
-    /** 세션의 CLOVA 업스트림을 정상 종료한다. */
+    /** 세션의 CLOVA 업스트림을 정상 종료(half-close)한다. WebSocket 정상 종료 시 호출. */
     private void completeStream(String sessionId) {
-        StreamObserver<NestRequest> requestObserver = sessionStreams.remove(sessionId);
-        if (requestObserver == null) {
+        SessionStream stream = sessionStreams.remove(sessionId);
+        if (stream == null) {
             return;
         }
         try {
-            requestObserver.onCompleted();
+            stream.complete();
         } catch (RuntimeException e) {
             log.warn("[Call] CLOVA 스트림 종료 실패. session={}", sessionId, e);
         }
     }
 
-    /** CLOVA 인식 결과 콜백. partial/final을 구분해 로그. */
-    private record ClovaResponseObserver(String sessionId, ObjectMapper objectMapper)
-            implements StreamObserver<NestResponse> {
+    /**
+     * 세션 종료 공용: 스트림을 맵에서 제거해 이후 전송을 막고(terminate) WebSocket도 닫는다.
+     * (CLOVA 에러/완료 · 초기 개설 실패 · 오디오 중계 실패 공용. 원인/로그는 호출부에서.)
+     * 재개설(투명 복원)은 후순위 — 지금은 닫아서 클라이언트가 재연결하도록 둔다. (CLAUDE.md 6장)
+     * 맵에서 먼저 제거하므로, close가 부르는 afterConnectionClosed → completeStream은 no-op이 된다.
+     */
+    private void endSession(WebSocketSession session, CloseStatus status) {
+        SessionStream stream = sessionStreams.remove(session.getId());
+        if (stream != null) {
+            stream.terminate(); // 이후 send()는 무시됨
+        }
+        if (session.isOpen()) {
+            try {
+                session.close(status);
+            } catch (IOException e) {
+                log.warn("[Call] WebSocket 종료 실패. session={}", session.getId(), e);
+            }
+        }
+    }
+
+    /**
+     * 세션 하나의 CLOVA 업스트림 래퍼. gRPC {@link StreamObserver}는 스레드 안전이 아니므로,
+     * {@code send}(onNext)·{@code complete}(onCompleted)를 직렬화하고 종료 후 전송을 막는다.
+     * 락은 세션별이라 다른 통화를 막지 않는다.
+     */
+    private static final class SessionStream {
+
+        private final StreamObserver<NestRequest> requestObserver;
+        private boolean terminated = false;
+
+        private SessionStream(StreamObserver<NestRequest> requestObserver) {
+            this.requestObserver = requestObserver;
+        }
+
+        /** 종료되지 않았을 때만 요청을 밀어넣는다. */
+        synchronized void send(NestRequest request) {
+            if (terminated) {
+                return;
+            }
+            requestObserver.onNext(request);
+        }
+
+        /** 정상 half-close. 한 번만 수행한다. */
+        synchronized void complete() {
+            if (terminated) {
+                return;
+            }
+            terminated = true;
+            requestObserver.onCompleted();
+        }
+
+        /** 비정상 종료 표시. onCompleted는 부르지 않고 이후 전송만 막는다. */
+        synchronized void terminate() {
+            terminated = true;
+        }
+    }
+
+    /** CLOVA 인식 결과 콜백. partial/final을 구분해 로그. 에러 시 WebSocket을 닫는다. */
+    private final class ClovaResponseObserver implements StreamObserver<NestResponse> {
+
+        private final WebSocketSession session;
+
+        private ClovaResponseObserver(WebSocketSession session) {
+            this.session = session;
+        }
 
         @Override
         public void onNext(NestResponse response) {
+            String sessionId = session.getId();
             String contents = response.getContents();
             try {
                 NestRecognizeResult result = objectMapper.readValue(contents, NestRecognizeResult.class);
@@ -131,12 +216,15 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
         @Override
         public void onError(Throwable t) {
-            log.error("[Clova] 스트림 오류. session={}", sessionId, t);
+            log.error("[Clova] 스트림 오류 → WebSocket 종료. session={}", session.getId(), t);
+            endSession(session, CloseStatus.SERVER_ERROR);
         }
 
         @Override
         public void onCompleted() {
-            log.info("[Clova] 스트림 완료. session={}", sessionId);
+            // CLOVA가 스트림을 끝낸 경우(정상/선종료). 남은 맵 정리 + WebSocket 정리.
+            log.info("[Clova] 스트림 완료 → WebSocket 정리. session={}", session.getId());
+            endSession(session, CloseStatus.NORMAL);
         }
     }
 }
