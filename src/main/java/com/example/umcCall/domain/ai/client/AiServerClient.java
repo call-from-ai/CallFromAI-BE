@@ -3,6 +3,7 @@ package com.example.umcCall.domain.ai.client;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.dto.AiHealthResponse;
+import com.example.umcCall.domain.ai.dto.AiCharacterSnapshot;
 import com.example.umcCall.domain.ai.exception.AiErrorCode;
 import com.example.umcCall.domain.ai.exception.AiServerException;
 import java.time.Duration;
@@ -67,6 +68,39 @@ public class AiServerClient {
                 throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
             }
             return response;
+        } catch (AiServerException exception) {
+            throw exception;
+        } catch (RestClientException exception) {
+            throw new AiServerException(AiErrorCode.AI_SERVER_UNAVAILABLE, exception);
+        }
+    }
+
+    public void syncCharacter(AiCharacterSnapshot snapshot) {
+        try {
+            restClient.put()
+                    .uri("/internal/characters/{characterId}/snapshot", snapshot.characterId())
+                    .body(snapshot)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
+                    })
+                    .toBodilessEntity();
+        } catch (AiServerException exception) {
+            throw exception;
+        } catch (RestClientException exception) {
+            throw new AiServerException(AiErrorCode.AI_SERVER_UNAVAILABLE, exception);
+        }
+    }
+
+    public void deleteCharacterData(Long characterId) {
+        try {
+            restClient.delete()
+                    .uri("/internal/characters/{characterId}/data", characterId)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
+                    })
+                    .toBodilessEntity();
         } catch (AiServerException exception) {
             throw exception;
         } catch (RestClientException exception) {

@@ -24,12 +24,14 @@ import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import com.example.umcCall.global.exception.BaseException;
+import com.example.umcCall.domain.ai.event.CharacterAiSyncEvent;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -53,6 +55,7 @@ public class CharacterService {
     private final ChatRoomService chatRoomService;
     private final ChatRoomRepository chatRoomRepository;
     private final EntityManager entityManager;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 매력 키워드 목록 조회
     public List<TraitOptionResponse> getTraitOptions() {
@@ -217,6 +220,7 @@ public class CharacterService {
         chatRoomRepository.deleteByRelationshipId(relationship.getId());
         relationshipRepository.delete(relationship);
         characterRepository.deleteById(characterId);
+        eventPublisher.publishEvent(new CharacterAiSyncEvent.Delete(characterId));
     }
 
     // 캐릭터의 프리셋 이미지 URL 조회 (없으면 null)

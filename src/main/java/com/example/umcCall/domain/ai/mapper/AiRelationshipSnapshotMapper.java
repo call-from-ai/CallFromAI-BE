@@ -17,13 +17,9 @@ public class AiRelationshipSnapshotMapper {
         LocalDate startedAt = relationshipStatus.getCreatedAt().toLocalDate();
         long daysTogether = Math.max(0, ChronoUnit.DAYS.between(startedAt, LocalDate.now()));
 
-        // TODO: 팀 확인 필요 - affinity_score/floor_score와 AI 서버
-        // closeness/conflictLevel 의미가 실제로 일치하는지 검증 필요
         return new AiRelationshipSnapshot(
                 relationship.getId(),
                 relationship.getRelationshipStage().name(),
-                relationship.getAffinityScore(),
-                relationship.getFloorScore(),
                 relationship.getEmotion(),
                 relationship.getSpeechStyle().name(),
                 relationship.getSpiceLevel(),
