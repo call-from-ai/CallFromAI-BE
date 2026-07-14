@@ -36,7 +36,8 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/auth/kakao",
                                 "/auth/refresh",
-                                "/test/**"
+                                "/test/**",
+                                "/preset-images"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
