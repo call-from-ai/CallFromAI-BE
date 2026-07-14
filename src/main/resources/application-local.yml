@@ -18,6 +18,13 @@ spring:
 cors:
   allowed-origins: http://localhost:3000,http://localhost:5173
 
+ai:
+  server:
+    base-url: ${AI_SERVER_BASE_URL:http://localhost:8081}
+    connect-timeout-ms: ${AI_SERVER_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${AI_SERVER_READ_TIMEOUT_MS:60000}
+    internal-token: ${AI_INTERNAL_TOKEN}
+
 logging:
   level:
     org.hibernate.SQL: debug
