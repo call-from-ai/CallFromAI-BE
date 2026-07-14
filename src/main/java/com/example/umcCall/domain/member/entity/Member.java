@@ -59,6 +59,7 @@ public class Member extends BaseTimeEntity {
     @Column(name = "call_ticket_balance", nullable = false)
     private int callTicketBalance;
 
+
     @Column(name = "character_created_at")
     private LocalDateTime characterCreatedAt;
 
@@ -84,14 +85,19 @@ public class Member extends BaseTimeEntity {
         return this.lastName != null;
     }
 
-    public void completeOnboarding(String lastName, String firstName, String profilePhotoUrl,
-                                   Gender gender, LocalDate birth, Mbti mbti, Job job) {
-        this.lastName = lastName;
-        this.firstName = firstName;
-        this.profilePhotoUrl = profilePhotoUrl;
-        this.gender = gender;
-        this.birth = birth;
-        this.mbti = mbti;
-        this.job = job;
+    public void updateProfile(String lastName, String firstName, String profilePhotoUrl,
+                              Gender gender, LocalDate birth, Mbti mbti, Job job) {
+        if (lastName != null) this.lastName = lastName;
+        if (firstName != null) this.firstName = firstName;
+        if (profilePhotoUrl != null) this.profilePhotoUrl = profilePhotoUrl;
+        if (gender != null) this.gender = gender;
+        if (birth != null) this.birth = birth;
+        if (mbti != null) this.mbti = mbti;
+        if (job != null) this.job = job;
+    }
+
+    public void deactivate() {
+        this.isInactive = true;
     }
 }
+
