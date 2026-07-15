@@ -103,6 +103,30 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         log.info("[Call] 제어 메시지 수신. session={}, payload={}", session.getId(), message.getPayload());
     }
 
+    /**
+     * 합성된 wav를 이 세션 소켓에만 바이너리 프레임으로 내려보낸다. (다운스트림 송신)
+     * CLOVA Voice가 준 wav를 헤더째 그대로 보낸다 — 서버는 변환하지 않고, 프론트가 헤더로 스펙을 읽는다.
+     * 문장 단위 wav 하나가 곧 재생 가능한 완결 단위이므로 프레임 하나에 그대로 싣는다.
+     */
+    private void sendAudio(WebSocketSession session, byte[] wav) {
+        // 합성 중에 사용자가 끊은 경우. 비동기 워커에선 정상 경로다.
+        if (!session.isOpen()) {
+            log.debug("[Call] 세션이 닫혀 오디오를 버림. session={}, bytes={}", session.getId(), wav.length);
+            return;
+        }
+        try {
+            // WebSocketSession은 스레드 안전이 아니다. 송신이 겹치면 프레임이 깨지므로 세션별로 직렬화한다.
+            synchronized (session) {
+                session.sendMessage(new BinaryMessage(wav));
+            }
+            log.debug("[Call] 오디오 {} bytes 송신. session={}", wav.length, session.getId());
+        } catch (IOException | IllegalStateException e) {
+            // 송신 실패 = 사실상 소켓이 죽음. MVP 정책대로 통화를 끝낸다(STT 스트림까지 정리).
+            log.error("[Call] 오디오 송신 실패 → WebSocket 종료. session={}", session.getId(), e);
+            endSession(session, CloseStatus.SERVER_ERROR);
+        }
+    }
+
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         completeStream(session.getId());
