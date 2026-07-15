@@ -26,14 +26,10 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
 /**
- * 통화 오디오 양방향 채널 핸들러. 세션(통화)마다 분리해 처리한다.
- * <ul>
- *   <li><b>업스트림</b>: 바이너리 프레임(raw PCM 16kHz/모노/16-bit)을 세션별 CLOVA STT gRPC 스트림으로 중계.
- *   <li><b>다운스트림</b>: STT final 전사를 TTS로 합성해 wav를 그대로 바이너리 프레임으로 송신.
- *   <li>제어 신호는 텍스트(JSON) 프레임. (파싱/상태머신은 후순위 — 지금은 로그만)
- * </ul>
- * 다운스트림 텍스트 소스는 지금 <b>에코</b>(내 말이 그대로 돌아옴)다 — 배관을 잇기 위한 임시 형태이고,
- * 이 자리에 나중에 LLM이 대체 투입된다. ({@link #submitEcho})
+ * 통화 오디오 양방향 채널 핸들러. 통화마다 분리해 처리한다.
+ * 업스트림은 바이너리 프레임(raw PCM 16kHz/모노/16-bit)을 CLOVA STT로 중계하고,
+ * 다운스트림은 STT final을 TTS로 합성해 wav를 그대로 내려보낸다. 제어 신호는 텍스트(JSON) 프레임.
+ * <p>다운스트림 텍스트 소스는 지금 <b>에코</b>(내 말이 그대로 돌아옴)다 — 이 자리에 LLM이 대체 투입된다.
  */
 @Slf4j
 @Component
@@ -49,10 +45,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final ClovaVoiceClient clovaVoiceClient;
     private final ObjectMapper objectMapper;
 
-    /**
-     * WebSocket 세션 ID → 그 세션으로 진행 중인 통화.
-     * WS 수신 · gRPC 콜백 · 워커 세 스레드가 만나는 지점이라 동시성 맵이다.
-     */
+    /** WS 세션 ID → 진행 중인 통화. WS 수신 · gRPC 콜백 · 워커 세 스레드가 만나는 지점이다. */
     private final ConcurrentHashMap<String, ActiveCall> activeCalls = new ConcurrentHashMap<>();
 
     public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient,
@@ -69,9 +62,9 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         try {
             StreamObserver<NestRequest> requestObserver =
                     clovaSpeechClient.openRecognizeStream(new ClovaResponseObserver(session));
-            SessionStream stream = new SessionStream(requestObserver);
-            // 스트림 개설에 성공한 뒤 워커를 만든다 — 실패했다면 정리할 워커도 없다.
-            // CONFIG 전에 등록해두므로, onNext가 처음 뜰 땐 이미 통화가 맵에 있다.
+            SttStream stream = new SttStream(requestObserver);
+            // 워커는 스트림 개설 성공 뒤에 만든다(실패하면 정리할 워커도 없도록).
+            // 등록은 CONFIG 전에 — onNext가 처음 뜰 땐 이미 맵에 있어야 한다.
             activeCalls.put(sessionId, new ActiveCall(stream, Executors.newSingleThreadExecutor()));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
@@ -82,8 +75,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
             log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}", sessionId);
         } catch (RuntimeException e) {
-            // CLOVA 스트림 개설 자체가 실패한 경우. 스트림 없는 통화를 남기지 않도록 즉시 닫는다.
-            // (비동기 연결 실패는 ClovaResponseObserver.onError로 따로 처리됨)
+            // 개설 자체의 실패만 여기로 온다. 비동기 연결 실패는 ClovaResponseObserver.onError로 간다.
             log.error("[Call] CLOVA 스트림 개설 실패 → WebSocket 종료. session={}", sessionId, e);
             terminateCall(session, CloseStatus.SERVER_ERROR);
         }
@@ -96,7 +88,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             log.warn("[Call] CLOVA 스트림이 없어 오디오를 버림. session={}", session.getId());
             return;
         }
-        SessionStream stream = call.stream();
+        SttStream stream = call.stream();
         ByteBuffer payload = message.getPayload();
         if (!payload.hasRemaining()) {
             log.debug("[Call] 빈 오디오 프레임 무시. session={}", session.getId());
@@ -112,7 +104,6 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     .build());
             log.debug("[Call] 오디오 {} bytes 중계. session={}", chunk.length, session.getId());
         } catch (RuntimeException e) {
-            // 종료 플래그로 대부분 걸러지지만, 그 밖의 전송 실패는 여기서 세션을 정리·종료한다.
             log.error("[Call] 오디오 중계 실패 → WebSocket 종료. session={}", session.getId(), e);
             terminateCall(session, CloseStatus.SERVER_ERROR);
         }
@@ -125,9 +116,9 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     /**
-     * final 전사를 TTS로 합성해 다운스트림으로 돌려보낸다. (에코 — LLM 자리)
+     * final 전사를 TTS로 합성해 다운스트림으로 돌려보낸다.
      * 호출자(gRPC 콜백)를 잡아두지 않도록 통화 워커에 넘기고 즉시 반환한다.
-     * ★ 나중에 LLM 호출·전사 DB 저장이 들어올 자리가 이 워커 안이다.
+     * <p>★ 나중에 LLM 호출·전사 DB 저장이 들어올 자리가 이 워커 안이다.
      */
     private void submitEcho(WebSocketSession session, String text) {
         String sessionId = session.getId();
@@ -157,9 +148,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     /**
-     * 합성된 wav를 이 세션 소켓에만 바이너리 프레임으로 내려보낸다. (다운스트림 송신)
-     * CLOVA Voice가 준 wav를 헤더째 그대로 보낸다 — 서버는 변환하지 않고, 프론트가 헤더로 스펙을 읽는다.
-     * 문장 단위 wav 하나가 곧 재생 가능한 완결 단위이므로 프레임 하나에 그대로 싣는다.
+     * 합성된 wav를 이 통화의 소켓에만 바이너리 프레임으로 내려보낸다.
+     * CLOVA Voice가 준 wav를 헤더째 그대로 보낸다 — 변환하지 않고 프론트가 헤더로 스펙을 읽는다.
      */
     private void sendAudio(WebSocketSession session, byte[] wav) {
         // 합성 중에 사용자가 끊은 경우. 비동기 워커에선 정상 경로다.
@@ -192,10 +182,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         completeCall(session.getId());
     }
 
-    /**
-     * 통화를 정상 종료한다: CLOVA 업스트림 half-close({@code complete}) + 워커 정리.
-     * <b>소켓이 이미 닫힌 뒤</b>의 뒷정리라 소켓은 건드리지 않는다. (짝: {@link #terminateCall})
-     */
+    /** 소켓이 <b>이미 닫힌 뒤</b>의 뒷정리. CLOVA에 half-close를 보낸다. (짝: {@link #terminateCall}) */
     private void completeCall(String sessionId) {
         ActiveCall call = activeCalls.remove(sessionId);
         if (call == null) {
@@ -210,12 +197,9 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     /**
-     * <b>서버가 먼저</b> 통화를 끝낸다: 스트림 폐기({@code terminate}) + 워커 정리 + WebSocket 닫기.
-     * {@link #completeCall}과 달리 소켓이 아직 살아 있어 우리가 닫아야 하고,
-     * CLOVA에 half-close를 보내지 않고 그냥 버린다. (CLOVA 에러/완료 · 개설 실패 · 중계/송신 실패 공용)
-     * {@code status}가 곧 종료 사유다 — 원인/로그는 호출부에서 남긴다.
-     * 재개설(투명 복원)은 지금 범위 밖 — 닫아서 클라이언트가 재연결하도록 둔다.
-     * 맵에서 먼저 제거하므로, close가 부르는 afterConnectionClosed → completeCall은 no-op이 된다.
+     * <b>서버가 먼저</b> 통화를 끝낸다 — {@link #completeCall}과 달리 소켓이 살아 있어 우리가 닫고,
+     * CLOVA엔 half-close 없이 스트림을 버린다. 원인/로그는 호출부에서 남긴다.
+     * 재개설(투명 복원)은 범위 밖 — 닫아서 클라이언트가 재연결하게 둔다.
      */
     private void terminateCall(WebSocketSession session, CloseStatus status) {
         ActiveCall call = activeCalls.remove(session.getId());
@@ -235,31 +219,24 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     /**
-     * 진행 중인 통화 하나가 들고 있는 것 전부. 통화 시작에 같이 생기고 종료에 같이 죽는다.
-     * 물건마다 맵을 나누면 손으로 동기화하게 되고 한쪽만 정리하는 실수가 나므로(워커를 빠뜨리면
-     * 스레드가 샌다) 하나로 묶어 {@code remove} 한 번에 함께 딸려 나오게 한다.
-     * 통화 스코프 상태(전사 버퍼·LLM 컨텍스트 등)가 늘면 여기에 필드로 붙인다.
+     * 진행 중인 통화 하나가 들고 있는 것 전부. 수명이 같아 한 홀더로 묶었다 — 정리를 한 번에 하기 위함.
+     * 통화 스코프 상태(전사 버퍼·LLM 컨텍스트 등)가 늘면 평행 맵을 만들지 말고 여기 필드로 붙인다.
      *
-     * <p>전송 수단인 {@link WebSocketSession}과 다른 개념이라 이름을 구분한다 — 이쪽은 도메인(통화)이다.
-     * DB에 남는 통화 기록({@code domain.call.entity.Call})과도 구분된다: 이건 메모리에만 있는 진행 중인 통화다.
-     *
-     * @param worker TTS 워커. 통화당 단일 스레드라 제출 순서 = 실행 순서(에코 순서 보장).
-     *               gRPC 콜백 스레드는 전 통화 공유라, 거기서 합성하면 다른 통화까지 밀린다.
+     * @param worker 통화당 단일 스레드 — 제출 순서 = 실행 순서(에코 순서 보장).
      */
-    private record ActiveCall(SessionStream stream, ExecutorService worker) {
+    private record ActiveCall(SttStream stream, ExecutorService worker) {
     }
 
     /**
-     * 세션 하나의 CLOVA 업스트림 래퍼. gRPC {@link StreamObserver}는 스레드 안전이 아니므로,
-     * {@code send}(onNext)·{@code complete}(onCompleted)를 직렬화하고 종료 후 전송을 막는다.
-     * 락은 세션별이라 다른 통화를 막지 않는다.
+     * 통화 하나의 CLOVA STT 업스트림 래퍼. gRPC {@link StreamObserver}는 스레드 안전이 아니므로
+     * 전송·종료를 직렬화하고, 종료 후 전송을 막는다. 락은 통화별이라 다른 통화를 막지 않는다.
      */
-    private static final class SessionStream {
+    private static final class SttStream {
 
         private final StreamObserver<NestRequest> requestObserver;
         private boolean terminated = false;
 
-        private SessionStream(StreamObserver<NestRequest> requestObserver) {
+        private SttStream(StreamObserver<NestRequest> requestObserver) {
             this.requestObserver = requestObserver;
         }
 
@@ -308,8 +285,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                 String tag = result.isFinal() ? "final" : "partial";
                 log.info("[Clova] [{}] session={}, text={}", tag, sessionId, result.text());
 
-                // partial은 버린다 — 계속 바뀌는 중간 결과라 같은 말이 여러 번 나간다.
-                // ⚠ 이 메서드는 즉시 반환해야 한다. 합성/송신은 submitEcho가 워커로 넘긴다.
+                // ⚠ 이 콜백은 즉시 반환해야 한다(스레드가 전 통화 공유). submitEcho가 워커로 넘긴다.
                 if (result.isFinal()) {
                     submitEcho(session, result.text());
                 }
