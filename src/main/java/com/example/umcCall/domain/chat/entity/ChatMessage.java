@@ -28,6 +28,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatMessage extends BaseTimeEntity {
 
+    // TODO(AI 연동): request_id, ai_status, in_reply_to_id 컬럼 추가 필요.
+    // AiConversationService.chat() 호출 결과를 여기에 저장.
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "chat_message_id")
