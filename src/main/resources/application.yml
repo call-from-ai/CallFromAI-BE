@@ -21,12 +21,19 @@ jwt:
   access-token-expiration: 3600000
   refresh-token-expiration: 1209600000
 
-# CLOVA Speech 실시간 스트리밍(gRPC) 접속 설정
 clova:
   speech:
     host: clovaspeech-gw.ncloud.com
     port: 50051
-    # 콘솔 발급 secret key. 코드/깃에 노출 금지 — 환경변수(.env)로만 주입.
-    secret-key: ${CLOVA_SECRET_KEY}
+    secret-key: ${CLOVA_SPEECH_SECRET}
+  voice:
+    base-url: https://naveropenapi.apigw.ntruss.com
+    client-id: ${CLOVA_VOICE_CLIENT_ID}
+    client-secret: ${CLOVA_VOICE_CLIENT_SECRET}
+    format: wav
+    sampling-rate: 24000
+    connect-timeout-ms: 2000
+    read-timeout-ms: 10000
+
 kakao:
   base-url: https://kapi.kakao.com
