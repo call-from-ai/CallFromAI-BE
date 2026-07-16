@@ -32,6 +32,8 @@ clova:
     client-secret: ${CLOVA_VOICE_CLIENT_SECRET}
     format: wav
     sampling-rate: 24000
+    connect-timeout-ms: 2000
+    read-timeout-ms: 10000
 
 kakao:
   base-url: https://kapi.kakao.com

@@ -3,7 +3,10 @@ package com.example.umcCall.domain.call.client;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.example.umcCall.global.config.ClovaVoiceProperties;
 import com.example.umcCall.global.exception.BaseException;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.web.client.ClientHttpRequestFactories;
+import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
@@ -25,8 +28,14 @@ public class ClovaVoiceClient {
 
     public ClovaVoiceClient(RestClient.Builder builder, ClovaVoiceProperties properties) {
         this.properties = properties;
+        // 타임아웃을 명시해 외부 API 지연 시 합성 워커가 무한정 막히지 않게 한다.
+        // (연결·응답 상한을 넘으면 ResourceAccessException → synthesize의 RestClientException catch로 흐른다)
+        ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.DEFAULTS
+                .withConnectTimeout(Duration.ofMillis(properties.connectTimeoutMs()))
+                .withReadTimeout(Duration.ofMillis(properties.readTimeoutMs()));
         this.restClient = builder
                 .baseUrl(properties.baseUrl())
+                .requestFactory(ClientHttpRequestFactories.get(settings))
                 .defaultHeader("X-NCP-APIGW-API-KEY-ID", properties.clientId())
                 .defaultHeader("X-NCP-APIGW-API-KEY", properties.clientSecret())
                 .build();

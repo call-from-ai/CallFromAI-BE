@@ -13,6 +13,9 @@ public record ClovaVoiceProperties(
         String clientId,
         String clientSecret,
         String format,
-        int samplingRate
+        int samplingRate,
+        // 외부 API가 지연/hang하면 합성 워커가 무한 대기하므로 명시적 상한을 둔다.
+        int connectTimeoutMs,
+        int readTimeoutMs
 ) {
 }
