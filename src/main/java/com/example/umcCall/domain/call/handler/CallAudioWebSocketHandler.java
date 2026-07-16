@@ -1,8 +1,10 @@
 package com.example.umcCall.domain.call.handler;
 
 import com.example.umcCall.domain.call.client.ClovaSpeechClient;
+import com.example.umcCall.domain.call.client.ClovaSpeechProperties;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestConfig;
@@ -13,6 +15,7 @@ import com.nbp.cdncp.nest.grpc.proto.v1.RequestType;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,9 +41,6 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     // TODO(AI 연동): STT final 결과를 AiConversationService로 연결 필요.
     // partial은 AI로 보내지 말고 클라이언트 자막 전용으로만 사용.
 
-    /** CLOVA 인식 설정. 한국어. (EPD 등 튜닝은 후순위) */
-    private static final String CONFIG_JSON = "{\"transcription\":{\"language\":\"ko\"}}";
-
     /** 에코 화자. 캐릭터 개념이 없는 동안의 임시값 — 캐릭터 음성이 들어올 자리다. */
     private static final String ECHO_SPEAKER = "nara";
 
@@ -48,15 +48,35 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final ClovaVoiceClient clovaVoiceClient;
     private final ObjectMapper objectMapper;
 
+    /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
+    private final String configJson;
+
     /** WS 세션 ID → 진행 중인 통화. WS 수신 · gRPC 콜백 · 워커 세 스레드가 만나는 지점이다. */
     private final ConcurrentHashMap<String, ActiveCall> activeCalls = new ConcurrentHashMap<>();
 
     public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient,
                                      ClovaVoiceClient clovaVoiceClient,
+                                     ClovaSpeechProperties speechProperties,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
         this.objectMapper = objectMapper;
+        this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
+    }
+
+    /**
+     * CLOVA recognize CONFIG를 만든다. 턴 끝 = 침묵(gap): {@code gapThreshold} ms 침묵하면 final(epdType=gap).
+     * {@code skipEmptyText}로 빈 결과를 스킵하고, durationThreshold/period 등은 미설정해 길이 토막을 막는다.
+     */
+    private static String buildConfigJson(ObjectMapper objectMapper, int gapThresholdMs) {
+        Map<String, Object> config = Map.of(
+                "transcription", Map.of("language", "ko"),
+                "semanticEpd", Map.of("gapThreshold", gapThresholdMs, "skipEmptyText", true));
+        try {
+            return objectMapper.writeValueAsString(config);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("CLOVA CONFIG JSON 직렬화 실패", e);
+        }
     }
 
     @Override
@@ -73,7 +93,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
                     .setType(RequestType.CONFIG)
-                    .setConfig(NestConfig.newBuilder().setConfig(CONFIG_JSON).build())
+                    .setConfig(NestConfig.newBuilder().setConfig(configJson).build())
                     .build());
 
             log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}", sessionId);
@@ -286,7 +306,10 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     return;
                 }
                 String tag = result.isFinal() ? "final" : "partial";
-                log.info("[Clova] [{}] session={}, text={}", tag, sessionId, result.text());
+                // TODO(턴 감지 진단): final 조각남 원인 판별용 원문 JSON 로깅.
+                //   조각들의 epdType이 "durationThreshold"면 가설 A(CLOVA가 길이로 끊음 → CONFIG로 해결),
+                //   빈 값/"0"/"none" 등인데 final로 찍히면 가설 B(isFinal() 오판). 판별 후 제거.
+                log.info("[Clova] [{}] session={}, text={}, contents={}", tag, sessionId, result.text(), contents);
 
                 // ⚠ 이 콜백은 즉시 반환해야 한다(스레드가 전 통화 공유). submitEcho가 워커로 넘긴다.
                 if (result.isFinal()) {
