@@ -1,7 +1,6 @@
 package com.example.umcCall.domain.call.client;
 
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
-import com.example.umcCall.global.config.ClovaVoiceProperties;
 import com.example.umcCall.global.exception.BaseException;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;

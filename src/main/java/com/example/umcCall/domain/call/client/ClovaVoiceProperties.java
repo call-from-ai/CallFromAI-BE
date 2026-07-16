@@ -1,4 +1,4 @@
-package com.example.umcCall.global.config;
+package com.example.umcCall.domain.call.client;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
