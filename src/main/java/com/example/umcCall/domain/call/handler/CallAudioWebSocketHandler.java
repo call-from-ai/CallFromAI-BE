@@ -62,16 +62,28 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         this.clovaVoiceClient = clovaVoiceClient;
         this.objectMapper = objectMapper;
         this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
+        log.info("[Clova] recognize CONFIG = {}", configJson);
     }
 
     /**
+     * 발화가 이만큼(ms) 이어지면 gap 없이도 결과를 확정하는 상한. 길이 토막을 막으려 크게 둔다.
+     * ⚠ 미설정(0)이면 CLOVA가 최소 길이로 즉시 확정해 ~0.4s마다 durationThreshold로 조각난다 — 반드시 명시.
+     */
+    private static final int MAX_SEGMENT_MS = 20000;
+
+    /**
      * CLOVA recognize CONFIG를 만든다. 턴 끝 = 침묵(gap): {@code gapThreshold} ms 침묵하면 final(epdType=gap).
-     * {@code skipEmptyText}로 빈 결과를 스킵하고, durationThreshold/period 등은 미설정해 길이 토막을 막는다.
+     * {@code durationThreshold}는 크게 둬 길이 토막을 막고(gap이 먼저 확정하도록), {@code usePeriodEpd=false}로
+     * 문장부호 확정도 끈다(다문장 턴을 안 쪼갬). {@code skipEmptyText}로 빈 결과는 스킵.
      */
     private static String buildConfigJson(ObjectMapper objectMapper, int gapThresholdMs) {
         Map<String, Object> config = Map.of(
                 "transcription", Map.of("language", "ko"),
-                "semanticEpd", Map.of("gapThreshold", gapThresholdMs, "skipEmptyText", true));
+                "semanticEpd", Map.of(
+                        "gapThreshold", gapThresholdMs,
+                        "durationThreshold", MAX_SEGMENT_MS,
+                        "usePeriodEpd", false,
+                        "skipEmptyText", true));
         try {
             return objectMapper.writeValueAsString(config);
         } catch (JsonProcessingException e) {
@@ -306,10 +318,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     return;
                 }
                 String tag = result.isFinal() ? "final" : "partial";
-                // TODO(턴 감지 진단): final 조각남 원인 판별용 원문 JSON 로깅.
-                //   조각들의 epdType이 "durationThreshold"면 가설 A(CLOVA가 길이로 끊음 → CONFIG로 해결),
-                //   빈 값/"0"/"none" 등인데 final로 찍히면 가설 B(isFinal() 오판). 판별 후 제거.
-                log.info("[Clova] [{}] session={}, text={}, contents={}", tag, sessionId, result.text(), contents);
+                log.info("[Clova] [{}] session={}, text={}", tag, sessionId, result.text());
 
                 // ⚠ 이 콜백은 즉시 반환해야 한다(스레드가 전 통화 공유). submitEcho가 워커로 넘긴다.
                 if (result.isFinal()) {
