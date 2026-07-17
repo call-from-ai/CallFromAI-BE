@@ -72,9 +72,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private static final int MAX_SEGMENT_MS = 20000;
 
     /**
-     * CLOVA recognize CONFIG를 만든다. 턴 끝 = 침묵(gap): {@code gapThreshold} ms 침묵하면 final(epdType=gap).
-     * {@code durationThreshold}는 크게 둬 길이 토막을 막고(gap이 먼저 확정하도록), {@code usePeriodEpd=false}로
-     * 문장부호 확정도 끈다(다문장 턴을 안 쪼갬). {@code skipEmptyText}로 빈 결과는 스킵.
+     * CLOVA recognize CONFIG를 만든다. 턴 끝 = 침묵(gap): {@code gapThreshold} ms 침묵하면 final.
+     * {@code usePeriodEpd=false}로 문장부호 확정을 꺼 다문장 턴을 안 쪼갠다. ({@code durationThreshold}는 {@link #MAX_SEGMENT_MS})
      */
     private static String buildConfigJson(ObjectMapper objectMapper, int gapThresholdMs) {
         Map<String, Object> config = Map.of(

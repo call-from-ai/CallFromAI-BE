@@ -26,7 +26,7 @@ public record NestRecognizeResult(List<String> responseType, Transcription trans
         return responseType != null && responseType.contains("transcription") && transcription != null;
     }
 
-    /** 턴이 끝난 확정 구간인가. 턴 끝 epdType(gap/endPoint/unvoice)일 때만 final. */
+    /** 턴이 끝난 확정 구간인가. */
     public boolean isFinal() {
         return transcription != null
                 && TURN_END_EPD_TYPES.contains(transcription.epdType());
