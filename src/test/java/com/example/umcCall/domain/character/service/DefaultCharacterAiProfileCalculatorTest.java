@@ -11,8 +11,6 @@ import org.junit.jupiter.api.Test;
 
 class DefaultCharacterAiProfileCalculatorTest {
 
-    private final DefaultCharacterAiProfileCalculator calculator = new DefaultCharacterAiProfileCalculator();
-
     @Test
     void calculatesTraitsLifeTypeAndMbtiAdjustments() {
         Character character = Character.builder().job(Job.EMPLOYED).mbti("ENFP").build();
@@ -21,7 +19,7 @@ class DefaultCharacterAiProfileCalculatorTest {
                 trait(character, Trait.AFFECTIONATE, 2),
                 trait(character, Trait.GOOD_LISTENER, 3));
 
-        CharacterAiProfileScores result = calculator.calculate(character, traits);
+        var result = CharacterAiProfileService.calculate(character, traits);
 
         assertThat(result.lifeType()).isEqualTo("WORKER");
         assertThat(result.humor()).isEqualTo(9);
@@ -34,7 +32,6 @@ class DefaultCharacterAiProfileCalculatorTest {
         assertThat(result.confidence()).isEqualTo(3);
         assertThat(result.expressiveness()).isEqualTo(8.5);
         assertThat(result.emotionalStability()).isEqualTo(5);
-        assertThat(calculator.calculationVersion()).isEqualTo(2);
     }
 
     @Test
@@ -45,7 +42,7 @@ class DefaultCharacterAiProfileCalculatorTest {
                 trait(character, Trait.POSSESSIVE, 2),
                 trait(character, Trait.EXCLUSIVE, 3));
 
-        CharacterAiProfileScores result = calculator.calculate(character, traits);
+        var result = CharacterAiProfileService.calculate(character, traits);
 
         assertThat(result.lifeType()).isEqualTo("FLEXIBLE");
         assertThat(result.attachment()).isEqualTo(10);

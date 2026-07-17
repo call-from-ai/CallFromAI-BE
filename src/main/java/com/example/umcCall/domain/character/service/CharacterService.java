@@ -4,7 +4,6 @@ import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
 import com.example.umcCall.domain.character.dto.response.PresetImageResponse;
-import com.example.umcCall.domain.character.dto.response.TraitOptionResponse;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.character.entity.CharacterImage;
 import com.example.umcCall.domain.character.entity.CharacterTrait;
@@ -24,16 +23,16 @@ import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import com.example.umcCall.global.exception.BaseException;
-import com.example.umcCall.domain.ai.event.CharacterAiSyncEvent;
-import jakarta.persistence.EntityManager;
+import com.example.umcCall.domain.ai.enums.CharacterSyncOperation;
+import com.example.umcCall.domain.ai.service.CharacterSyncTaskService;
+import com.example.umcCall.domain.member.entity.Member;
+import com.example.umcCall.domain.member.repository.MemberRepository;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -56,21 +55,11 @@ public class CharacterService {
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final ChatRoomService chatRoomService;
     private final ChatRoomRepository chatRoomRepository;
-    private final EntityManager entityManager;
-    private final ApplicationEventPublisher eventPublisher;
-
-    // 매력 키워드 목록 조회
-    public List<TraitOptionResponse> getTraitOptions() {
-        return Arrays.stream(Trait.values())
-                .map(TraitOptionResponse::from)
-                .toList();
-    }
+    private final MemberRepository memberRepository;
+    private final CharacterSyncTaskService syncTaskService;
 
     // 프리셋 이미지 목록 조회
     public List<PresetImageResponse> getPresetImages(Gender gender) {
-        if (gender == null) {
-            throw new BaseException(CharacterErrorCode.GENDER_REQUIRED);
-        }
         return PresetImages.of(gender).stream()
                 .map(url -> PresetImageResponse.builder().imageUrl(url).build())
                 .toList();
@@ -83,9 +72,14 @@ public class CharacterService {
         // member.getCharacterCreatedAt() 기준으로 24시간 안 지났으면 CharacterErrorCode.CHARACTER_RECREATE_TOO_SOON 던지기
 
         // 동시 요청으로 인한 개수 초과/메인 중복 생성을 막기 위해 회원 행에 락을 건다
-        lockMember(memberId);
+        Member member = lockMember(memberId);
 
-        if (relationshipRepository.countByMemberId(memberId) >= MAX_CHARACTER_COUNT) {
+        if (member.getCharacterCreatedAt() != null
+                && member.getCharacterCreatedAt().plusHours(24).isAfter(LocalDateTime.now())) {
+            throw new BaseException(CharacterErrorCode.CHARACTER_RECREATE_TOO_SOON);
+        }
+
+        if (relationshipRepository.countByMemberIdAndCharacterDeletedAtIsNull(memberId) >= MAX_CHARACTER_COUNT) {
             throw new BaseException(CharacterErrorCode.CHARACTER_LIMIT_EXCEEDED);
         }
 
@@ -148,10 +142,12 @@ public class CharacterService {
 
         // 캐릭터 생성 시 채팅방도 함께 생성 (ChatRoomService 로직 재사용)
         chatRoomService.createRoom(memberId, relationship.getId(), RoomType.CHARACTER);
+        member.markCharacterCreated();
     }
 
     // 현재 메인 캐릭터 조회
     public CharacterResponse getActiveCharacter(Long memberId) {
+        validateMemberExists(memberId);
         Relationship relationship = relationshipRepository.findByMemberIdAndMainTrue(memberId)
                 .orElseThrow(() -> new BaseException(CharacterErrorCode.NO_ACTIVE_CHARACTER));
         Character character = relationship.getCharacter();
@@ -162,7 +158,8 @@ public class CharacterService {
 
     // 내 캐릭터 목록 조회 (최대 5개라 페이지네이션 없음)
     public List<CharacterSummaryResponse> getMyCharacters(Long memberId) {
-        return relationshipRepository.findByMemberId(memberId).stream()
+        validateMemberExists(memberId);
+        return relationshipRepository.findByMemberIdAndCharacterDeletedAtIsNull(memberId).stream()
                 .map(relationship -> {
                     Character character = relationship.getCharacter();
                     String imageUrl = getImageUrl(character.getId());
@@ -189,6 +186,10 @@ public class CharacterService {
         lockMember(memberId);
 
         Relationship target = getOwnedRelationship(memberId, characterId);
+
+        if (target.isMain()) {
+            return;
+        }
 
         relationshipRepository.findByMemberIdAndMainTrue(memberId)
                 .ifPresent(current -> {
@@ -217,13 +218,10 @@ public class CharacterService {
             throw new BaseException(CharacterErrorCode.CHARACTER_DELETE_TOO_SOON);
         }
 
-        characterImageRepository.deleteByCharacterId(characterId);
-        characterTraitRepository.deleteByCharacterId(characterId);
-        relationshipStatusRepository.deleteByRelationshipId(relationship.getId());
-        chatRoomRepository.deleteByRelationshipId(relationship.getId());
-        relationshipRepository.delete(relationship);
-        characterRepository.deleteById(characterId);
-        eventPublisher.publishEvent(new CharacterAiSyncEvent.Delete(characterId));
+        character.markDeleted();
+        relationship.deactivate();
+        chatRoomService.archiveRoom(relationship.getId());
+        syncTaskService.enqueue(characterId, CharacterSyncOperation.DELETE);
     }
 
     // 캐릭터의 프리셋 이미지 URL 조회 (없으면 null)
@@ -235,10 +233,17 @@ public class CharacterService {
 
     // 회원 행에 비관적 락을 걸어 캐릭터 개수/메인 지정 동시성 문제를 막는다.
     // TODO: Member 엔티티가 생기면 MemberRepository에 @Lock(PESSIMISTIC_WRITE) 조회 메서드를 만들어 이 네이티브 쿼리를 대체할 것
-    private void lockMember(Long memberId) {
-        entityManager.createNativeQuery("SELECT member_id FROM member WHERE member_id = :memberId FOR UPDATE")
-                .setParameter("memberId", memberId)
-                .getSingleResult();
+    private Member lockMember(Long memberId) {
+        return memberRepository.findByIdForUpdate(memberId)
+                .orElseThrow(() -> new BaseException(
+                        com.example.umcCall.global.apiPayload.code.GeneralErrorCode.MEMBER_NOT_FOUND));
+    }
+
+    private void validateMemberExists(Long memberId) {
+        if (!memberRepository.existsById(memberId)) {
+            throw new BaseException(
+                    com.example.umcCall.global.apiPayload.code.GeneralErrorCode.MEMBER_NOT_FOUND);
+        }
     }
 
     private void validateTraits(CharacterCreateRequest request) {
@@ -257,7 +262,7 @@ public class CharacterService {
 
     // 본인 소유 캐릭터의 관계인지 확인 후 반환
     private Relationship getOwnedRelationship(Long memberId, Long characterId) {
-        Relationship relationship = relationshipRepository.findByCharacterId(characterId)
+        Relationship relationship = relationshipRepository.findByCharacterIdAndCharacterDeletedAtIsNull(characterId)
                 .orElseThrow(() -> new BaseException(CharacterErrorCode.CHARACTER_NOT_FOUND));
 
         if (!relationship.getMemberId().equals(memberId)) {

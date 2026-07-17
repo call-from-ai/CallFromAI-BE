@@ -99,5 +99,9 @@ public class Member extends BaseTimeEntity {
     public void deactivate() {
         this.isInactive = true;
     }
+
+    public void markCharacterCreated() {
+        this.characterCreatedAt = LocalDateTime.now();
+    }
 }
 

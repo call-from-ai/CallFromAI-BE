@@ -182,8 +182,11 @@ public enum ChatErrorCode implements BaseErrorCode {
 - PK는 `bigint` (Long), AUTO_INCREMENT를 기본으로 한다.
 - 현재 DB 스키마 생성/변경은 JPA `ddl-auto: update` 기준으로 관리한다.
   특정 테이블이나 컬럼만 별도 Flyway migration으로 추가하지 않는다.
-- 물리 삭제가 원칙인 경우(예: 캐릭터 영구 삭제)는 soft delete 플래그를 두지 않고,
-  숨김이 필요한 경우(예: 채팅방 나가기, 개별 메시지 삭제)에만 플래그/커서를 둔다.
+- 단일 DB 안에서 완결되는 영구 삭제는 물리 삭제를 원칙으로 한다.
+- 캐릭터처럼 외부 AI 서버의 Agent 상태와 함께 정리해야 하는 리소스는 예외적으로
+  `deleted_at` 기반 논리 삭제를 사용한다. Spring DB의 논리 삭제와 AI 동기화 작업 등록은
+  같은 트랜잭션에 넣고, AI 삭제는 멱등 API와 DB 기반 재시도 작업으로 최종 일관성을 맞춘다.
+  AI 정리가 완료되기 전에는 원본 데이터를 물리 삭제하지 않는다.
 
 ---
 
@@ -207,6 +210,9 @@ public enum ChatErrorCode implements BaseErrorCode {
 ### 도메인 간 협업 지점 (중요)
 - **채팅방 생성**: 캐릭터 생성(캐릭터 도메인) 시 채팅방도 함께 생성된다.
   채팅방 생성 로직은 채팅 도메인이 제공하고, 캐릭터 도메인이 이를 호출하는 구조.
+- **캐릭터-AI Agent 동기화**: 캐릭터 생성/삭제 트랜잭션에서 `character_sync_task`를 함께
+  저장하고 별도 worker가 AI 서버에 UPSERT/DELETE를 요청한다. 실패 작업은 지수 backoff로
+  재시도하며, DELETE API는 이미 삭제된 Agent에도 성공하도록 멱등성을 보장해야 한다.
 - **AI 응답 생성**: 사용자 메시지 저장(채팅 도메인) 후 AI 로직(관계/AI 도메인)이
   응답을 생성하고, 채팅 도메인이 그 결과를 SSE로 전달한다.
 - **메인 연인 판정**: 메인 여부(is_main)는 관계 도메인이 관리하며,

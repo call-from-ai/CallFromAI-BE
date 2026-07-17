@@ -1,6 +1,5 @@
 package com.example.umcCall.domain.character.entity;
 
-import com.example.umcCall.domain.character.service.CharacterAiProfileScores;
 import com.example.umcCall.global.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -50,7 +49,7 @@ public class CharacterAiProfile extends BaseTimeEntity {
         return new CharacterAiProfile(character);
     }
 
-    public void update(CharacterAiProfileScores scores, int calculationVersion) {
+    public void update(Scores scores, int calculationVersion) {
         this.lifeType = scores.lifeType();
         this.humor = scores.humor();
         this.playfulness = scores.playfulness();
@@ -63,5 +62,20 @@ public class CharacterAiProfile extends BaseTimeEntity {
         this.expressiveness = scores.expressiveness();
         this.emotionalStability = scores.emotionalStability();
         this.calculationVersion = calculationVersion;
+    }
+
+    public record Scores(
+            String lifeType,
+            double humor,
+            double playfulness,
+            double affection,
+            double empathy,
+            double attachment,
+            double jealousy,
+            double dominance,
+            double confidence,
+            double expressiveness,
+            double emotionalStability
+    ) {
     }
 }

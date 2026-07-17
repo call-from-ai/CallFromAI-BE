@@ -26,6 +26,9 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
@@ -50,8 +53,16 @@ public class GlobalExceptionAdvice extends ResponseEntityExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     protected ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException ex) {
         log.warn("MethodArgumentTypeMismatchException: {}", ex.getMessage());
-        return ResponseEntity.status(GeneralErrorCode.INVALID_INPUT_VALUE.getStatus())
-                .body(ApiResponse.onFailure(GeneralErrorCode.INVALID_INPUT_VALUE));
+        return ResponseEntity.status(GeneralErrorCode.INVALID_TYPE_VALUE.getStatus())
+                .body(ApiResponse.onFailure(GeneralErrorCode.INVALID_TYPE_VALUE));
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleMissingServletRequestParameter(
+            @NonNull MissingServletRequestParameterException ex, @NonNull HttpHeaders headers,
+            @NonNull HttpStatusCode status, @NonNull WebRequest request) {
+        return ResponseEntity.status(GeneralErrorCode.MISSING_REQUEST_PARAMETER.getStatus())
+                .body(ApiResponse.onFailure(GeneralErrorCode.MISSING_REQUEST_PARAMETER));
     }
 
     @Override
@@ -87,8 +98,8 @@ public class GlobalExceptionAdvice extends ResponseEntityExceptionHandler {
             @NonNull HandlerMethodValidationException ex, @NonNull HttpHeaders headers,
             @NonNull HttpStatusCode status, @NonNull WebRequest request) {
         log.warn("HandlerMethodValidationException: {}", ex.getMessage());
-        return ResponseEntity.status(GeneralErrorCode.INVALID_INPUT_VALUE.getStatus())
-                .body(ApiResponse.onFailure(GeneralErrorCode.INVALID_INPUT_VALUE));
+        return ResponseEntity.status(GeneralErrorCode.INVALID_HTTP_BODY.getStatus())
+                .body(ApiResponse.onFailure(GeneralErrorCode.INVALID_HTTP_BODY));
     }
 
     @Override
@@ -130,8 +141,15 @@ public class GlobalExceptionAdvice extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     protected ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException e) {
         log.warn("DataIntegrityViolationException: {}", e.getMessage());
-        return ResponseEntity.status(GeneralErrorCode.DUPLICATE_RESOURCE.getStatus())
-                .body(ApiResponse.onFailure(GeneralErrorCode.DUPLICATE_RESOURCE));
+        return ResponseEntity.status(GeneralErrorCode.DATA_INTEGRITY_CONFLICT.getStatus())
+                .body(ApiResponse.onFailure(GeneralErrorCode.DATA_INTEGRITY_CONFLICT));
+    }
+
+    @ExceptionHandler({ConcurrencyFailureException.class, ObjectOptimisticLockingFailureException.class})
+    protected ResponseEntity<ApiResponse<Void>> handleConcurrencyFailure(RuntimeException e) {
+        log.warn("ConcurrencyFailureException: {}", e.getMessage());
+        return ResponseEntity.status(GeneralErrorCode.CONCURRENT_MODIFICATION.getStatus())
+                .body(ApiResponse.onFailure(GeneralErrorCode.CONCURRENT_MODIFICATION));
     }
 
     @ExceptionHandler(Exception.class)

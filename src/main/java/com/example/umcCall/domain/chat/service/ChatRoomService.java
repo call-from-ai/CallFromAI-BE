@@ -122,4 +122,9 @@ public class ChatRoomService {
                 .build();
         return chatRoomRepository.save(room).getId();   // 저장하고 chatRoomId 반환
     }
+
+    @Transactional
+    public void archiveRoom(Long relationshipId) {
+        chatRoomRepository.findByRelationshipId(relationshipId).ifPresent(ChatRoom::archive);
+    }
 }

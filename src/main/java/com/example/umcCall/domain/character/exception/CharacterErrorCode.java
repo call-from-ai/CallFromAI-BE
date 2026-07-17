@@ -16,7 +16,6 @@ public enum CharacterErrorCode implements BaseErrorCode {
     NO_ACTIVE_CHARACTER(HttpStatus.NOT_FOUND, "CHARACTER404_2", "활성화된 캐릭터가 없습니다."),
     CHARACTER_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHARACTER403_1", "본인의 캐릭터만 접근할 수 있습니다."),
     INVALID_PRESET_IMAGE(HttpStatus.BAD_REQUEST, "CHARACTER400_1", "존재하지 않는 프리셋 이미지입니다."),
-    GENDER_REQUIRED(HttpStatus.BAD_REQUEST, "CHARACTER400_2", "성별(gender) 값은 필수입니다."),
     CHARACTER_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "CHARACTER400_3", "캐릭터는 최대 5개까지 생성할 수 있습니다."),
     CHARACTER_RECREATE_TOO_SOON(HttpStatus.BAD_REQUEST, "CHARACTER400_4", "캐릭터 생성 후 24시간이 지나야 다시 생성할 수 있습니다."),
     ACTIVE_CHARACTER_CHANGE_TOO_SOON(HttpStatus.BAD_REQUEST, "CHARACTER400_5", "캐릭터 전환 후 최소 3일이 지나야 변경할 수 있습니다."),

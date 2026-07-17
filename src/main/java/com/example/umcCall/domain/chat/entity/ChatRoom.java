@@ -77,4 +77,8 @@ public class ChatRoom extends BaseTimeEntity {
         this.memberId = memberId;
         this.relationshipId = relationshipId;
     }
+
+    public void archive() {
+        this.deleted = true;
+    }
 }

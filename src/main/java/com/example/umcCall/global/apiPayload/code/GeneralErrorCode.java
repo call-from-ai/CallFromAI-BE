@@ -26,6 +26,8 @@ public enum GeneralErrorCode implements BaseErrorCode {
     INVALID_HTTP_BODY(HttpStatus.BAD_REQUEST, "COMMON400_4", "HTTP 요청 바디(JSON) 파싱에 실패했습니다."),
     MULTIPART_FILE_ERROR(HttpStatus.BAD_REQUEST, "COMMON400_5", "파일 업로드 처리 중 오류가 발생했습니다."),
     DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "COMMON409_1", "이미 존재하는 리소스입니다."),
+    CONCURRENT_MODIFICATION(HttpStatus.CONFLICT, "COMMON409_2", "동시에 변경된 리소스입니다. 잠시 후 다시 시도해 주세요."),
+    DATA_INTEGRITY_CONFLICT(HttpStatus.CONFLICT, "COMMON409_3", "데이터 제약 조건과 충돌했습니다."),
 
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH401_1", "인증이 필요합니다."),

@@ -11,11 +11,13 @@ import lombok.Getter;
 @Builder
 public class TraitResponse {
 
+    private String code;
     private String name;
     private Integer priority;
 
     public static TraitResponse from(CharacterTrait characterTrait) {
         return TraitResponse.builder()
+                .code(characterTrait.getTrait().name())
                 .name(characterTrait.getTrait().getLabel())
                 .priority(characterTrait.getPriority())
                 .build();

@@ -24,6 +24,8 @@ public final class PresetImages {
 
     // 요청으로 들어온 imageUrl이 해당 성별의 프리셋 목록에 실제로 있는 값인지 검증
     public static boolean contains(Gender gender, String imageUrl) {
-        return of(gender).contains(imageUrl);
+        List<String> images = of(gender);
+        // 실제 프리셋 카탈로그가 배포되기 전에는 클라이언트가 전달한 이미지 URL을 허용한다.
+        return images.isEmpty() || images.contains(imageUrl);
     }
 }
