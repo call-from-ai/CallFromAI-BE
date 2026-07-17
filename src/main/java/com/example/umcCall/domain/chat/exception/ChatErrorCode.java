@@ -13,9 +13,16 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum ChatErrorCode implements BaseErrorCode {
 
-    ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT404_1", "채팅방을 찾을 수 없습니다."),
-    ROOM_HIDDEN(HttpStatus.NOT_FOUND, "CHAT404_2", "이미 목록에서 숨긴 채팅방입니다."),
-    ROOM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT403_1", "접근 권한이 없는 채팅방입니다.");
+    // 400
+    CHATROOM_RELATIONSHIP_ID_REQUIRED(HttpStatus.BAD_REQUEST, "CHAT400_1", "CHARACTER 타입 채팅방은 관계 ID가 필요합니다."),
+
+    // 403
+    CHATROOM_RELATIONSHIP_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT403_1", "본인의 관계에 대해서만 채팅방을 생성할 수 있습니다."),
+    CHATROOM_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT403_2", "접근 권한이 없는 채팅방입니다."),
+
+    // 404
+    CHATROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT404_1", "채팅방을 찾을 수 없습니다."),
+    CHATROOM_HIDDEN(HttpStatus.NOT_FOUND, "CHAT404_2", "이미 목록에서 숨긴 채팅방입니다.");
 
     private final HttpStatus status;
     private final String code;

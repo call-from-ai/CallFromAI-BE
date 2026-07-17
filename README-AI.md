@@ -180,6 +180,8 @@ public enum ChatErrorCode implements BaseErrorCode {
 - 모든 도메인 엔티티는 `BaseTimeEntity`를 상속해 생성/수정 시각을 자동 추적한다.
 - 엔티티에 `createdAt`, `updatedAt`을 직접 선언하지 않는다.
 - PK는 `bigint` (Long), AUTO_INCREMENT를 기본으로 한다.
+- 현재 DB 스키마 생성/변경은 JPA `ddl-auto: update` 기준으로 관리한다.
+  특정 테이블이나 컬럼만 별도 Flyway migration으로 추가하지 않는다.
 - 물리 삭제가 원칙인 경우(예: 캐릭터 영구 삭제)는 soft delete 플래그를 두지 않고,
   숨김이 필요한 경우(예: 채팅방 나가기, 개별 메시지 삭제)에만 플래그/커서를 둔다.
 

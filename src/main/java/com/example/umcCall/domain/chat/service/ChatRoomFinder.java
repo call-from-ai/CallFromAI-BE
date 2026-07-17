@@ -25,13 +25,13 @@ public class ChatRoomFinder {
      */
     public ChatRoom getOwnedRoom(Long chatRoomId, Long memberId) {
         ChatRoom room = chatRoomRepository.findById(chatRoomId)
-                .orElseThrow(() -> new ChatException(ChatErrorCode.ROOM_NOT_FOUND));
+                .orElseThrow(() -> new ChatException(ChatErrorCode.CHATROOM_NOT_FOUND));
 
         if (!room.getMemberId().equals(memberId)) {
-            throw new ChatException(ChatErrorCode.ROOM_ACCESS_DENIED);
+            throw new ChatException(ChatErrorCode.CHATROOM_ACCESS_DENIED);
         }
         if (room.isDeleted()) {
-            throw new ChatException(ChatErrorCode.ROOM_HIDDEN);
+            throw new ChatException(ChatErrorCode.CHATROOM_HIDDEN);
         }
         return room;
     }
