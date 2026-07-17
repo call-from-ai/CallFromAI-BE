@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
+    void deleteByChatRoomId(Long chatRoomId);
+
     /**
      * 방별 안 읽음 수 일괄 집계
      * 기준: 수신 메시지 + 미읽음 + 미삭제 + 이 방의 message_visible_after_id 초과

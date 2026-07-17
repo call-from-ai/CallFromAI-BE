@@ -121,8 +121,9 @@ public class CharacterService {
                 .toList();
         characterAiProfileService.calculateAndSave(character, savedTraits);
 
-        relationshipRepository.findByMemberIdAndMainTrue(memberId)
-                .ifPresent(Relationship::deactivate);
+        // 최초 캐릭터만 메인으로 지정한다. 이후 생성되는 캐릭터는 사용자가
+        // 활성화 API를 명시적으로 호출하기 전까지 기존 메인을 변경하지 않는다.
+        boolean firstCharacter = relationshipRepository.findByMemberIdAndMainTrue(memberId).isEmpty();
 
         Relationship relationship = relationshipRepository.save(
                 Relationship.builder()
@@ -131,6 +132,7 @@ public class CharacterService {
                         .relationshipStage(request.getRelationshipStage())
                         .spiceLevel(request.getSpiceLevel())
                         .speechStyle(request.getSpeechStyle())
+                        .main(firstCharacter)
                         .build()
         );
 
