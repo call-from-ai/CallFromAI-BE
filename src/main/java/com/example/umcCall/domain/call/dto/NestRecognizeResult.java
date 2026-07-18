@@ -29,6 +29,7 @@ public record NestRecognizeResult(List<String> responseType, Transcription trans
     /** 턴이 끝난 확정 구간인가. */
     public boolean isFinal() {
         return transcription != null
+                && transcription.epdType() != null
                 && TURN_END_EPD_TYPES.contains(transcription.epdType());
     }
 
