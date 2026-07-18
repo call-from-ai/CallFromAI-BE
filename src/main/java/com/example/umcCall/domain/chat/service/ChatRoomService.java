@@ -84,7 +84,7 @@ public class ChatRoomService {
                                                ChatMessage lastMessage, CharacterSummary summary) {
         return ChatRoomSummaryResponse.builder()
                 .chatRoomId(room.getId())
-                .characterName(summary != null ? summary.characterName() : null)
+                .characterFirstName(summary != null ? summary.characterFirstName() : null)
                 .characterImageUrl(summary != null ? summary.profileUrl() : null)
                 .isMain(summary != null && summary.isMain())
                 .isMuted(room.isMuted())
