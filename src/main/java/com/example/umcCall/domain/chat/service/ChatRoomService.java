@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.chat.service;
 
+import com.example.umcCall.domain.chat.dto.response.CharacterRoomHeader;
 import com.example.umcCall.domain.chat.dto.response.ChatRoomSummaryResponse;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
@@ -32,6 +33,16 @@ public class ChatRoomService {
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final CharacterSummaryProvider characterSummaryProvider;
+    private final ChatRoomFinder chatRoomFinder;
+    private final ChatRoomHeaderAssembler chatRoomHeaderAssembler;
+
+    /**
+     * 채팅방 상세(헤더) 조회. 방 소유 검증 후 캐릭터 헤더 정보를 조립해 반환한다.
+     */
+    public CharacterRoomHeader getRoomHeader(Long memberId, Long chatRoomId) {
+        ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
+        return chatRoomHeaderAssembler.assemble(room.getId(), room.getRelationshipId());
+    }
 
     /**
      * 채팅방 목록 조회.
