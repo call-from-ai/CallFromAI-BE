@@ -4,40 +4,42 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /** CLOVA {@code recognize} 응답 파싱 및 partial/final 판정 검증. (실제 응답 예시 기준) */
 class NestRecognizeResultTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Test
-    void epdType이_채워진_전사는_final로_판정한다() throws Exception {
-        // 실제 CLOVA 응답 예시 (epdType=durationThreshold → EPD가 끊은 확정 구간)
+    private NestRecognizeResult parse(String epdType) throws Exception {
         String contents = """
                 {
-                  "uid": "abc",
                   "responseType": [ "transcription" ],
-                  "transcription": {
-                    "text": "입니다.",
-                    "position": 0,
-                    "epFlag": false,
-                    "seqId": 0,
-                    "epdType": "durationThreshold",
-                    "startTimestamp": 190,
-                    "endTimestamp": 840,
-                    "confidence": 0.997389124199423,
-                    "alignInfos": [
-                      {"word":"입","start":190,"end":340,"confidence":0.99}
-                    ]
-                  }
+                  "transcription": { "text": "안녕하세요", "epdType": "%s" }
                 }
-                """;
+                """.formatted(epdType);
+        return objectMapper.readValue(contents, NestRecognizeResult.class);
+    }
 
-        NestRecognizeResult result = objectMapper.readValue(contents, NestRecognizeResult.class);
+    @ParameterizedTest
+    @ValueSource(strings = {"gap", "endPoint", "unvoice"})
+    void 턴_끝_epdType은_final로_판정한다(String epdType) throws Exception {
+        // 침묵(gap)·스트림 끝(endPoint)·무음 폴백(unvoice) = 턴이 끝난 확정 구간.
+        NestRecognizeResult result = parse(epdType);
 
         assertThat(result.isTranscription()).isTrue();
         assertThat(result.isFinal()).isTrue();
-        assertThat(result.text()).isEqualTo("입니다.");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"durationThreshold", "syllableThreshold", "period"})
+    void 발화_중간_토막_epdType은_final이_아니다(String epdType) throws Exception {
+        // 길이/음절/문장 토막은 발화 도중의 조각이라 partial로 둔다(final로 치면 한 턴이 조각남).
+        NestRecognizeResult result = parse(epdType);
+
+        assertThat(result.isTranscription()).isTrue();
+        assertThat(result.isFinal()).isFalse();
     }
 
     @Test
