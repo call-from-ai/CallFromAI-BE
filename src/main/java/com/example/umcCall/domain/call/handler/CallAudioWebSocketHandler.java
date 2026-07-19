@@ -1,8 +1,10 @@
 package com.example.umcCall.domain.call.handler;
 
 import com.example.umcCall.domain.call.client.ClovaSpeechClient;
+import com.example.umcCall.domain.call.client.ClovaSpeechProperties;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestConfig;
@@ -13,6 +15,7 @@ import com.nbp.cdncp.nest.grpc.proto.v1.RequestType;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,9 +41,6 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     // TODO(AI 연동): STT final 결과를 AiConversationService로 연결 필요.
     // partial은 AI로 보내지 말고 클라이언트 자막 전용으로만 사용.
 
-    /** CLOVA 인식 설정. 한국어. (EPD 등 튜닝은 후순위) */
-    private static final String CONFIG_JSON = "{\"transcription\":{\"language\":\"ko\"}}";
-
     /** 에코 화자. 캐릭터 개념이 없는 동안의 임시값 — 캐릭터 음성이 들어올 자리다. */
     private static final String ECHO_SPEAKER = "nara";
 
@@ -48,15 +48,46 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final ClovaVoiceClient clovaVoiceClient;
     private final ObjectMapper objectMapper;
 
+    /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
+    private final String configJson;
+
     /** WS 세션 ID → 진행 중인 통화. WS 수신 · gRPC 콜백 · 워커 세 스레드가 만나는 지점이다. */
     private final ConcurrentHashMap<String, ActiveCall> activeCalls = new ConcurrentHashMap<>();
 
     public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient,
                                      ClovaVoiceClient clovaVoiceClient,
+                                     ClovaSpeechProperties speechProperties,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
         this.objectMapper = objectMapper;
+        this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
+        log.info("[Clova] recognize CONFIG = {}", configJson);
+    }
+
+    /**
+     * 발화가 이만큼(ms) 이어지면 gap 없이도 결과를 확정하는 상한. 길이 토막을 막으려 크게 둔다.
+     * ⚠ 미설정(0)이면 CLOVA가 최소 길이로 즉시 확정해 ~0.4s마다 durationThreshold로 조각난다 — 반드시 명시.
+     */
+    private static final int MAX_SEGMENT_MS = 20000;
+
+    /**
+     * CLOVA recognize CONFIG를 만든다. 턴 끝 = 침묵(gap): {@code gapThreshold} ms 침묵하면 final.
+     * {@code usePeriodEpd=false}로 문장부호 확정을 꺼 다문장 턴을 안 쪼갠다. ({@code durationThreshold}는 {@link #MAX_SEGMENT_MS})
+     */
+    private static String buildConfigJson(ObjectMapper objectMapper, int gapThresholdMs) {
+        Map<String, Object> config = Map.of(
+                "transcription", Map.of("language", "ko"),
+                "semanticEpd", Map.of(
+                        "gapThreshold", gapThresholdMs,
+                        "durationThreshold", MAX_SEGMENT_MS,
+                        "usePeriodEpd", false,
+                        "skipEmptyText", true));
+        try {
+            return objectMapper.writeValueAsString(config);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("CLOVA CONFIG JSON 직렬화 실패", e);
+        }
     }
 
     @Override
@@ -73,7 +104,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
                     .setType(RequestType.CONFIG)
-                    .setConfig(NestConfig.newBuilder().setConfig(CONFIG_JSON).build())
+                    .setConfig(NestConfig.newBuilder().setConfig(configJson).build())
                     .build());
 
             log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}", sessionId);
