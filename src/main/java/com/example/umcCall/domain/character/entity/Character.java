@@ -80,7 +80,21 @@ public class Character extends BaseTimeEntity {
         return lastName + firstName;
     }
 
+    public void updateProfile(String lastName, String firstName, Gender gender, Integer age,
+                              Job job, PreferTime preferTime, String mbti, String imageUrl) {
+        this.lastName = lastName;
+        this.firstName = firstName;
+        this.gender = gender;
+        this.age = age;
+        this.job = job;
+        this.preferTime = preferTime;
+        this.mbti = mbti;
+        this.imageUrl = imageUrl;
+        this.edited = true;
+    }
+
     public void markDeleted() {
         this.deletedAt = LocalDateTime.now();
     }
+
 }

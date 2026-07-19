@@ -1,6 +1,8 @@
 package com.example.umcCall.domain.character.service;
 
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
+import com.example.umcCall.domain.character.dto.request.CharacterUpdateRequest;
+import com.example.umcCall.domain.character.dto.request.TraitRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
 import com.example.umcCall.domain.character.entity.Character;
@@ -58,9 +60,6 @@ public class CharacterService {
     // 캐릭터 생성 (관계, 관계 통계, 채팅방 함께 생성) — 응답 바디 없음
     @Transactional
     public void createCharacter(Long memberId, CharacterCreateRequest request) {
-        // TODO: Member 엔티티에 characterCreatedAt 필드 생기면 24시간 재생성 제한 검증 추가
-        // member.getCharacterCreatedAt() 기준으로 24시간 안 지났으면 CharacterErrorCode.CHARACTER_RECREATE_TOO_SOON 던지기
-
         // 동시 요청으로 인한 개수 초과/메인 중복 생성을 막기 위해 회원 행에 락을 건다
         Member member = lockMember(memberId);
 
@@ -78,7 +77,7 @@ public class CharacterService {
                 && !presetImageRepository.existsByGenderAndImageUrl(request.getGender(), request.getImageUrl())) {
             throw new BaseException(CharacterErrorCode.INVALID_PRESET_IMAGE);
         }
-        validateTraits(request);
+        validateTraits(request.getTraits());
 
         Character character = characterRepository.save(
                 Character.builder()
@@ -161,6 +160,43 @@ public class CharacterService {
                 .toList();
     }
 
+    // 캐릭터 수정
+    @Transactional
+    public void updateCharacter(Long memberId, Long characterId, CharacterUpdateRequest request) {
+        Relationship relationship = getOwnedRelationship(memberId, characterId);
+        Character character = relationship.getCharacter();
+
+        if (character.isEdited()) {
+            throw new BaseException(CharacterErrorCode.CHARACTER_ALREADY_EDITED);
+        }
+
+        if (request.getImageUrl() != null
+                && !presetImageRepository.existsByGenderAndImageUrl(request.getGender(), request.getImageUrl())) {
+            throw new BaseException(CharacterErrorCode.INVALID_PRESET_IMAGE);
+        }
+
+        validateTraits(request.getTraits());
+
+        character.updateProfile(
+                request.getLastName(), request.getFirstName(), request.getGender(),
+                request.getAge(), request.getJob(), request.getPreferTime(),
+                request.getMbti(), request.getImageUrl()
+        );
+
+        relationship.updateInfo(request.getRelationshipStage(), request.getSpiceLevel(), request.getSpeechStyle());
+
+        characterTraitRepository.deleteByCharacterId(characterId);
+        List<CharacterTrait> savedTraits = request.getTraits().stream()
+                .map(traitRequest -> characterTraitRepository.save(
+                        CharacterTrait.builder()
+                                .character(character)
+                                .trait(traitRequest.getTrait())
+                                .priority(traitRequest.getPriority())
+                                .build()))
+                .toList();
+        characterAiProfileService.calculateAndSave(character, savedTraits);
+    }
+
     // 활성 캐릭터 변경
     @Transactional
     public void activateCharacter(Long memberId, Long characterId) {
@@ -221,16 +257,16 @@ public class CharacterService {
         }
     }
 
-    private void validateTraits(CharacterCreateRequest request) {
-        Set<Trait> traits = request.getTraits().stream()
-                .map(trait -> trait.getTrait())
+    private void validateTraits(List<TraitRequest> traitRequests) {
+        Set<Trait> traits = traitRequests.stream()
+                .map(TraitRequest::getTrait)
                 .collect(Collectors.toSet());
-        Set<Integer> priorities = request.getTraits().stream()
-                .map(trait -> trait.getPriority())
+        Set<Integer> priorities = traitRequests.stream()
+                .map(TraitRequest::getPriority)
                 .collect(Collectors.toSet());
-        boolean continuous = priorities.size() == request.getTraits().size()
-                && priorities.stream().allMatch(priority -> priority >= 1 && priority <= request.getTraits().size());
-        if (traits.size() != request.getTraits().size() || !continuous) {
+        boolean continuous = priorities.size() == traitRequests.size()
+                && priorities.stream().allMatch(priority -> priority >= 1 && priority <= traitRequests.size());
+        if (traits.size() != traitRequests.size() || !continuous) {
             throw new BaseException(CharacterErrorCode.INVALID_TRAIT_SELECTION);
         }
     }

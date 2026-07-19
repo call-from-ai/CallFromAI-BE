@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.character.controller;
 
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
+import com.example.umcCall.domain.character.dto.request.CharacterUpdateRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
 import com.example.umcCall.domain.character.service.CharacterService;
@@ -11,6 +12,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -45,6 +47,17 @@ public class CharacterController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.onSuccess(
                         com.example.umcCall.global.apiPayload.code.GeneralSuccessCode.CREATED, null));
+    }
+
+    // 캐릭터 정보 수정
+    @Operation(summary = "캐릭터 정보 수정", description = "캐릭터 정보를 수정한다. 최초 1회만 가능하다.")
+    @PatchMapping("/{characterId}")
+    public ApiResponse<Void> updateCharacter(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long characterId,
+            @RequestBody @Valid CharacterUpdateRequest request) {
+        characterService.updateCharacter(memberId, characterId, request);
+        return ApiResponse.onSuccess();
     }
 
     // 현재 활성 캐릭터 조회
