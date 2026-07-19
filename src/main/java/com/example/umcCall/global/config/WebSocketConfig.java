@@ -1,6 +1,8 @@
 package com.example.umcCall.global.config;
 
 import com.example.umcCall.domain.call.handler.CallAudioWebSocketHandler;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -17,16 +19,21 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final CallAudioWebSocketHandler callAudioWebSocketHandler;
+    private final List<String> allowedOrigins;
 
-    public WebSocketConfig(CallAudioWebSocketHandler callAudioWebSocketHandler) {
+    public WebSocketConfig(
+            CallAudioWebSocketHandler callAudioWebSocketHandler,
+            @Value("${cors.allowed-origins}") List<String> allowedOrigins
+    ) {
         this.callAudioWebSocketHandler = callAudioWebSocketHandler;
+        this.allowedOrigins = allowedOrigins;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        // 인증 생략 + origin 무제한 (임시). ⚠ main(자동배포) 전 인증·origin 제한 필수.
+        // TODO(AI 연동): JWT 대신 짧은 수명 wsTicket 발급/검증 방식으로 변경 필요
         registry.addHandler(callAudioWebSocketHandler, "/ws/call")
-                .setAllowedOriginPatterns("*");
+                .setAllowedOrigins(allowedOrigins.toArray(String[]::new));
     }
 
     /** 오디오 바이너리 프레임이 기본 버퍼(8KB)보다 커질 수 있어 상향 조정. */

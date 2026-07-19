@@ -12,6 +12,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 import java.util.List;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -52,6 +53,7 @@ public class CharacterCreateRequest {
     @NotNull
     private PreferTime preferTime;
 
+    @Pattern(regexp = "(?i)[EI][NS][TF][JP]", message = "MBTI는 유효한 4자리 유형이어야 합니다.")
     private String mbti;
 
     @NotNull
@@ -61,6 +63,6 @@ public class CharacterCreateRequest {
     private RelationshipStage relationshipStage;
 
     @NotEmpty
-    @Size(max = 5)
+    @Size(min = 3, max = 3)
     private List<@Valid TraitRequest> traits;
 }
