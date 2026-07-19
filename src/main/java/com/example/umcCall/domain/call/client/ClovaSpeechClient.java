@@ -1,6 +1,5 @@
 package com.example.umcCall.domain.call.client;
 
-import com.example.umcCall.global.config.ClovaSpeechProperties;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestRequest;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestServiceGrpc;
