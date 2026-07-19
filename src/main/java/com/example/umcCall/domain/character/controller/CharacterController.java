@@ -3,9 +3,7 @@ package com.example.umcCall.domain.character.controller;
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
-import com.example.umcCall.domain.character.dto.response.PresetImageResponse;
 import com.example.umcCall.domain.character.dto.response.TraitOptionResponse;
-import com.example.umcCall.domain.character.enums.Gender;
 import com.example.umcCall.domain.character.service.CharacterService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,14 +38,6 @@ public class CharacterController {
     @GetMapping("/trait-options")
     public ApiResponse<List<TraitOptionResponse>> getTraitOptions() {
         return ApiResponse.onSuccess(characterService.getTraitOptions());
-    }
-
-    // 프리셋 이미지 목록 조회
-    @Operation(summary = "프리셋 이미지 목록 조회", description = "성별에 맞는 기본 프로필 이미지 URL 목록을 반환한다.")
-    @GetMapping("/preset-images")
-    public ApiResponse<List<PresetImageResponse>> getPresetImages(
-            @RequestParam(required = false) Gender gender) {
-        return ApiResponse.onSuccess(characterService.getPresetImages(gender));
     }
 
     // 캐릭터 생성
