@@ -43,6 +43,8 @@ public class CharacterCreateRequest {
     @NotNull
     private Job job;
 
+    @Size(max = 2048)
+    @Pattern(regexp = "https://.+", message = "이미지 URL은 https 형식이어야 합니다.")
     private String imageUrl;
 
     @NotNull
@@ -63,6 +65,6 @@ public class CharacterCreateRequest {
     private RelationshipStage relationshipStage;
 
     @NotEmpty
-    @Size(min = 3, max = 3)
+    @Size(min = 1, max = 5)
     private List<@Valid TraitRequest> traits;
 }

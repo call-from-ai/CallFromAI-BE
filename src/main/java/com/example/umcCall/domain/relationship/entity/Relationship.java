@@ -68,7 +68,7 @@ public class Relationship extends BaseTimeEntity {
 
     @Builder
     public Relationship(Long memberId, Character character, RelationshipStage relationshipStage,
-                         Integer spiceLevel, SpeechStyle speechStyle) {
+                         Integer spiceLevel, SpeechStyle speechStyle, boolean main) {
         this.memberId = memberId;
         this.character = character;
         this.relationshipStage = relationshipStage;
@@ -76,8 +76,8 @@ public class Relationship extends BaseTimeEntity {
         this.spiceLevel = spiceLevel;
         this.speechStyle = speechStyle;
         this.startedAt = LocalDate.now();
-        this.main = true;
-        this.becameMainAt = LocalDateTime.now();
+        this.main = main;
+        this.becameMainAt = main ? LocalDateTime.now() : null;
     }
 
     public void activate() {

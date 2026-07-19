@@ -16,6 +16,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import java.time.LocalDateTime;
 
 /**
  * 온보딩에서 생성하는 캐릭터(이상형) 엔티티.
@@ -55,6 +56,9 @@ public class Character extends BaseTimeEntity {
     @Column(name = "is_edited")
     private boolean edited;
 
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     @Builder
     public Character(String lastName, String firstName, Gender gender, Integer age, Job job,
                       PreferTime preferTime, String mbti) {
@@ -70,5 +74,9 @@ public class Character extends BaseTimeEntity {
 
     public String getName() {
         return lastName + firstName;
+    }
+
+    public void markDeleted() {
+        this.deletedAt = LocalDateTime.now();
     }
 }

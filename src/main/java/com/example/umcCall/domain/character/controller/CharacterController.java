@@ -3,6 +3,8 @@ package com.example.umcCall.domain.character.controller;
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
+import com.example.umcCall.domain.character.dto.response.PresetImageResponse;
+import com.example.umcCall.domain.character.enums.Gender;
 import com.example.umcCall.domain.character.dto.response.TraitOptionResponse;
 import com.example.umcCall.domain.character.service.CharacterService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
@@ -21,6 +23,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 /**
  * 캐릭터 CRUD API.
@@ -33,22 +37,25 @@ public class CharacterController {
 
     private final CharacterService characterService;
 
-    // 매력 키워드 목록 조회
-    @Operation(summary = "매력 키워드 목록 조회", description = "온보딩에서 선택 가능한 매력 키워드 전체 목록을 반환한다.")
-    @GetMapping("/trait-options")
-    public ApiResponse<List<TraitOptionResponse>> getTraitOptions() {
-        return ApiResponse.onSuccess(characterService.getTraitOptions());
+    // 프리셋 이미지 목록 조회
+    @Operation(summary = "프리셋 이미지 목록 조회", description = "성별에 맞는 기본 프로필 이미지 URL 목록을 반환한다.")
+    @GetMapping("/preset-images")
+    public ApiResponse<List<PresetImageResponse>> getPresetImages(
+            @RequestParam Gender gender) {
+        return ApiResponse.onSuccess(characterService.getPresetImages(gender));
     }
 
     // 캐릭터 생성
-    @Operation(summary = "캐릭터 생성", description = "온보딩에서 입력한 정보로 캐릭터를 생성한다. 매력 키워드는 1~5개.")
+    @Operation(summary = "캐릭터 생성", description = "온보딩에서 입력한 정보로 캐릭터를 생성한다. 매력 키워드는 1~5개이며 enum code로 전달한다.")
     @PostMapping
-    public ApiResponse<Void> createCharacter(
+    public ResponseEntity<ApiResponse<Void>> createCharacter(
             Authentication authentication,
             @RequestBody @Valid CharacterCreateRequest request) {
         Long memberId = (Long) authentication.getPrincipal();
         characterService.createCharacter(memberId, request);
-        return ApiResponse.onSuccess();
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.onSuccess(
+                        com.example.umcCall.global.apiPayload.code.GeneralSuccessCode.CREATED, null));
     }
 
     // 현재 활성 캐릭터 조회
@@ -78,7 +85,7 @@ public class CharacterController {
     }
 
     // 캐릭터 삭제
-    @Operation(summary = "캐릭터 삭제", description = "본인 소유의 캐릭터를 하드 딜리트로 삭제한다.")
+    @Operation(summary = "캐릭터 삭제", description = "본인 소유 캐릭터를 논리 삭제하고 AI 서버 정리 작업을 등록한다.")
     @DeleteMapping("/{characterId}")
     public ApiResponse<Void> deleteCharacter(
             Authentication authentication, @PathVariable Long characterId) {

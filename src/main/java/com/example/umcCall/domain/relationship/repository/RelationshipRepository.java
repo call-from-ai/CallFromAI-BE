@@ -13,10 +13,13 @@ public interface RelationshipRepository extends JpaRepository<Relationship, Long
     boolean existsByIdAndVersion(Long id, Long version);
 
     Optional<Relationship> findByCharacterId(Long characterId);
+    Optional<Relationship> findByCharacterIdAndCharacterDeletedAtIsNull(Long characterId);
 
     Optional<Relationship> findByMemberIdAndMainTrue(Long memberId);
 
     List<Relationship> findByMemberId(Long memberId);
+    List<Relationship> findByMemberIdAndCharacterDeletedAtIsNull(Long memberId);
 
     int countByMemberId(Long memberId);
+    int countByMemberIdAndCharacterDeletedAtIsNull(Long memberId);
 }

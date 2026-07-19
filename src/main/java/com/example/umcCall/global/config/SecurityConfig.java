@@ -1,6 +1,8 @@
 package com.example.umcCall.global.config;
 
 import com.example.umcCall.global.security.JwtAuthenticationFilter;
+import com.example.umcCall.global.security.ApiAccessDeniedHandler;
+import com.example.umcCall.global.security.ApiAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,6 +19,8 @@ public class SecurityConfig {
 
     private final CorsConfigurationSource corsConfigurationSource;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ApiAuthenticationEntryPoint authenticationEntryPoint;
+    private final ApiAccessDeniedHandler accessDeniedHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -26,6 +30,9 @@ public class SecurityConfig {
                 .httpBasic(basic -> basic.disable())
 
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
 
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(

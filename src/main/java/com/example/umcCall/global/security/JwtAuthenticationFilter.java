@@ -3,6 +3,7 @@ package com.example.umcCall.global.security;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import com.example.umcCall.global.apiPayload.code.BaseErrorCode;
 import com.example.umcCall.global.exception.BaseException;
+import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -29,6 +30,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
+        String authorization = request.getHeader("Authorization");
+        if (authorization != null && !authorization.startsWith("Bearer ")) {
+            writeErrorResponse(response, GeneralErrorCode.INVALID_TOKEN);
+            return;
+        }
         String token = resolveToken(request);
 
         if (token != null) {

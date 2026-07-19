@@ -8,6 +8,7 @@ import com.example.umcCall.domain.character.entity.CharacterAiProfile;
 import com.example.umcCall.domain.character.exception.CharacterErrorCode;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
 import com.example.umcCall.domain.character.repository.CharacterRepository;
+import com.example.umcCall.domain.character.service.CharacterHardDeleteService;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.global.exception.BaseException;
@@ -29,6 +30,7 @@ public class AiCharacterSyncService {
     private final CharacterAiProfileRepository characterAiProfileRepository;
     private final RelationshipRepository relationshipRepository;
     private final AiCharacterSnapshotMapper snapshotMapper;
+    private final CharacterHardDeleteService hardDeleteService;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
@@ -54,6 +56,7 @@ public class AiCharacterSyncService {
     public void cleanup(CharacterAiSyncEvent.Delete event) {
         try {
             aiServerClient.deleteCharacterData(event.characterId());
+            hardDeleteService.purge(event.characterId());
         } catch (RuntimeException exception) {
             // TODO(AI 연동): outbox 또는 재시도 큐로 전환해 cleanup 실패를 복구할 것.
             log.error("AI 캐릭터 파생 데이터 cleanup 실패. characterId={}", event.characterId(), exception);
