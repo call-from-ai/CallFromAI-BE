@@ -3,12 +3,9 @@ package com.example.umcCall.domain.character.service;
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
-import com.example.umcCall.domain.character.dto.response.PresetImageResponse;
-import com.example.umcCall.domain.character.dto.response.TraitOptionResponse;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.character.entity.CharacterImage;
 import com.example.umcCall.domain.character.entity.CharacterTrait;
-import com.example.umcCall.domain.character.entity.PresetImages;
 import com.example.umcCall.domain.character.enums.Trait;
 import com.example.umcCall.domain.character.exception.CharacterErrorCode;
 import com.example.umcCall.domain.character.repository.CharacterImageRepository;
@@ -35,7 +32,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.example.umcCall.domain.character.enums.Gender;
+
 /**
  * 캐릭터 생성/조회/활성화/삭제를 담당하는 서비스.
  */
@@ -60,12 +57,6 @@ public class CharacterService {
     private final CharacterSyncTaskService syncTaskService;
     private final PresetImageRepository presetImageRepository;
 
-    // 프리셋 이미지 목록 조회
-    public List<PresetImageResponse> getPresetImages(Gender gender) {
-        return PresetImages.of(gender).stream()
-                .map(url -> PresetImageResponse.builder().imageUrl(url).build())
-                .toList();
-    }
 
     // 캐릭터 생성 (관계, 관계 통계, 채팅방 함께 생성) — 응답 바디 없음
     @Transactional
