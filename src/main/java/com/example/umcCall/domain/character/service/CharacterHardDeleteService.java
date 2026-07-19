@@ -1,7 +1,6 @@
 package com.example.umcCall.domain.character.service;
 
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
-import com.example.umcCall.domain.character.repository.CharacterImageRepository;
 import com.example.umcCall.domain.character.repository.CharacterRepository;
 import com.example.umcCall.domain.character.repository.CharacterTraitRepository;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
