@@ -4,10 +4,10 @@ import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
 import com.example.umcCall.domain.character.dto.response.PresetImageResponse;
+import com.example.umcCall.domain.character.dto.response.TraitOptionResponse;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.character.entity.CharacterImage;
 import com.example.umcCall.domain.character.entity.CharacterTrait;
-import com.example.umcCall.domain.character.enums.Gender;
 import com.example.umcCall.domain.character.entity.PresetImages;
 import com.example.umcCall.domain.character.enums.Trait;
 import com.example.umcCall.domain.character.exception.CharacterErrorCode;
@@ -18,6 +18,7 @@ import com.example.umcCall.domain.chat.entity.ChatRoom;
 import com.example.umcCall.domain.chat.enums.RoomType;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.domain.chat.service.ChatRoomService;
+import com.example.umcCall.domain.image.repository.PresetImageRepository;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
@@ -34,7 +35,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.example.umcCall.domain.character.enums.Gender;
 /**
  * 캐릭터 생성/조회/활성화/삭제를 담당하는 서비스.
  */
@@ -57,6 +58,7 @@ public class CharacterService {
     private final ChatRoomRepository chatRoomRepository;
     private final MemberRepository memberRepository;
     private final CharacterSyncTaskService syncTaskService;
+    private final PresetImageRepository presetImageRepository;
 
     // 프리셋 이미지 목록 조회
     public List<PresetImageResponse> getPresetImages(Gender gender) {
@@ -85,7 +87,7 @@ public class CharacterService {
 
         // imageUrl이 있으면 해당 성별의 프리셋 목록에 있는 값인지 검증
         if (request.getImageUrl() != null
-                && !PresetImages.contains(request.getGender(), request.getImageUrl())) {
+                && !presetImageRepository.existsByGenderAndImageUrl(request.getGender(), request.getImageUrl())) {
             throw new BaseException(CharacterErrorCode.INVALID_PRESET_IMAGE);
         }
         validateTraits(request);

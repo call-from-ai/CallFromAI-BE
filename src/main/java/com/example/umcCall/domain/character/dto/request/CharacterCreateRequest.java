@@ -1,6 +1,6 @@
 package com.example.umcCall.domain.character.dto.request;
 
-import com.example.umcCall.domain.character.enums.Gender;
+import com.example.umcCall.domain.image.enums.Gender;
 import com.example.umcCall.domain.character.enums.Job;
 import com.example.umcCall.domain.character.enums.PreferTime;
 import com.example.umcCall.domain.character.enums.SpeechStyle;

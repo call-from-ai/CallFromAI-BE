@@ -1,6 +1,6 @@
 package com.example.umcCall.domain.member.entity;
 
-import com.example.umcCall.domain.member.enums.Gender;
+import com.example.umcCall.domain.image.enums.Gender;
 import com.example.umcCall.domain.member.enums.Job;
 import com.example.umcCall.domain.member.enums.Mbti;
 import com.example.umcCall.domain.member.enums.SocialType;
