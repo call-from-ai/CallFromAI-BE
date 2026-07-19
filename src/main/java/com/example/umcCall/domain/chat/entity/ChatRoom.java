@@ -81,4 +81,9 @@ public class ChatRoom extends BaseTimeEntity {
     public void archive() {
         this.deleted = true;
     }
+
+    /** 새 메시지가 오가면 마지막 메시지 시각을 갱신한다(목록 정렬 키). */
+    public void updateLastMessageAt(LocalDateTime lastMessageAt) {
+        this.lastMessageAt = lastMessageAt;
+    }
 }
