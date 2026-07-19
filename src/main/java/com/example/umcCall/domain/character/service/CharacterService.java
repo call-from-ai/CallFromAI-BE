@@ -135,7 +135,7 @@ public class CharacterService {
         Relationship relationship = relationshipRepository.findByMemberIdAndMainTrue(memberId)
                 .orElseThrow(() -> new BaseException(CharacterErrorCode.NO_ACTIVE_CHARACTER));
         Character character = relationship.getCharacter();
-        List<CharacterTrait> characterTraits = characterTraitRepository.findByCharacterId(character.getId());
+        List<CharacterTrait> characterTraits = characterTraitRepository.findByCharacterIdOrderByPriorityAsc(character.getId());
         return CharacterResponse.of(character, relationship, characterTraits, character.getImageUrl());
     }
 
@@ -208,7 +208,6 @@ public class CharacterService {
 
 
     // 회원 행에 비관적 락을 걸어 캐릭터 개수/메인 지정 동시성 문제를 막는다.
-    // TODO: Member 엔티티가 생기면 MemberRepository에 @Lock(PESSIMISTIC_WRITE) 조회 메서드를 만들어 이 네이티브 쿼리를 대체할 것
     private Member lockMember(Long memberId) {
         return memberRepository.findByIdForUpdate(memberId)
                 .orElseThrow(() -> new BaseException(
