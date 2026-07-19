@@ -26,6 +26,8 @@ clova:
     host: clovaspeech-gw.ncloud.com
     port: 50051
     secret-key: ${CLOVA_SPEECH_SECRET}
+    # 턴 끝 감지: 이만큼(ms) 침묵하면 final(epdType=gap) 확정. 지연 vs 조기컷의 다이얼 — 실사용하며 튜닝.
+    gap-threshold-ms: 700
   voice:
     base-url: https://naveropenapi.apigw.ntruss.com
     client-id: ${CLOVA_VOICE_CLIENT_ID}
