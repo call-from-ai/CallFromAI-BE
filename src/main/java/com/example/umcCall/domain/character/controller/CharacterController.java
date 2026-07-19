@@ -5,6 +5,7 @@ import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
 import com.example.umcCall.domain.character.dto.response.PresetImageResponse;
 import com.example.umcCall.domain.character.enums.Gender;
+import com.example.umcCall.domain.character.dto.response.TraitOptionResponse;
 import com.example.umcCall.domain.character.service.CharacterService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
