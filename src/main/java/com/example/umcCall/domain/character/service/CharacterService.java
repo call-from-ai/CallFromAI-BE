@@ -4,11 +4,9 @@ import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
 import com.example.umcCall.domain.character.entity.Character;
-import com.example.umcCall.domain.character.entity.CharacterImage;
 import com.example.umcCall.domain.character.entity.CharacterTrait;
 import com.example.umcCall.domain.character.enums.Trait;
 import com.example.umcCall.domain.character.exception.CharacterErrorCode;
-import com.example.umcCall.domain.character.repository.CharacterImageRepository;
 import com.example.umcCall.domain.character.repository.CharacterRepository;
 import com.example.umcCall.domain.character.repository.CharacterTraitRepository;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
@@ -48,7 +46,6 @@ public class CharacterService {
     private final CharacterRepository characterRepository;
     private final CharacterTraitRepository characterTraitRepository;
     private final CharacterAiProfileService characterAiProfileService;
-    private final CharacterImageRepository characterImageRepository;
     private final RelationshipRepository relationshipRepository;
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final ChatRoomService chatRoomService;
@@ -92,17 +89,9 @@ public class CharacterService {
                         .job(request.getJob())
                         .preferTime(request.getPreferTime())
                         .mbti(request.getMbti())
+                        .imageUrl(request.getImageUrl())
                         .build()
         );
-
-        if (request.getImageUrl() != null) {
-            characterImageRepository.save(
-                    CharacterImage.builder()
-                            .character(character)
-                            .imageUrl(request.getImageUrl())
-                            .build()
-            );
-        }
 
         List<CharacterTrait> savedTraits = request.getTraits().stream()
                 .map(traitRequest -> characterTraitRepository.save(
@@ -147,8 +136,7 @@ public class CharacterService {
                 .orElseThrow(() -> new BaseException(CharacterErrorCode.NO_ACTIVE_CHARACTER));
         Character character = relationship.getCharacter();
         List<CharacterTrait> characterTraits = characterTraitRepository.findByCharacterId(character.getId());
-        String imageUrl = getImageUrl(character.getId());
-        return CharacterResponse.of(character, relationship, characterTraits, imageUrl);
+        return CharacterResponse.of(character, relationship, characterTraits, character.getImageUrl());
     }
 
     // 내 캐릭터 목록 조회 (최대 5개라 페이지네이션 없음)
@@ -157,14 +145,13 @@ public class CharacterService {
         return relationshipRepository.findByMemberIdAndCharacterDeletedAtIsNull(memberId).stream()
                 .map(relationship -> {
                     Character character = relationship.getCharacter();
-                    String imageUrl = getImageUrl(character.getId());
                     LocalDateTime lastMessageAt = chatRoomRepository.findByRelationshipId(relationship.getId())
                             .map(ChatRoom::getLastMessageAt)
                             .orElse(null);
                     return CharacterSummaryResponse.builder()
                             .characterId(character.getId())
                             .name(character.getName())
-                            .imageUrl(imageUrl)
+                            .imageUrl(character.getImageUrl())
                             .main(relationship.isMain())
                             .createdAt(character.getCreatedAt())
                             .startedAt(relationship.getStartedAt())
@@ -219,12 +206,6 @@ public class CharacterService {
         syncTaskService.enqueue(characterId, CharacterSyncOperation.DELETE);
     }
 
-    // 캐릭터의 프리셋 이미지 URL 조회 (없으면 null)
-    private String getImageUrl(Long characterId) {
-        return characterImageRepository.findByCharacterId(characterId)
-                .map(CharacterImage::getImageUrl)
-                .orElse(null);
-    }
 
     // 회원 행에 비관적 락을 걸어 캐릭터 개수/메인 지정 동시성 문제를 막는다.
     // TODO: Member 엔티티가 생기면 MemberRepository에 @Lock(PESSIMISTIC_WRITE) 조회 메서드를 만들어 이 네이티브 쿼리를 대체할 것
