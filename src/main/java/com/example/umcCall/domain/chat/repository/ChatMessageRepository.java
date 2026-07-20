@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -62,6 +63,25 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
                                            @Param("cutoff") Long cutoff,
                                            @Param("cursor") Long cursor,
                                            Pageable pageable);
+
+    /**
+     * 방의 안 읽은 수신 메시지를 일괄 읽음 처리.
+     * 기준은 안 읽음 집계와 동일: 수신 메시지 + 미읽음 + 미삭제 + cutoff 초과.
+     * @return 읽음 처리된 메시지 수
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("""
+            update ChatMessage m
+            set m.read = true
+            where m.chatRoom.id = :roomId
+              and m.read = false
+              and m.deleted = false
+              and m.senderType <> :excludedSender
+              and (:cutoff is null or m.id > :cutoff)
+            """)
+    int markIncomingAsRead(@Param("roomId") Long roomId,
+                           @Param("cutoff") Long cutoff,
+                           @Param("excludedSender") SenderType excludedSender);
 
     /** 방별 안 읽음 수 집계 결과 프로젝션. */
     interface UnreadCountRow {

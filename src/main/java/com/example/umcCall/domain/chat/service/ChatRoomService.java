@@ -45,6 +45,15 @@ public class ChatRoomService {
     }
 
     /**
+     * 채팅방 읽음 처리. 방의 안 읽은 수신 메시지(USER 제외)를 cutoff 기준으로 일괄 읽음 처리한다.
+     */
+    @Transactional
+    public void markAsRead(Long memberId, Long chatRoomId) {
+        ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
+        chatMessageRepository.markIncomingAsRead(room.getId(), room.getMessageVisibleAfterId(), SenderType.USER);
+    }
+
+    /**
      * 채팅방 목록 조회.
      * 방 목록을 한 번 조회한 뒤, 안읽음 수 / 마지막 메시지 / 캐릭터 정보를
      * 각각 IN 절 배치 조회로 모아 조립

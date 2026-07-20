@@ -7,6 +7,7 @@ import com.example.umcCall.global.apiPayload.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,5 +31,14 @@ public class ChatRoomController {
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long chatRoomId) {
         return ApiResponse.onSuccess(chatRoomService.getRoomHeader(memberId, chatRoomId));
+    }
+
+    /** 채팅방 읽음 처리. 방의 안 읽은 수신 메시지를 일괄 읽음 처리한다. */
+    @PatchMapping("/{chatRoomId}/read")
+    public ApiResponse<Void> markAsRead(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long chatRoomId) {
+        chatRoomService.markAsRead(memberId, chatRoomId);
+        return ApiResponse.onSuccess();
     }
 }
