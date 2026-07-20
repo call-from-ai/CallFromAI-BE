@@ -27,7 +27,7 @@ public class MemberService {
     public MemberResponse updateMyInfo(Long memberId, MemberUpdateRequest request) {
         Member member = findMember(memberId);
         member.updateProfile(
-                request.lastName(), request.firstName(), request.profilePhotoUrl(),
+                request.lastName(), request.firstName(), request.imageUrl(),
                 request.gender(), request.birth(), request.mbti(), request.job()
         );
         return MemberResponse.from(member);

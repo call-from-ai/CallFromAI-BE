@@ -31,8 +31,8 @@ public class Member extends BaseTimeEntity {
     @Column(name = "first_name", length = 5)
     private String firstName;
 
-    @Column(name = "profile_photo_url", length = 255)
-    private String profilePhotoUrl;
+    @Column(name = "image_url", length = 2048)
+    private String imageUrl;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "gender")
@@ -85,11 +85,11 @@ public class Member extends BaseTimeEntity {
         return this.lastName != null;
     }
 
-    public void updateProfile(String lastName, String firstName, String profilePhotoUrl,
+    public void updateProfile(String lastName, String firstName, String imageUrl,
                               Gender gender, LocalDate birth, Mbti mbti, Job job) {
         if (lastName != null) this.lastName = lastName;
         if (firstName != null) this.firstName = firstName;
-        if (profilePhotoUrl != null) this.profilePhotoUrl = profilePhotoUrl;
+        if (imageUrl != null) this.imageUrl = imageUrl;
         if (gender != null) this.gender = gender;
         if (birth != null) this.birth = birth;
         if (mbti != null) this.mbti = mbti;
