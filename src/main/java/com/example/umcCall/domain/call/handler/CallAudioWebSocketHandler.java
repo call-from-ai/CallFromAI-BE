@@ -2,8 +2,11 @@ package com.example.umcCall.domain.call.handler;
 
 import com.example.umcCall.domain.call.client.ClovaSpeechClient;
 import com.example.umcCall.domain.call.client.ClovaSpeechProperties;
+import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
+import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
+import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -17,6 +20,9 @@ import com.nbp.cdncp.nest.grpc.proto.v1.RequestType;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -33,21 +39,19 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 /**
  * 통화 오디오 양방향 채널 핸들러. 통화마다 분리해 처리한다.
  * 업스트림은 바이너리 프레임(raw PCM 16kHz/모노/16-bit)을 CLOVA STT로 중계하고,
- * 다운스트림은 STT final을 TTS로 합성해 wav를 그대로 내려보낸다. 제어 신호는 텍스트(JSON) 프레임.
- * <p>다운스트림 텍스트 소스는 지금 <b>에코</b>(내 말이 그대로 돌아옴)다 — 이 자리에 LLM이 대체 투입된다.
+ * 다운스트림은 STT final을 AI(chat)로 넘겨 응답 대사를 TTS로 합성해 wav를 그대로 내려보낸다. 제어 신호는 텍스트(JSON) 프레임.
+ * <p>final은 AI로, partial은 클라이언트 자막 전용(AI로 보내지 않는다).
  */
 @Slf4j
 @Component
 public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
-    // TODO(AI 연동): STT final 결과를 AiConversationService로 연결 필요.
-    // partial은 AI로 보내지 말고 클라이언트 자막 전용으로만 사용.
-
-    /** 에코 화자. 캐릭터 개념이 없는 동안의 임시값 — 캐릭터 음성이 들어올 자리다. */
-    private static final String ECHO_SPEAKER = "nara";
+    /** AI 응답 화자. 캐릭터별 음성 매핑은 후순위 — 지금은 고정값(캐릭터 음성이 들어올 자리다). */
+    private static final String AI_SPEAKER = "nara";
 
     private final ClovaSpeechClient clovaSpeechClient;
     private final ClovaVoiceClient clovaVoiceClient;
+    private final CallConversationService callConversationService;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -58,10 +62,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
     public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient,
                                      ClovaVoiceClient clovaVoiceClient,
+                                     CallConversationService callConversationService,
                                      ClovaSpeechProperties speechProperties,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
+        this.callConversationService = callConversationService;
         this.objectMapper = objectMapper;
         this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
         log.info("[Clova] recognize CONFIG = {}", configJson);
@@ -111,7 +117,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             SttStream stream = new SttStream(requestObserver);
             // 워커는 스트림 개설 성공 뒤에 만든다(실패하면 정리할 워커도 없도록).
             // 등록은 CONFIG 전에 — onNext가 처음 뜰 땐 이미 맵에 있어야 한다.
-            activeCalls.put(sessionId, new ActiveCall(stream, Executors.newSingleThreadExecutor(), ticket));
+            activeCalls.put(sessionId,
+                    new ActiveCall(stream, Executors.newSingleThreadExecutor(), ticket, new ArrayList<>()));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
@@ -163,34 +170,46 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     /**
-     * final 전사를 TTS로 합성해 다운스트림으로 돌려보낸다.
+     * final 발화를 AI로 넘겨 응답 대사를 TTS로 합성해 다운스트림으로 돌려보낸다.
      * 호출자(gRPC 콜백)를 잡아두지 않도록 통화 워커에 넘기고 즉시 반환한다.
-     * <p>★ 나중에 LLM 호출·전사 DB 저장이 들어올 자리가 이 워커 안이다.
+     * <p>chat()은 무거운 REST라 워커에서 비동기 실행하며, 워커 단일 스레드가 턴 순서를 보장한다.
+     * 전사 DB 저장(후순위)이 붙으면 {@link CallConversationService} 안에 들어간다.
      */
-    private void submitEcho(WebSocketSession session, String text) {
+    private void submitChat(WebSocketSession session, String text) {
         String sessionId = session.getId();
         if (text == null || text.isBlank()) {
-            log.debug("[Call] 빈 final → 에코 생략. session={}", sessionId);
+            log.debug("[Call] 빈 final → 생략. session={}", sessionId);
             return;
         }
         ActiveCall call = activeCalls.get(sessionId);
         if (call == null) {
-            log.debug("[Call] 통화가 없어 에코를 버림. session={}", sessionId);
+            log.debug("[Call] 통화가 없어 발화를 버림. session={}", sessionId);
             return;
         }
+        WsTicket ticket = call.ticket();
+        List<AiChatHistoryItem> history = call.history();
         try {
             call.worker().execute(() -> {
                 try {
-                    byte[] wav = clovaVoiceClient.synthesize(text, ECHO_SPEAKER);
+                    // 워커 단일 스레드라 history 접근은 스레드 confine(동기화 불필요).
+                    AiChatResponse response = callConversationService.respond(
+                            ticket.characterId(), ticket.relationshipId(), text, history);
+                    String reply = response.message();
+
+                    // 성공한 턴만 이력에 남긴다. 이번 발화는 respond의 history엔 없었고 여기서 추가된다.
+                    history.add(new AiChatHistoryItem("USER", text, LocalDateTime.now()));
+                    history.add(new AiChatHistoryItem("AI", reply, LocalDateTime.now()));
+
+                    byte[] wav = clovaVoiceClient.synthesize(reply, AI_SPEAKER);
                     sendAudio(session, wav);
                 } catch (Exception e) {
-                    // 파이프라인 에러는 서버 로깅 전용. 문장 하나 실패로 통화를 끊지 않는다.
-                    log.error("[Call] 에코 합성/송신 실패. session={}", sessionId, e);
+                    // stale/AI 오류 등: 그 턴만 버리고(이력 미추가·TTS 안 함) 통화는 유지한다.
+                    log.error("[Call] AI 턴 처리 실패 → 턴 폐기. session={}", sessionId, e);
                 }
             });
         } catch (RejectedExecutionException e) {
             // 통화 종료와 겹쳐 워커가 이미 내려간 경우. 정상 경로다.
-            log.debug("[Call] 워커 종료됨 → 에코를 버림. session={}", sessionId);
+            log.debug("[Call] 워커 종료됨 → 발화를 버림. session={}", sessionId);
         }
     }
 
@@ -269,10 +288,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * 진행 중인 통화 하나가 들고 있는 것 전부. 수명이 같아 한 홀더로 묶었다 — 정리를 한 번에 하기 위함.
      * 통화 스코프 상태(전사 버퍼·LLM 컨텍스트 등)가 늘면 평행 맵을 만들지 말고 여기 필드로 붙인다.
      *
-     * @param worker 통화당 단일 스레드 — 제출 순서 = 실행 순서(에코 순서 보장).
-     * @param ticket 핸드셰이크에서 검증된 신원(callId/relationshipId/characterId). AI 배선·전사 저장의 기준.
+     * @param worker  통화당 단일 스레드 — 제출 순서 = 실행 순서(AI 응답 순서 보장).
+     * @param ticket  핸드셰이크에서 검증된 신원(callId/relationshipId/characterId). AI 배선·전사 저장의 기준.
+     * @param history 세션 스코프 대화 이력. <b>워커 스레드만</b> 읽고 쓴다(스레드 confine → 동기화 불필요).
      */
-    private record ActiveCall(SttStream stream, ExecutorService worker, WsTicket ticket) {
+    private record ActiveCall(SttStream stream, ExecutorService worker, WsTicket ticket,
+                              List<AiChatHistoryItem> history) {
     }
 
     /**
@@ -333,9 +354,9 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                 String tag = result.isFinal() ? "final" : "partial";
                 log.info("[Clova] [{}] session={}, text={}", tag, sessionId, result.text());
 
-                // ⚠ 이 콜백은 즉시 반환해야 한다(스레드가 전 통화 공유). submitEcho가 워커로 넘긴다.
+                // ⚠ 이 콜백은 즉시 반환해야 한다(스레드가 전 통화 공유). submitChat이 워커로 넘긴다.
                 if (result.isFinal()) {
-                    submitEcho(session, result.text());
+                    submitChat(session, result.text());
                 }
             } catch (Exception e) {
                 log.warn("[Clova] 응답 파싱 실패. session={}, contents={}", sessionId, contents, e); // 원문 폴백
