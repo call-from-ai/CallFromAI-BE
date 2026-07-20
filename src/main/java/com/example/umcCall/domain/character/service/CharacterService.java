@@ -25,7 +25,10 @@ import com.example.umcCall.domain.ai.enums.CharacterSyncOperation;
 import com.example.umcCall.domain.ai.service.CharacterSyncTaskService;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.repository.MemberRepository;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -147,6 +150,7 @@ public class CharacterService {
                     LocalDateTime lastMessageAt = chatRoomRepository.findByRelationshipId(relationship.getId())
                             .map(ChatRoom::getLastMessageAt)
                             .orElse(null);
+                    int daysTogether = (int) ChronoUnit.DAYS.between(relationship.getStartedAt(), LocalDate.now()) + 1;
                     return CharacterSummaryResponse.builder()
                             .characterId(character.getId())
                             .name(character.getName())
@@ -232,9 +236,9 @@ public class CharacterService {
         }
 
         Character character = relationship.getCharacter();
-        if (character.getCreatedAt().plusHours(MIN_DELETE_INTERVAL_HOURS).isAfter(LocalDateTime.now())) {
-            throw new BaseException(CharacterErrorCode.CHARACTER_DELETE_TOO_SOON);
-        }
+//        if (character.getCreatedAt().plusHours(MIN_DELETE_INTERVAL_HOURS).isAfter(LocalDateTime.now())) {
+//            throw new BaseException(CharacterErrorCode.CHARACTER_DELETE_TOO_SOON);
+//        }
 
         character.markDeleted();
         relationship.deactivate();
