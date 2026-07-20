@@ -4,6 +4,8 @@ import com.example.umcCall.domain.call.client.ClovaSpeechClient;
 import com.example.umcCall.domain.call.client.ClovaSpeechProperties;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
+import com.example.umcCall.domain.call.ticket.WsTicket;
+import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
@@ -93,13 +95,23 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         String sessionId = session.getId();
+
+        // 핸드셰이크 인터셉터가 검증해 실어둔 신원. 정상 경로엔 항상 있다(없으면 방어적으로 종료).
+        WsTicket ticket = (WsTicket) session.getAttributes()
+                .get(WsTicketHandshakeInterceptor.WS_TICKET_ATTRIBUTE);
+        if (ticket == null) {
+            log.error("[Call] 세션에 wsTicket 신원이 없음 → WebSocket 종료. session={}", sessionId);
+            terminateCall(session, CloseStatus.SERVER_ERROR);
+            return;
+        }
+
         try {
             StreamObserver<NestRequest> requestObserver =
                     clovaSpeechClient.openRecognizeStream(new ClovaResponseObserver(session));
             SttStream stream = new SttStream(requestObserver);
             // 워커는 스트림 개설 성공 뒤에 만든다(실패하면 정리할 워커도 없도록).
             // 등록은 CONFIG 전에 — onNext가 처음 뜰 땐 이미 맵에 있어야 한다.
-            activeCalls.put(sessionId, new ActiveCall(stream, Executors.newSingleThreadExecutor()));
+            activeCalls.put(sessionId, new ActiveCall(stream, Executors.newSingleThreadExecutor(), ticket));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
@@ -107,7 +119,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     .setConfig(NestConfig.newBuilder().setConfig(configJson).build())
                     .build());
 
-            log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}", sessionId);
+            log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}, callId={}",
+                    sessionId, ticket.callId());
         } catch (RuntimeException e) {
             // 개설 자체의 실패만 여기로 온다. 비동기 연결 실패는 ClovaResponseObserver.onError로 간다.
             log.error("[Call] CLOVA 스트림 개설 실패 → WebSocket 종료. session={}", sessionId, e);
@@ -257,8 +270,9 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * 통화 스코프 상태(전사 버퍼·LLM 컨텍스트 등)가 늘면 평행 맵을 만들지 말고 여기 필드로 붙인다.
      *
      * @param worker 통화당 단일 스레드 — 제출 순서 = 실행 순서(에코 순서 보장).
+     * @param ticket 핸드셰이크에서 검증된 신원(callId/relationshipId/characterId). AI 배선·전사 저장의 기준.
      */
-    private record ActiveCall(SttStream stream, ExecutorService worker) {
+    private record ActiveCall(SttStream stream, ExecutorService worker, WsTicket ticket) {
     }
 
     /**
