@@ -194,11 +194,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // 워커 단일 스레드라 history 접근은 스레드 confine(동기화 불필요).
                     AiChatResponse response = callConversationService.respond(
                             ticket.characterId(), ticket.relationshipId(), text, history);
-                    String reply = response.message();
+                    String reply = response.reply();
 
                     // 성공한 턴만 이력에 남긴다. 이번 발화는 respond의 history엔 없었고 여기서 추가된다.
-                    history.add(new AiChatHistoryItem("USER", text, LocalDateTime.now()));
-                    history.add(new AiChatHistoryItem("AI", reply, LocalDateTime.now()));
+                    // role 값은 AI 서버 계약대로 소문자 "user"/"assistant".
+                    history.add(new AiChatHistoryItem("user", text, LocalDateTime.now()));
+                    history.add(new AiChatHistoryItem("assistant", reply, LocalDateTime.now()));
 
                     byte[] wav = clovaVoiceClient.synthesize(reply, AI_SPEAKER);
                     sendAudio(session, wav);
