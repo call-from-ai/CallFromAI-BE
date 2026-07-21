@@ -6,13 +6,16 @@ import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
 import com.example.umcCall.domain.chat.enums.MessageType;
 import com.example.umcCall.domain.chat.enums.SenderType;
+import com.example.umcCall.domain.chat.event.UserMessageSentEvent;
 import com.example.umcCall.domain.chat.exception.ChatErrorCode;
 import com.example.umcCall.domain.chat.exception.ChatException;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
+import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +30,8 @@ public class ChatMessageService {
 
     private final ChatRoomFinder chatRoomFinder;
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatRoomRepository chatRoomRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 채팅방 메시지 커서 조회.
@@ -85,7 +90,31 @@ public class ChatMessageService {
         // 목록 정렬용 마지막 메시지 시각 갱신
         room.updateLastMessageAt(message.getCreatedAt());
 
+        // 커밋 후 비동기로 AI 답장 생성을 트리거한다(전송 응답은 기다리지 않음)
+        eventPublisher.publishEvent(new UserMessageSentEvent(chatRoomId, memberId, message.getId(), content));
+
         return ChatMessageResponse.from(message);
+    }
+
+    /**
+     * AI 답장 메시지를 저장하고 방의 마지막 메시지 시각을 갱신한다(AI 답장 처리에서 호출).
+     */
+    @Transactional
+    public ChatMessage saveAiMessage(Long chatRoomId, String content) {
+        ChatRoom room = chatRoomRepository.findById(chatRoomId)
+                .orElseThrow(() -> new ChatException(ChatErrorCode.CHATROOM_NOT_FOUND));
+        ChatMessage message = chatMessageRepository.save(
+                ChatMessage.builder()
+                        .senderType(SenderType.AI)
+                        .content(content)
+                        .messageType(MessageType.TEXT)
+                        .read(false)     // 유저가 아직 안 읽음 → 안읽음 집계 대상
+                        .deleted(false)
+                        .chatRoom(room)
+                        .build()
+        );
+        room.updateLastMessageAt(message.getCreatedAt());
+        return message;
     }
 
     /** size 미지정/비정상은 기본값, 상한 초과는 상한으로 */
