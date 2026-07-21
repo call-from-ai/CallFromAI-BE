@@ -271,7 +271,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private void terminateCall(WebSocketSession session, CloseStatus status) {
         ActiveCall call = activeCalls.remove(session.getId());
         if (call != null) {
-            // 워커 스레드 자신이 부를 수도 있다(에코 송신 실패 경로). shutdownNow는 기다리지 않으므로
+            // 워커 스레드 자신이 부를 수도 있다(AI 턴 TTS 송신 실패 경로). shutdownNow는 기다리지 않으므로
             // 자기 자신에게 인터럽트 플래그만 서고 그대로 진행된다 — 교착은 없다.
             call.worker().shutdownNow();
             call.stream().terminate(); // 이후 send()는 무시됨
