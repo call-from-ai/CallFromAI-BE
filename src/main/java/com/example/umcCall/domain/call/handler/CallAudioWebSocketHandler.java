@@ -7,6 +7,7 @@ import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
 import com.example.umcCall.domain.call.service.CallConversationService;
+import com.example.umcCall.domain.call.service.CallService;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -52,6 +53,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final ClovaSpeechClient clovaSpeechClient;
     private final ClovaVoiceClient clovaVoiceClient;
     private final CallConversationService callConversationService;
+    private final CallService callService;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -63,11 +65,13 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient,
                                      ClovaVoiceClient clovaVoiceClient,
                                      CallConversationService callConversationService,
+                                     CallService callService,
                                      ClovaSpeechProperties speechProperties,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
         this.callConversationService = callConversationService;
+        this.callService = callService;
         this.objectMapper = objectMapper;
         this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
         log.info("[Clova] recognize CONFIG = {}", configJson);
@@ -125,6 +129,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     .setType(RequestType.CONFIG)
                     .setConfig(NestConfig.newBuilder().setConfig(configJson).build())
                     .build());
+
+            // DIALING → IN_PROGRESS. 상태 persist 실패로 통화를 끊지는 않는다(로그만) — chat() 턴 폐기 정책과 결이 같다.
+            try {
+                callService.connect(ticket.callId());
+            } catch (RuntimeException e) {
+                log.error("[Call] 통화 연결 상태 저장 실패(통화는 유지). session={}, callId={}",
+                        sessionId, ticket.callId(), e);
+            }
 
             log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}, callId={}",
                     sessionId, ticket.callId());
@@ -261,6 +273,19 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         } catch (RuntimeException e) {
             log.warn("[Call] CLOVA 스트림 종료 실패. session={}", sessionId, e);
         }
+        finishCall(call.ticket().callId());
+    }
+
+    /**
+     * 통화를 종결 상태로 전이·저장한다(IN_PROGRESS→COMPLETED / DIALING→CANCELED, 판단은 서비스).
+     * 정리 경로(정상 종료·서버 주도 종료) 공통. 상태 저장 실패로 정리를 막지 않도록 로그만 남긴다.
+     */
+    private void finishCall(Long callId) {
+        try {
+            callService.finish(callId);
+        } catch (RuntimeException e) {
+            log.error("[Call] 통화 종료 상태 저장 실패. callId={}", callId, e);
+        }
     }
 
     /**
@@ -275,6 +300,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 자기 자신에게 인터럽트 플래그만 서고 그대로 진행된다 — 교착은 없다.
             call.worker().shutdownNow();
             call.stream().terminate(); // 이후 send()는 무시됨
+        }
+        // 마감은 ActiveCall이 아니라 세션 티켓 기준 — 스트림 개설이 activeCalls.put 전에 실패해도(call==null)
+        // 티켓의 callId로 DIALING을 CANCELED로 닫는다. (put 후 실패 경로도 동일하게 여기서 1회 마감)
+        // completeCall과는 맵 원자 remove로 상호배타라 이중 마감이 없다.
+        WsTicket ticket = (WsTicket) session.getAttributes()
+                .get(WsTicketHandshakeInterceptor.WS_TICKET_ATTRIBUTE);
+        if (ticket != null) {
+            finishCall(ticket.callId());
         }
         if (session.isOpen()) {
             try {

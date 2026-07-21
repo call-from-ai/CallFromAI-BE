@@ -20,7 +20,10 @@ public enum CallErrorCode implements BaseErrorCode {
     CALL_TARGET_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CALL403_1", "본인의 캐릭터에게만 통화할 수 있습니다."),
 
     // 404 - 통화 대상 캐릭터(관계)를 찾을 수 없음
-    CALL_TARGET_NOT_FOUND(HttpStatus.NOT_FOUND, "CALL404_1", "통화할 캐릭터를 찾을 수 없습니다.");
+    CALL_TARGET_NOT_FOUND(HttpStatus.NOT_FOUND, "CALL404_1", "통화할 캐릭터를 찾을 수 없습니다."),
+
+    // 404 - callId로 통화 기록을 찾을 수 없음(상태 전이 대상 부재)
+    CALL_NOT_FOUND(HttpStatus.NOT_FOUND, "CALL404_2", "통화를 찾을 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;

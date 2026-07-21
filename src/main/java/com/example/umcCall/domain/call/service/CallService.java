@@ -51,4 +51,28 @@ public class CallService {
 
         return new CallDialResponse(call.getId(), call.getStatus(), wsTicket);
     }
+
+    /**
+     * 통화 연결됨(WebSocket + STT 스트림 개설 성공). DIALING → IN_PROGRESS.
+     * <p>엔티티 전이 메서드를 트랜잭션 안에서 호출해 dirty checking으로 반영한다.
+     */
+    public void connect(Long callId) {
+        Call call = callRepository.findById(callId)
+                .orElseThrow(() -> new CallException(CallErrorCode.CALL_NOT_FOUND));
+        call.connect();
+    }
+
+    /**
+     * 통화 종료(소켓 끊김). 연결됐었으면 정상 완료, 연결 전이었으면 취소로 마감한다.
+     * <p>이미 종료 상태면 no-op(정리 경로가 겹쳐도 안전). RINGING(AI 발신)은 후순위라 지금은 건드리지 않는다.
+     */
+    public void finish(Long callId) {
+        Call call = callRepository.findById(callId)
+                .orElseThrow(() -> new CallException(CallErrorCode.CALL_NOT_FOUND));
+        switch (call.getStatus()) {
+            case IN_PROGRESS -> call.complete();
+            case DIALING -> call.cancel();
+            default -> { /* 이미 종료 상태 등 — 전이 없음 */ }
+        }
+    }
 }
