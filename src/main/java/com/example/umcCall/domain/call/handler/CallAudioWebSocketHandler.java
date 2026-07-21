@@ -215,6 +215,13 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                             ticket.characterId(), ticket.relationshipId(), history);
                     String reply = response.reply();
 
+                    // AI가 말할 게 없으면(빈 응답) TTS를 건너뛴다. user 로그는 이미 남았고 assistant만 안 남는다
+                    // = "사용자는 말했고 AI는 아무 말 안 함"이라 이벤트 로그상 정확한 상태다.
+                    if (reply == null || reply.isBlank()) {
+                        log.warn("[Call] AI 빈 응답 → 턴 스킵. session={}", sessionId);
+                        return;
+                    }
+
                     byte[] wav = clovaVoiceClient.synthesize(reply, AI_SPEAKER);
                     // TTS 송신 성공 시에만 AI 발화를 남긴다.
                     if (sendAudio(session, wav)) {
