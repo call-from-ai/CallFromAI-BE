@@ -38,13 +38,16 @@ public class CallConversationService {
     private final AiConversationService aiConversationService;
 
     /**
-     * 사용자 발화 한 턴을 AI로 넘겨 응답을 받는다.
+     * 통화 대화 로그를 AI로 넘겨 응답을 받는다.
+     * <p>로그는 <b>이번 사용자 발화까지 포함</b>한 append-only 이벤트 로그다(호출부가 STT final 시 append).
+     * AI 서버 계약은 {@code message}(이번 발화)와 {@code history}(이전 턴)를 분리해 받으므로,
+     * 로그의 <b>마지막 항목을 message</b>로, 그 앞을 history로 파생해 보낸다 — 쪼개는 지점만 여기로 옮긴 것.
      *
-     * @param history 이전 턴들(이번 {@code message}는 포함하지 않는다)
+     * @param conversation 이번 발화를 마지막에 포함한 대화 로그(비어 있으면 안 된다)
      * @return AI 응답. stale/AI 오류 시 {@code AiServerException}이 던져진다(호출부가 그 턴을 폐기).
      */
     public AiChatResponse respond(Long characterId, Long relationshipId,
-                                  String message, List<AiChatHistoryItem> history) {
+                                  List<AiChatHistoryItem> conversation) {
         Character character = characterRepository.findById(characterId)
                 .orElseThrow(() -> new IllegalStateException("Character not found: " + characterId));
         CharacterAiProfile profile = characterAiProfileRepository.findById(characterId)
@@ -53,6 +56,11 @@ public class CallConversationService {
                 .orElseThrow(() -> new IllegalStateException("Relationship not found: " + relationshipId));
         RelationshipStatus status = relationshipStatusRepository.findByRelationshipId(relationshipId)
                 .orElseThrow(() -> new IllegalStateException("Relationship status not found: " + relationshipId));
+
+        int last = conversation.size() - 1;
+        String message = conversation.get(last).content();
+        // subList는 뷰지만 AiChatRequest 생성자가 List.copyOf로 복사하므로 안전하다.
+        List<AiChatHistoryItem> history = conversation.subList(0, last);
 
         AiChatRequest request = new AiChatRequest(
                 UUID.randomUUID().toString(), // 멱등성 키. 턴마다 고유값(같은 값 재전송 시 409).

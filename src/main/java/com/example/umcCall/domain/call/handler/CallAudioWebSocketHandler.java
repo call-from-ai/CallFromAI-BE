@@ -203,20 +203,25 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         try {
             call.worker().execute(() -> {
                 try {
-                    // 워커 단일 스레드라 history 접근은 스레드 confine(동기화 불필요).
+                    // 이벤트 로그 방식: 발화가 '실제로 일어난 순간'에 독립적으로 append한다(user/ai 짝 아님).
+                    // 워커 단일 스레드가 유일한 writer라 로그 접근은 스레드 confine(동기화 불필요).
+
+                    // STT final 확정 → 사용자 발화를 먼저 남긴다. AI 응답 성공 여부와 무관한 사실이다.
+                    // (respond가 실패해도 남는다 — 연속 user는 이 모델에서 정상.) role은 계약대로 소문자.
+                    history.add(new AiChatHistoryItem("user", text, LocalDateTime.now()));
+
+                    // respond는 로그의 마지막(방금 넣은 user)을 이번 message로, 그 앞을 이전 턴으로 파생한다.
                     AiChatResponse response = callConversationService.respond(
-                            ticket.characterId(), ticket.relationshipId(), text, history);
+                            ticket.characterId(), ticket.relationshipId(), history);
                     String reply = response.reply();
 
-                    // 성공한 턴만 이력에 남긴다. 이번 발화는 respond의 history엔 없었고 여기서 추가된다.
-                    // role 값은 AI 서버 계약대로 소문자 "user"/"assistant".
-                    history.add(new AiChatHistoryItem("user", text, LocalDateTime.now()));
-                    history.add(new AiChatHistoryItem("assistant", reply, LocalDateTime.now()));
-
                     byte[] wav = clovaVoiceClient.synthesize(reply, AI_SPEAKER);
-                    sendAudio(session, wav);
+                    // TTS 송신 성공 시에만 AI 발화를 남긴다.
+                    if (sendAudio(session, wav)) {
+                        history.add(new AiChatHistoryItem("assistant", reply, LocalDateTime.now()));
+                    }
                 } catch (Exception e) {
-                    // stale/AI 오류 등: 그 턴만 버리고(이력 미추가·TTS 안 함) 통화는 유지한다.
+                    // stale/AI/TTS 오류 등: 이번 assistant 턴만 버린다(user 로그는 남는다). 통화는 유지.
                     log.error("[Call] AI 턴 처리 실패 → 턴 폐기. session={}", sessionId, e);
                 }
             });
@@ -229,12 +234,15 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /**
      * 합성된 wav를 이 통화의 소켓에만 바이너리 프레임으로 내려보낸다.
      * CLOVA Voice가 준 wav를 헤더째 그대로 보낸다 — 변환하지 않고 프론트가 헤더로 스펙을 읽는다.
+     *
+     * @return 실제로 송신했으면 {@code true}. 세션이 닫혔거나 송신에 실패하면 {@code false}
+     *         (호출부는 이 값으로 AI 발화를 이력에 남길지 판단한다 — 안 들린 대사는 남기지 않는다).
      */
-    private void sendAudio(WebSocketSession session, byte[] wav) {
+    private boolean sendAudio(WebSocketSession session, byte[] wav) {
         // 합성 중에 사용자가 끊은 경우. 비동기 워커에선 정상 경로다.
         if (!session.isOpen()) {
             log.debug("[Call] 세션이 닫혀 오디오를 버림. session={}, bytes={}", session.getId(), wav.length);
-            return;
+            return false;
         }
         try {
             // WebSocketSession은 스레드 안전이 아니다. 송신이 겹치면 프레임이 깨지므로 세션별로 직렬화한다.
@@ -242,10 +250,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                 session.sendMessage(new BinaryMessage(wav));
             }
             log.debug("[Call] 오디오 {} bytes 송신. session={}", wav.length, session.getId());
+            return true;
         } catch (IOException | IllegalStateException e) {
             // 송신 실패 = 사실상 소켓이 죽음. MVP 정책대로 통화를 끝낸다(STT 스트림까지 정리).
             log.error("[Call] 오디오 송신 실패 → WebSocket 종료. session={}", session.getId(), e);
             terminateCall(session, CloseStatus.SERVER_ERROR);
+            return false;
         }
     }
 
