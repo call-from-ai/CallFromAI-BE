@@ -15,6 +15,7 @@ import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -54,6 +55,7 @@ public class CallConversationService {
                 .orElseThrow(() -> new IllegalStateException("Relationship status not found: " + relationshipId));
 
         AiChatRequest request = new AiChatRequest(
+                UUID.randomUUID().toString(), // 멱등성 키. 턴마다 고유값(같은 값 재전송 시 409).
                 characterId,
                 message,
                 characterSnapshotMapper.toSnapshot(character, profile, relationship),
