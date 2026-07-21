@@ -22,8 +22,14 @@ public class WsTicketStore {
 
     private final ConcurrentHashMap<String, Entry> tickets = new ConcurrentHashMap<>();
 
-    /** 신원을 담아 티켓을 발급한다. 반환된 문자열을 프론트가 WS URL 쿼리로 되돌려 보낸다. */
+    /**
+     * 신원을 담아 티켓을 발급한다. 반환된 문자열을 프론트가 WS URL 쿼리로 되돌려 보낸다.
+     * <p>발급 시 만료된 티켓을 함께 청소한다 — 발급됐지만 끝내 소비되지 않은(WS를 안 연) 티켓은
+     * {@link #consume} 경로가 못 걷어 맵에 남으므로, 쓰기 경로에서 기회적으로 비워 무한 증가를 막는다.
+     * (별도 스케줄러 대신 기회적 청소: 청소량이 발급량에 비례하고 유휴 시엔 돌지 않는다.)
+     */
     public String issue(WsTicket ticket) {
+        tickets.values().removeIf(Entry::isExpired);
         String raw = UUID.randomUUID().toString();
         tickets.put(raw, new Entry(ticket, Instant.now().plus(TTL)));
         return raw;
