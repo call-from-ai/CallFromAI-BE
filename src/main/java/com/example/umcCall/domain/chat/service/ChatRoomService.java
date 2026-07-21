@@ -54,6 +54,16 @@ public class ChatRoomService {
     }
 
     /**
+     * 채팅방 음소거 설정.
+     * 음소거된 방은 이후 FCM 발송 판정에서 푸시를 건너뛴다.
+     */
+    @Transactional
+    public void updateMute(Long memberId, Long chatRoomId, boolean muted) {
+        ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
+        room.updateMuted(muted);
+    }
+
+    /**
      * 채팅방 목록 조회.
      * 방 목록을 한 번 조회한 뒤, 안읽음 수 / 마지막 메시지 / 캐릭터 정보를
      * 각각 IN 절 배치 조회로 모아 조립

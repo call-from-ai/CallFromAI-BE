@@ -1,14 +1,17 @@
 package com.example.umcCall.domain.chat.controller;
 
+import com.example.umcCall.domain.chat.dto.request.ChatRoomMuteRequest;
 import com.example.umcCall.domain.chat.dto.response.CharacterRoomHeader;
 import com.example.umcCall.domain.chat.dto.response.ChatRoomListResponse;
 import com.example.umcCall.domain.chat.service.ChatRoomService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -39,6 +42,16 @@ public class ChatRoomController {
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long chatRoomId) {
         chatRoomService.markAsRead(memberId, chatRoomId);
+        return ApiResponse.onSuccess();
+    }
+
+    /** 채팅방 음소거 설정. 요청받은 상태를 그대로 반영 */
+    @PatchMapping("/{chatRoomId}/mute")
+    public ApiResponse<Void> updateMute(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long chatRoomId,
+            @Valid @RequestBody ChatRoomMuteRequest request) {
+        chatRoomService.updateMute(memberId, chatRoomId, request.isMuted());
         return ApiResponse.onSuccess();
     }
 }
