@@ -16,6 +16,7 @@ public interface RelationshipRepository extends JpaRepository<Relationship, Long
     Optional<Relationship> findByCharacterIdAndCharacterDeletedAtIsNull(Long characterId);
 
     Optional<Relationship> findByMemberIdAndMainTrue(Long memberId);
+    Optional<Relationship> findByMemberIdAndMainTrueAndCharacterDeletedAtIsNull(Long memberId);
 
     List<Relationship> findByMemberId(Long memberId);
     List<Relationship> findByMemberIdAndCharacterDeletedAtIsNull(Long memberId);
