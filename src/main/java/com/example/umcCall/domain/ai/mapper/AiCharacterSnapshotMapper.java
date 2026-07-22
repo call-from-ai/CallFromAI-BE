@@ -20,6 +20,7 @@ public class AiCharacterSnapshotMapper {
                 relationship.getSpeechStyle().name(),
                 character.getJob().name(),
                 profile.getLifeType(),
+                character.getPreferTime().name(),
                 relationship.getSpiceLevel(),
                 new AiCharacterSnapshot.TraitProfile(
                         rounded(profile.getHumor()),

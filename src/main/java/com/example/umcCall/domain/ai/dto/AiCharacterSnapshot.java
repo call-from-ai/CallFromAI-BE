@@ -6,6 +6,7 @@ public record AiCharacterSnapshot(
         String responseStyle,
         String job,
         String lifeType,
+        String preferTime,
         Integer romanceStyleScore,
         TraitProfile traits
 ) {

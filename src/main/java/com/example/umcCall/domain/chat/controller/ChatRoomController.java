@@ -30,5 +30,6 @@ public class ChatRoomController {
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long chatRoomId) {
         return ApiResponse.onSuccess(chatRoomService.getRoomHeader(memberId, chatRoomId));
+
     }
 }
