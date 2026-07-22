@@ -63,4 +63,17 @@ public class TermService {
             memberTermRepository.save(memberTerm);
         }
     }
+
+    public boolean hasAgreedAllRequiredTerms(Long memberId) {
+        List<Term> requiredTerms = termRepository.findByIsRequiredTrue();
+
+        Map<Long, Boolean> agreedMap = memberTermRepository.findByMember_Id(memberId).stream()
+                .collect(Collectors.toMap(
+                        memberTerm -> memberTerm.getTerm().getId(),
+                        MemberTerm::isAgreed
+                ));
+
+        return requiredTerms.stream()
+                .allMatch(term -> agreedMap.getOrDefault(term.getId(), false));
+    }
 }

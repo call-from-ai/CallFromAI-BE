@@ -80,6 +80,12 @@ public class Relationship extends BaseTimeEntity {
         this.becameMainAt = main ? LocalDateTime.now() : null;
     }
 
+    public void updateInfo(RelationshipStage relationshipStage, Integer spiceLevel, SpeechStyle speechStyle) {
+        this.relationshipStage = relationshipStage;
+        this.spiceLevel = spiceLevel;
+        this.speechStyle = speechStyle;
+    }
+
     public void activate() {
         this.main = true;
         this.becameMainAt = LocalDateTime.now();

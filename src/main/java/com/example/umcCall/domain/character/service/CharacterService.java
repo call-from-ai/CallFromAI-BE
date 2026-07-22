@@ -1,17 +1,14 @@
 package com.example.umcCall.domain.character.service;
 
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
+import com.example.umcCall.domain.character.dto.request.CharacterUpdateRequest;
+import com.example.umcCall.domain.character.dto.request.TraitRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
-import com.example.umcCall.domain.character.dto.response.PresetImageResponse;
-import com.example.umcCall.domain.character.dto.response.TraitOptionResponse;
 import com.example.umcCall.domain.character.entity.Character;
-import com.example.umcCall.domain.character.entity.CharacterImage;
 import com.example.umcCall.domain.character.entity.CharacterTrait;
-import com.example.umcCall.domain.character.entity.PresetImages;
 import com.example.umcCall.domain.character.enums.Trait;
 import com.example.umcCall.domain.character.exception.CharacterErrorCode;
-import com.example.umcCall.domain.character.repository.CharacterImageRepository;
 import com.example.umcCall.domain.character.repository.CharacterRepository;
 import com.example.umcCall.domain.character.repository.CharacterTraitRepository;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
@@ -28,14 +25,17 @@ import com.example.umcCall.domain.ai.enums.CharacterSyncOperation;
 import com.example.umcCall.domain.ai.service.CharacterSyncTaskService;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.repository.MemberRepository;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.example.umcCall.domain.character.enums.Gender;
+
 /**
  * 캐릭터 생성/조회/활성화/삭제를 담당하는 서비스.
  */
@@ -51,7 +51,6 @@ public class CharacterService {
     private final CharacterRepository characterRepository;
     private final CharacterTraitRepository characterTraitRepository;
     private final CharacterAiProfileService characterAiProfileService;
-    private final CharacterImageRepository characterImageRepository;
     private final RelationshipRepository relationshipRepository;
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final ChatRoomService chatRoomService;
@@ -60,19 +59,10 @@ public class CharacterService {
     private final CharacterSyncTaskService syncTaskService;
     private final PresetImageRepository presetImageRepository;
 
-    // 프리셋 이미지 목록 조회
-    public List<PresetImageResponse> getPresetImages(Gender gender) {
-        return PresetImages.of(gender).stream()
-                .map(url -> PresetImageResponse.builder().imageUrl(url).build())
-                .toList();
-    }
 
     // 캐릭터 생성 (관계, 관계 통계, 채팅방 함께 생성) — 응답 바디 없음
     @Transactional
     public void createCharacter(Long memberId, CharacterCreateRequest request) {
-        // TODO: Member 엔티티에 characterCreatedAt 필드 생기면 24시간 재생성 제한 검증 추가
-        // member.getCharacterCreatedAt() 기준으로 24시간 안 지났으면 CharacterErrorCode.CHARACTER_RECREATE_TOO_SOON 던지기
-
         // 동시 요청으로 인한 개수 초과/메인 중복 생성을 막기 위해 회원 행에 락을 건다
         Member member = lockMember(memberId);
 
@@ -90,7 +80,7 @@ public class CharacterService {
                 && !presetImageRepository.existsByGenderAndImageUrl(request.getGender(), request.getImageUrl())) {
             throw new BaseException(CharacterErrorCode.INVALID_PRESET_IMAGE);
         }
-        validateTraits(request);
+        validateTraits(request.getTraits());
 
         Character character = characterRepository.save(
                 Character.builder()
@@ -101,17 +91,9 @@ public class CharacterService {
                         .job(request.getJob())
                         .preferTime(request.getPreferTime())
                         .mbti(request.getMbti())
+                        .imageUrl(request.getImageUrl())
                         .build()
         );
-
-        if (request.getImageUrl() != null) {
-            characterImageRepository.save(
-                    CharacterImage.builder()
-                            .character(character)
-                            .imageUrl(request.getImageUrl())
-                            .build()
-            );
-        }
 
         List<CharacterTrait> savedTraits = request.getTraits().stream()
                 .map(traitRequest -> characterTraitRepository.save(
@@ -155,9 +137,8 @@ public class CharacterService {
         Relationship relationship = relationshipRepository.findByMemberIdAndMainTrue(memberId)
                 .orElseThrow(() -> new BaseException(CharacterErrorCode.NO_ACTIVE_CHARACTER));
         Character character = relationship.getCharacter();
-        List<CharacterTrait> characterTraits = characterTraitRepository.findByCharacterId(character.getId());
-        String imageUrl = getImageUrl(character.getId());
-        return CharacterResponse.of(character, relationship, characterTraits, imageUrl);
+        List<CharacterTrait> characterTraits = characterTraitRepository.findByCharacterIdOrderByPriorityAsc(character.getId());
+        return CharacterResponse.of(character, relationship, characterTraits, character.getImageUrl());
     }
 
     // 내 캐릭터 목록 조회 (최대 5개라 페이지네이션 없음)
@@ -166,21 +147,59 @@ public class CharacterService {
         return relationshipRepository.findByMemberIdAndCharacterDeletedAtIsNull(memberId).stream()
                 .map(relationship -> {
                     Character character = relationship.getCharacter();
-                    String imageUrl = getImageUrl(character.getId());
                     LocalDateTime lastMessageAt = chatRoomRepository.findByRelationshipId(relationship.getId())
                             .map(ChatRoom::getLastMessageAt)
                             .orElse(null);
+                    int daysTogether = (int) ChronoUnit.DAYS.between(relationship.getStartedAt(), LocalDate.now()) + 1;
                     return CharacterSummaryResponse.builder()
                             .characterId(character.getId())
                             .name(character.getName())
-                            .imageUrl(imageUrl)
+                            .imageUrl(character.getImageUrl())
                             .main(relationship.isMain())
                             .createdAt(character.getCreatedAt())
                             .startedAt(relationship.getStartedAt())
+                            .daysTogether(daysTogether)
                             .lastMessageAt(lastMessageAt)
                             .build();
                 })
                 .toList();
+    }
+
+    // 캐릭터 수정
+    @Transactional
+    public void updateCharacter(Long memberId, Long characterId, CharacterUpdateRequest request) {
+        Relationship relationship = getOwnedRelationship(memberId, characterId);
+        Character character = relationship.getCharacter();
+
+        if (character.isEdited()) {
+            throw new BaseException(CharacterErrorCode.CHARACTER_ALREADY_EDITED);
+        }
+
+        if (request.getImageUrl() != null
+                && !presetImageRepository.existsByGenderAndImageUrl(request.getGender(), request.getImageUrl())) {
+            throw new BaseException(CharacterErrorCode.INVALID_PRESET_IMAGE);
+        }
+
+        validateTraits(request.getTraits());
+
+        character.updateProfile(
+                request.getLastName(), request.getFirstName(), request.getGender(),
+                request.getAge(), request.getJob(), request.getPreferTime(),
+                request.getMbti(), request.getImageUrl()
+        );
+
+        relationship.updateInfo(request.getRelationshipStage(), request.getSpiceLevel(), request.getSpeechStyle());
+
+        characterTraitRepository.deleteByCharacterId(characterId);
+        List<CharacterTrait> savedTraits = request.getTraits().stream()
+                .map(traitRequest -> characterTraitRepository.save(
+                        CharacterTrait.builder()
+                                .character(character)
+                                .trait(traitRequest.getTrait())
+                                .priority(traitRequest.getPriority())
+                                .build()))
+                .toList();
+        characterAiProfileService.calculateAndSave(character, savedTraits);
     }
 
     // 활성 캐릭터 변경
@@ -218,9 +237,9 @@ public class CharacterService {
         }
 
         Character character = relationship.getCharacter();
-        if (character.getCreatedAt().plusHours(MIN_DELETE_INTERVAL_HOURS).isAfter(LocalDateTime.now())) {
-            throw new BaseException(CharacterErrorCode.CHARACTER_DELETE_TOO_SOON);
-        }
+//        if (character.getCreatedAt().plusHours(MIN_DELETE_INTERVAL_HOURS).isAfter(LocalDateTime.now())) {
+//            throw new BaseException(CharacterErrorCode.CHARACTER_DELETE_TOO_SOON);
+//        }
 
         character.markDeleted();
         relationship.deactivate();
@@ -228,15 +247,8 @@ public class CharacterService {
         syncTaskService.enqueue(characterId, CharacterSyncOperation.DELETE);
     }
 
-    // 캐릭터의 프리셋 이미지 URL 조회 (없으면 null)
-    private String getImageUrl(Long characterId) {
-        return characterImageRepository.findByCharacterId(characterId)
-                .map(CharacterImage::getImageUrl)
-                .orElse(null);
-    }
 
     // 회원 행에 비관적 락을 걸어 캐릭터 개수/메인 지정 동시성 문제를 막는다.
-    // TODO: Member 엔티티가 생기면 MemberRepository에 @Lock(PESSIMISTIC_WRITE) 조회 메서드를 만들어 이 네이티브 쿼리를 대체할 것
     private Member lockMember(Long memberId) {
         return memberRepository.findByIdForUpdate(memberId)
                 .orElseThrow(() -> new BaseException(
@@ -250,16 +262,16 @@ public class CharacterService {
         }
     }
 
-    private void validateTraits(CharacterCreateRequest request) {
-        Set<Trait> traits = request.getTraits().stream()
-                .map(trait -> trait.getTrait())
+    private void validateTraits(List<TraitRequest> traitRequests) {
+        Set<Trait> traits = traitRequests.stream()
+                .map(TraitRequest::getTrait)
                 .collect(Collectors.toSet());
-        Set<Integer> priorities = request.getTraits().stream()
-                .map(trait -> trait.getPriority())
+        Set<Integer> priorities = traitRequests.stream()
+                .map(TraitRequest::getPriority)
                 .collect(Collectors.toSet());
-        boolean continuous = priorities.size() == request.getTraits().size()
-                && priorities.stream().allMatch(priority -> priority >= 1 && priority <= request.getTraits().size());
-        if (traits.size() != request.getTraits().size() || !continuous) {
+        boolean continuous = priorities.size() == traitRequests.size()
+                && priorities.stream().allMatch(priority -> priority >= 1 && priority <= traitRequests.size());
+        if (traits.size() != traitRequests.size() || !continuous) {
             throw new BaseException(CharacterErrorCode.INVALID_TRAIT_SELECTION);
         }
     }

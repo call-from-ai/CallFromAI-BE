@@ -1,11 +1,9 @@
 package com.example.umcCall.domain.character.controller;
 
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
+import com.example.umcCall.domain.character.dto.request.CharacterUpdateRequest;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
-import com.example.umcCall.domain.character.dto.response.PresetImageResponse;
-import com.example.umcCall.domain.character.enums.Gender;
-import com.example.umcCall.domain.character.dto.response.TraitOptionResponse;
 import com.example.umcCall.domain.character.service.CharacterService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,6 +12,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -21,7 +20,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,13 +35,6 @@ public class CharacterController {
 
     private final CharacterService characterService;
 
-    // 프리셋 이미지 목록 조회
-    @Operation(summary = "프리셋 이미지 목록 조회", description = "성별에 맞는 기본 프로필 이미지 URL 목록을 반환한다.")
-    @GetMapping("/preset-images")
-    public ApiResponse<List<PresetImageResponse>> getPresetImages(
-            @RequestParam Gender gender) {
-        return ApiResponse.onSuccess(characterService.getPresetImages(gender));
-    }
 
     // 캐릭터 생성
     @Operation(summary = "캐릭터 생성", description = "온보딩에서 입력한 정보로 캐릭터를 생성한다. 매력 키워드는 1~5개이며 enum code로 전달한다.")
@@ -56,6 +47,17 @@ public class CharacterController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.onSuccess(
                         com.example.umcCall.global.apiPayload.code.GeneralSuccessCode.CREATED, null));
+    }
+
+    // 캐릭터 정보 수정
+    @Operation(summary = "캐릭터 정보 수정", description = "캐릭터 정보를 수정한다. 최초 1회만 가능하다.")
+    @PatchMapping("/{characterId}")
+    public ApiResponse<Void> updateCharacter(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long characterId,
+            @RequestBody @Valid CharacterUpdateRequest request) {
+        characterService.updateCharacter(memberId, characterId, request);
+        return ApiResponse.onSuccess();
     }
 
     // 현재 활성 캐릭터 조회

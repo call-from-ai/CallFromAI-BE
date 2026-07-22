@@ -1,8 +1,6 @@
 package com.example.umcCall.domain.chat.service;
 
 import com.example.umcCall.domain.character.entity.Character;
-import com.example.umcCall.domain.character.entity.CharacterImage;
-import com.example.umcCall.domain.character.repository.CharacterImageRepository;
 import com.example.umcCall.domain.chat.dto.response.CharacterRoomHeader;
 import com.example.umcCall.domain.chat.exception.ChatErrorCode;
 import com.example.umcCall.domain.chat.exception.ChatException;
@@ -23,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class ChatRoomHeaderAssembler {
 
     private final RelationshipRepository relationshipRepository;
-    private final CharacterImageRepository characterImageRepository;
 
     @Transactional(readOnly = true)
     public CharacterRoomHeader assemble(Long chatRoomId, Long relationshipId) {
@@ -36,10 +33,6 @@ public class ChatRoomHeaderAssembler {
                 .orElseThrow(() -> new ChatException(ChatErrorCode.CHATROOM_NOT_FOUND));
         Character character = relationship.getCharacter();
 
-        String imageUrl = characterImageRepository.findByCharacterId(character.getId())
-                .map(CharacterImage::getImageUrl)
-                .orElse(null);
-
         // 관계 시작일 당일을 D+1로 계산
         int dDay = (int) ChronoUnit.DAYS.between(relationship.getStartedAt(), LocalDate.now()) + 1;
 
@@ -47,7 +40,7 @@ public class ChatRoomHeaderAssembler {
                 chatRoomId,
                 character.getId(),
                 character.getFirstName(),
-                imageUrl,
+                character.getImageUrl(),
                 relationship.isMain(),
                 dDay
         );

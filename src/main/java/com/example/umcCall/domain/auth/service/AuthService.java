@@ -8,6 +8,7 @@ import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.enums.SocialType;
 import com.example.umcCall.domain.member.repository.MemberRepository;
+import com.example.umcCall.domain.term.service.TermService;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.example.umcCall.global.exception.BaseException;
 import com.example.umcCall.global.security.JwtProvider;
@@ -23,6 +24,7 @@ public class AuthService {
     private final MemberRepository memberRepository;
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final TermService termService;
 
     @Transactional
     public TokenResponse kakaoLogin(String kakaoAccessToken) {
@@ -34,7 +36,7 @@ public class AuthService {
                         Member.createBySocialLogin(socialUid, SocialType.KAKAO)
                 ));
 
-        return issueTokens(member.getId(), !member.isOnboardingCompleted());
+        return issueTokens(member);
     }
 
     @Transactional
@@ -58,7 +60,7 @@ public class AuthService {
             throw new BaseException(GeneralErrorCode.INVALID_TOKEN, "탈퇴한 회원입니다.");
         }
 
-        return issueTokens(memberId, !member.isOnboardingCompleted());
+        return issueTokens(member);
     }
 
     @Transactional
@@ -68,7 +70,7 @@ public class AuthService {
                         Member.createBySocialLogin(socialUid, SocialType.KAKAO)
                 ));
 
-        return issueTokens(member.getId(), !member.isOnboardingCompleted());
+        return issueTokens(member);
     }
 
     @Transactional
@@ -77,7 +79,8 @@ public class AuthService {
                 .ifPresent(refreshTokenRepository::delete);
     }
 
-    private TokenResponse issueTokens(Long memberId, boolean needsOnboarding) {
+    private TokenResponse issueTokens(Member member) {
+        Long memberId = member.getId();
         String accessToken = jwtProvider.createAccessToken(memberId);
         String refreshToken = jwtProvider.createRefreshToken(memberId);
 
@@ -86,6 +89,9 @@ public class AuthService {
         tokenEntity.updateToken(refreshToken);
         refreshTokenRepository.save(tokenEntity);
 
-        return new TokenResponse(accessToken, refreshToken, needsOnboarding);
+        boolean needsOnboarding = !member.isOnboardingCompleted();
+        boolean needsTermsAgreement = !termService.hasAgreedAllRequiredTerms(memberId);
+
+        return new TokenResponse(accessToken, refreshToken, needsOnboarding, needsTermsAgreement);
     }
 }

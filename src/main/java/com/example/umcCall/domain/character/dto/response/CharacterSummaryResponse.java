@@ -18,5 +18,6 @@ public class CharacterSummaryResponse {
     private boolean main;
     private LocalDateTime createdAt;
     private LocalDate startedAt;
+    private int daysTogether;
     private LocalDateTime lastMessageAt;
 }

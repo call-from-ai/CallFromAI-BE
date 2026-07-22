@@ -1,7 +1,6 @@
 package com.example.umcCall.domain.character.service;
 
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
-import com.example.umcCall.domain.character.repository.CharacterImageRepository;
 import com.example.umcCall.domain.character.repository.CharacterRepository;
 import com.example.umcCall.domain.character.repository.CharacterTraitRepository;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
@@ -19,7 +18,6 @@ public class CharacterHardDeleteService {
 
     private final CharacterRepository characterRepository;
     private final CharacterTraitRepository characterTraitRepository;
-    private final CharacterImageRepository characterImageRepository;
     private final CharacterAiProfileRepository characterAiProfileRepository;
     private final RelationshipRepository relationshipRepository;
     private final RelationshipStatusRepository relationshipStatusRepository;
@@ -39,7 +37,6 @@ public class CharacterHardDeleteService {
 
         characterAiProfileRepository.deleteById(characterId);
         characterTraitRepository.deleteByCharacterId(characterId);
-        characterImageRepository.deleteByCharacterId(characterId);
         characterRepository.deleteById(characterId);
     }
 }

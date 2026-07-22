@@ -43,7 +43,7 @@ public class CharacterAiProfileService implements ApplicationRunner {
                         || profile.getCalculationVersion() < CALCULATION_VERSION)
                 .forEach(profile -> calculateAndSave(
                         profile.getCharacter(),
-                        characterTraitRepository.findByCharacterId(profile.getCharacterId())));
+                        characterTraitRepository.findByCharacterIdOrderByPriorityAsc(profile.getCharacterId())));
     }
 
     static CharacterAiProfile.Scores calculate(Character character, List<CharacterTrait> traits) {
@@ -98,7 +98,7 @@ public class CharacterAiProfileService implements ApplicationRunner {
 
     private static String lifeType(Character character) {
         return switch (character.getJob()) {
-            case STUDENT -> "STUDENT";
+            case UNIVERSITY_STUDENT -> "STUDENT";
             case EMPLOYED -> "WORKER";
             case UNEMPLOYED -> "FLEXIBLE";
         };

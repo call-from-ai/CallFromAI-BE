@@ -52,6 +52,9 @@ public class Character extends BaseTimeEntity {
 
     private String mbti;
 
+    @Column(name = "image_url", length = 2048)
+    private String imageUrl;
+
     // 정보 수정 1회 제한
     @Column(name = "is_edited")
     private boolean edited;
@@ -61,7 +64,7 @@ public class Character extends BaseTimeEntity {
 
     @Builder
     public Character(String lastName, String firstName, Gender gender, Integer age, Job job,
-                      PreferTime preferTime, String mbti) {
+                      PreferTime preferTime, String mbti, String imageUrl) {
         this.lastName = lastName;
         this.firstName = firstName;
         this.gender = gender;
@@ -70,10 +73,24 @@ public class Character extends BaseTimeEntity {
         this.preferTime = preferTime;
         this.mbti = mbti;
         this.edited = false;
+        this.imageUrl = imageUrl;
     }
 
     public String getName() {
         return lastName + firstName;
+    }
+
+    public void updateProfile(String lastName, String firstName, Gender gender, Integer age,
+                              Job job, PreferTime preferTime, String mbti, String imageUrl) {
+        this.lastName = lastName;
+        this.firstName = firstName;
+        this.gender = gender;
+        this.age = age;
+        this.job = job;
+        this.preferTime = preferTime;
+        this.mbti = mbti;
+        this.imageUrl = imageUrl;
+        this.edited = true;
     }
 
     public void markDeleted() {
