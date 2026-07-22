@@ -34,6 +34,7 @@ public class ChatRoomController {
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long chatRoomId) {
         return ApiResponse.onSuccess(chatRoomService.getRoomHeader(memberId, chatRoomId));
+
     }
 
     /** 채팅방 읽음 처리. 방의 안 읽은 수신 메시지를 일괄 읽음 처리한다. */
