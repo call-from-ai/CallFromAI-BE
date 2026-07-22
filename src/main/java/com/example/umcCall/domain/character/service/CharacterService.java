@@ -158,6 +158,7 @@ public class CharacterService {
                             .main(relationship.isMain())
                             .createdAt(character.getCreatedAt())
                             .startedAt(relationship.getStartedAt())
+                            .daysTogether(daysTogether)
                             .lastMessageAt(lastMessageAt)
                             .build();
                 })
