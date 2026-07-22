@@ -9,7 +9,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface CharacterTraitRepository extends JpaRepository<CharacterTrait, Long> {
 
-    List<CharacterTrait> findByCharacterId(Long characterId);
-
+    List<CharacterTrait> findByCharacterIdOrderByPriorityAsc(Long characterId);
     void deleteByCharacterId(Long characterId);
 }

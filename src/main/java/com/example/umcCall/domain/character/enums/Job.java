@@ -5,7 +5,7 @@ package com.example.umcCall.domain.character.enums;
  * 캐릭터 직업. DB와 JSON은 영문 code를 사용하고, label은 화면 표시용이다.
  */
 public enum Job {
-    STUDENT("대학생"),
+    UNIVERSITY_STUDENT("대학생"),
     EMPLOYED("직장인"),
     UNEMPLOYED("무직");
 

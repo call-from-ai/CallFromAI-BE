@@ -32,9 +32,9 @@ public class MemberController {
     }
 
     @Operation(
-            summary = "내 정보 수정",
+            summary = "내 정보 입력 및 수정",
             description = """
-                    인증된 회원의 프로필 정보를 수정한다.
+                    인증된 회원의 프로필 정보를 입력/수정한다.
                     요청에 포함된 이름, 프로필 이미지, 성별, 생년월일, MBTI, 직업의 정보를 갱신한다.
                     """
     )
