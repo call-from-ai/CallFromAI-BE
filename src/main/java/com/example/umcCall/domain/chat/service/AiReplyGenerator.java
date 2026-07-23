@@ -16,6 +16,7 @@ import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,8 +52,9 @@ public class AiReplyGenerator {
         AiRelationshipSnapshot relationshipSnapshot = relationshipSnapshotMapper.toSnapshot(relationship, status);
 
         AiChatRequest request = new AiChatRequest(
+                UUID.randomUUID().toString(),   // 멱등성 키. 논리 요청마다 고유값(같은 값 재전송 시 AI 서버가 409)
                 character.getId(), userMessage, characterSnapshot, relationshipSnapshot, history);
         AiChatResponse response = aiConversationService.chat(request);
-        return response.message();
+        return response.reply();
     }
 }

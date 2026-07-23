@@ -4,6 +4,7 @@ import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.chat.dto.response.ChatMessageResponse;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
+import com.example.umcCall.domain.chat.enums.SenderType;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.domain.chat.service.AiReplyGenerator;
@@ -64,7 +65,12 @@ public class AiReplyEventListener {
                 chatRoomId, null, beforeMessageId, PageRequest.of(0, HISTORY_SIZE)));
         Collections.reverse(recent);   // DESC → ASC(과거→최신)
         return recent.stream()
-                .map(m -> new AiChatHistoryItem(m.getSenderType().name(), m.getContent(), m.getCreatedAt()))
+                .map(m -> new AiChatHistoryItem(toRole(m.getSenderType()), m.getContent(), m.getCreatedAt()))
                 .toList();
+    }
+
+    /** 발신자 타입을 AI 서버 계약의 role 값으로 변환한다. 유저=user, 그 외(AI/SYSTEM)=assistant. */
+    private String toRole(SenderType senderType) {
+        return senderType == SenderType.USER ? "user" : "assistant";
     }
 }
