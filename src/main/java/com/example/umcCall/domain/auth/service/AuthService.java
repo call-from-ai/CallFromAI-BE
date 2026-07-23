@@ -4,9 +4,11 @@ import com.example.umcCall.domain.auth.client.KakaoApiClient;
 import com.example.umcCall.domain.auth.dto.response.KakaoUserResponse;
 import com.example.umcCall.domain.auth.dto.response.TokenResponse;
 import com.example.umcCall.domain.auth.entity.RefreshToken;
+import com.example.umcCall.domain.auth.exception.AuthErrorCode;
 import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.enums.SocialType;
+import com.example.umcCall.domain.member.exception.MemberErrorCode;
 import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.domain.term.service.TermService;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
@@ -45,19 +47,19 @@ public class AuthService {
         Long memberId = jwtProvider.getMemberId(refreshToken);
 
         RefreshToken saved = refreshTokenRepository.findByMemberId(memberId)
-                .orElseThrow(() -> new BaseException(GeneralErrorCode.INVALID_TOKEN));
+                .orElseThrow(() -> new BaseException(AuthErrorCode.INVALID_TOKEN));
 
         if (!saved.getToken().equals(refreshToken)) {
-            throw new BaseException(GeneralErrorCode.INVALID_TOKEN, "이미 사용되었거나 유효하지 않은 리프레시 토큰입니다.");
+            throw new BaseException(AuthErrorCode.INVALID_TOKEN);
         }
 
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new BaseException(GeneralErrorCode.MEMBER_NOT_FOUND));
+                .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
 
 
         // 탈퇴한 회원은 재발급 못 받게 하기
         if (member.getIsInactive()) {
-            throw new BaseException(GeneralErrorCode.INVALID_TOKEN, "탈퇴한 회원입니다.");
+            throw new BaseException(AuthErrorCode.INACTIVE_MEMBER);
         }
 
         return issueTokens(member);

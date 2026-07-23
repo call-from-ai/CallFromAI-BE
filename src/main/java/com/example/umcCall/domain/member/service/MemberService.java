@@ -4,6 +4,7 @@ import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
 import com.example.umcCall.domain.member.dto.response.MemberResponse;
 import com.example.umcCall.domain.member.dto.request.MemberUpdateRequest;
 import com.example.umcCall.domain.member.entity.Member;
+import com.example.umcCall.domain.member.exception.MemberErrorCode;
 import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.example.umcCall.global.exception.BaseException;
@@ -44,6 +45,6 @@ public class MemberService {
 
     private Member findMember(Long memberId) {
         return memberRepository.findById(memberId)
-                .orElseThrow(() -> new BaseException(GeneralErrorCode.MEMBER_NOT_FOUND));
+                .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
     }
 }
