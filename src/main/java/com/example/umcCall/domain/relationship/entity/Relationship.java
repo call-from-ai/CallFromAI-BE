@@ -15,6 +15,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Version;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
@@ -44,6 +46,10 @@ public class Relationship extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     private RelationshipStage relationshipStage;
 
+    // 관계 온도(AI relationshipTemperatureScore) baseline. 항상 0~100 범위를 보장한다.
+    @Column(nullable = false)
+    @Min(0)
+    @Max(100)
     private Integer affinityScore;
 
     private Integer floorScore;
@@ -72,7 +78,7 @@ public class Relationship extends BaseTimeEntity {
         this.memberId = memberId;
         this.character = character;
         this.relationshipStage = relationshipStage;
-        this.affinityScore = 0;
+        this.affinityScore = 50;
         this.spiceLevel = spiceLevel;
         this.speechStyle = speechStyle;
         this.startedAt = LocalDate.now();
