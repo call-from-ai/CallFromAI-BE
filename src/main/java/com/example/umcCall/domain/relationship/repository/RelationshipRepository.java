@@ -20,6 +20,8 @@ public interface RelationshipRepository extends JpaRepository<Relationship, Long
     List<Relationship> findByMemberId(Long memberId);
     List<Relationship> findByMemberIdAndCharacterDeletedAtIsNull(Long memberId);
 
+    List<Relationship> findByCharacterDeletedAtIsNull();
+
     int countByMemberId(Long memberId);
     int countByMemberIdAndCharacterDeletedAtIsNull(Long memberId);
 }
