@@ -1,6 +1,8 @@
 package com.example.umcCall.domain.chat.controller;
 
 import com.example.umcCall.domain.chat.service.ChatSseService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -13,6 +15,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * 채팅 실시간 이벤트 구독(SSE). 유저당 전역 연결 1개로 자기 모든 방의 이벤트를 받는다.
  * 경로 "/subscribe"는 리터럴이라 "/{chatRoomId}"보다 우선 매칭
  */
+@Tag(name = "채팅 실시간(SSE)", description = "채팅 실시간 이벤트 구독 API")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/chat-rooms")
@@ -21,6 +24,9 @@ public class ChatSseController {
     private final ChatSseService chatSseService;
 
     /** SSE 구독. text/event-stream으로 연결을 열어 유지한다. */
+    @Operation(summary = "실시간 이벤트 구독(SSE)",
+            description = "text/event-stream 연결을 열어 내 모든 방의 새 메시지를 실시간으로 받는다. "
+                    + "브라우저 EventSource나 curl로 연결하며, Swagger UI에서는 테스트가 어렵다.")
     @GetMapping(value = "/subscribe", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter subscribe(@AuthenticationPrincipal Long memberId) {
         return chatSseService.subscribe(memberId);
