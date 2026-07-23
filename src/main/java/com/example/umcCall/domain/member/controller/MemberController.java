@@ -1,11 +1,15 @@
 package com.example.umcCall.domain.member.controller;
 
+import com.example.umcCall.domain.member.dto.request.DoNotDisturbUpdateRequest;
+import com.example.umcCall.domain.member.dto.request.NotificationSettingUpdateRequest;
 import com.example.umcCall.domain.member.dto.response.MemberResponse;
 import com.example.umcCall.domain.member.dto.request.MemberUpdateRequest;
+import com.example.umcCall.domain.member.dto.response.NotificationSettingResponse;
 import com.example.umcCall.domain.member.service.MemberService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -57,5 +61,28 @@ public class MemberController {
     public ResponseEntity<ApiResponse<Void>> withdraw(@AuthenticationPrincipal Long memberId) {
         memberService.withdraw(memberId);
         return ResponseEntity.ok(ApiResponse.onSuccess());
+    }
+
+    @Operation(summary = "알림 설정 조회", description = "전체 알림, 심야 통화 허용, 방해 금지 시간 설정을 조회한다.")
+    @GetMapping("/me/notification-settings")
+    public ResponseEntity<ApiResponse<NotificationSettingResponse>> getNotificationSetting(
+            @AuthenticationPrincipal Long memberId) {
+        return ResponseEntity.ok(ApiResponse.onSuccess(memberService.getNotificationSetting(memberId)));
+    }
+
+    @Operation(summary = "알림 토글 설정 변경", description = "전체 알림, 심야 통화 허용 여부를 변경한다.")
+    @PatchMapping("/me/notification-settings")
+    public ResponseEntity<ApiResponse<NotificationSettingResponse>> updateNotificationSetting(
+            @AuthenticationPrincipal Long memberId,
+            @RequestBody NotificationSettingUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.onSuccess(memberService.updateNotificationSetting(memberId, request)));
+    }
+
+    @Operation(summary = "방해 금지 시간 설정", description = "방해 금지 시작/종료 시간을 설정한다.")
+    @PatchMapping("/me/notification-settings/do-not-disturb")
+    public ResponseEntity<ApiResponse<NotificationSettingResponse>> updateDoNotDisturb(
+            @AuthenticationPrincipal Long memberId,
+            @RequestBody @Valid DoNotDisturbUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.onSuccess(memberService.updateDoNotDisturb(memberId, request)));
     }
 }

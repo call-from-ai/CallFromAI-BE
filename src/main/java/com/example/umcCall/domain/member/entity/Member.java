@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "member")
@@ -66,12 +67,26 @@ public class Member extends BaseTimeEntity {
     @Column(name = "is_inactive", nullable = false)
     private Boolean isInactive;
 
+    @Column(name = "all_notification_enabled", nullable = false)
+    private boolean allNotificationEnabled;
+
+    @Column(name = "night_call_allowed", nullable = false)
+    private boolean nightCallAllowed;
+
+    @Column(name = "do_not_disturb_start")
+    private LocalTime doNotDisturbStart;
+
+    @Column(name = "do_not_disturb_end")
+    private LocalTime doNotDisturbEnd;
+
     @Builder
     private Member(String socialUid, SocialType socialType) {
         this.socialUid = socialUid;
         this.socialType = socialType;
         this.callTicketBalance = 0;
         this.isInactive = false;
+        this.allNotificationEnabled = true;
+        this.nightCallAllowed = true;
     }
 
     public static Member createBySocialLogin(String socialUid, SocialType socialType) {
@@ -102,6 +117,16 @@ public class Member extends BaseTimeEntity {
 
     public void markCharacterCreated() {
         this.characterCreatedAt = LocalDateTime.now();
+    }
+
+    public void updateNotificationSetting(Boolean allNotificationEnabled, Boolean nightCallAllowed) {
+        if (allNotificationEnabled != null) this.allNotificationEnabled = allNotificationEnabled;
+        if (nightCallAllowed != null) this.nightCallAllowed = nightCallAllowed;
+    }
+
+    public void updateDoNotDisturb(LocalTime start, LocalTime end) {
+        this.doNotDisturbStart = start;
+        this.doNotDisturbEnd = end;
     }
 }
 

@@ -1,8 +1,11 @@
 package com.example.umcCall.domain.member.service;
 
 import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
+import com.example.umcCall.domain.member.dto.request.DoNotDisturbUpdateRequest;
+import com.example.umcCall.domain.member.dto.request.NotificationSettingUpdateRequest;
 import com.example.umcCall.domain.member.dto.response.MemberResponse;
 import com.example.umcCall.domain.member.dto.request.MemberUpdateRequest;
+import com.example.umcCall.domain.member.dto.response.NotificationSettingResponse;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.exception.MemberErrorCode;
 import com.example.umcCall.domain.member.repository.MemberRepository;
@@ -46,5 +49,24 @@ public class MemberService {
     private Member findMember(Long memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
+    }
+
+    public NotificationSettingResponse getNotificationSetting(Long memberId) {
+        Member member = findMember(memberId);
+        return NotificationSettingResponse.from(member);
+    }
+
+    @Transactional
+    public NotificationSettingResponse updateNotificationSetting(Long memberId, NotificationSettingUpdateRequest request) {
+        Member member = findMember(memberId);
+        member.updateNotificationSetting(request.allNotificationEnabled(), request.nightCallAllowed());
+        return NotificationSettingResponse.from(member);
+    }
+
+    @Transactional
+    public NotificationSettingResponse updateDoNotDisturb(Long memberId, DoNotDisturbUpdateRequest request) {
+        Member member = findMember(memberId);
+        member.updateDoNotDisturb(request.startTime(), request.endTime());
+        return NotificationSettingResponse.from(member);
     }
 }
