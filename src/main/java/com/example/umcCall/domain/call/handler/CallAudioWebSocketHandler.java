@@ -327,11 +327,31 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             finishCall(ticket.callId());
         }
         if (session.isOpen()) {
+            // 비정상 종료(SERVER_ERROR)는 close 전에 원인을 통지한다 — 정상 완료(NORMAL)엔 통지 없음.
+            if (status.getCode() != CloseStatus.NORMAL.getCode()) {
+                notifyServerError(session);
+            }
             try {
                 session.close(status);
             } catch (IOException e) {
                 log.warn("[Call] WebSocket 종료 실패. session={}", session.getId(), e);
             }
+        }
+    }
+
+    /**
+     * 서버 주도 종료 직전, 클라이언트가 원인을 감지하도록 JSON 제어 메시지를 보낸다.
+     * best-effort — 통지 실패가 정리·종료를 막지 않는다. 원인별 reason 세분화는 후순위.
+     */
+    private void notifyServerError(WebSocketSession session) {
+        try {
+            String payload = objectMapper.writeValueAsString(
+                    Map.of("type", "error", "reason", "server_error"));
+            synchronized (session) { // WebSocketSession은 스레드 안전이 아니다 — 세션별 직렬화
+                session.sendMessage(new TextMessage(payload));
+            }
+        } catch (IOException | RuntimeException e) {
+            log.warn("[Call] 종료 통지 전송 실패(무시). session={}", session.getId(), e);
         }
     }
 

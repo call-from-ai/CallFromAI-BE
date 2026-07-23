@@ -59,8 +59,11 @@ public class Call extends BaseTimeEntity {
                 CallStatus.DIALING : CallStatus.RINGING;
     }
 
-    /** 통화 연결됨. DIALING 또는 RINGING → IN_PROGRESS */
+    /** 통화 연결됨. 연결 대기 중(DIALING 또는 RINGING)에서만 IN_PROGRESS로 전이한다. */
     public void connect() {
+        if (status != CallStatus.DIALING && status != CallStatus.RINGING) {
+            throw new IllegalStateException("연결 대기 중인 통화만 연결할 수 있습니다. 현재 상태=" + status);
+        }
         this.status = CallStatus.IN_PROGRESS;
         this.startedAt = LocalDateTime.now();
     }
