@@ -17,6 +17,7 @@ java {
 ext {
 	grpcVersion = '1.68.1'
 	protobufVersion = '3.25.5'
+	awsSdkVersion = '2.28.29'
 }
 
 configurations {
@@ -48,6 +49,10 @@ dependencies {
 	// JPA / MySQL
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'com.mysql:mysql-connector-j'
+
+	// AWS S3 (채팅 사진 업로드)
+	implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
+	implementation 'software.amazon.awssdk:s3'
 
 	// Security / JWT
 	implementation 'org.springframework.boot:spring-boot-starter-security'
