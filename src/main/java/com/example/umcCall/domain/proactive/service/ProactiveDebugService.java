@@ -22,9 +22,10 @@ public class ProactiveDebugService {
     private final ProactiveScheduleCoordinator coordinator;
     private final ProactiveContactProcessor processor;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ProactiveScheduleResponse getStatus(Long memberId) {
         Relationship relationship = currentRelationship(memberId);
+        coordinator.create(relationship);
         ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
                 .orElseThrow(() -> new IllegalStateException("Proactive schedule not found"));
         Double attachment = profileRepository.findById(relationship.getCharacter().getId())
@@ -43,6 +44,7 @@ public class ProactiveDebugService {
     @Transactional
     public ProactiveScheduleResponse forceDue(Long memberId) {
         Relationship relationship = currentRelationship(memberId);
+        coordinator.create(relationship);
         ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
                 .orElseThrow(() -> new IllegalStateException("Proactive schedule not found"));
         schedule.forceDue(LocalDateTime.now());
@@ -54,6 +56,7 @@ public class ProactiveDebugService {
 
     public ProactiveProcessResponse processNow(Long memberId) {
         Relationship relationship = currentRelationship(memberId);
+        coordinator.create(relationship);
         ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
                 .orElseThrow(() -> new IllegalStateException("Proactive schedule not found"));
         ProactiveContactProcessor.Claim claim = processor.claim(schedule.getId(), LocalDateTime.now());
@@ -65,6 +68,7 @@ public class ProactiveDebugService {
 
     public ProactiveProcessResponse forceSend(Long memberId) {
         Relationship relationship = currentRelationship(memberId);
+        coordinator.create(relationship);
         ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
                 .orElseThrow(() -> new IllegalStateException("Proactive schedule not found"));
         ProactiveContactProcessor.Claim claim = processor.forceClaimForDebug(schedule.getId());
