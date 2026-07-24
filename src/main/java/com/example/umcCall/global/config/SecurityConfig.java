@@ -43,7 +43,8 @@ public class SecurityConfig {
                                 "/auth/kakao",
                                 "/auth/refresh",
                                 "/test/**",
-                                "/preset-images"
+                                "/preset-images",
+                                "/ws/**" // WS 핸드셰이크는 JWT 헤더를 못 실어 여기선 통과시키고, 티켓 검증은 HandshakeInterceptor가 담당
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

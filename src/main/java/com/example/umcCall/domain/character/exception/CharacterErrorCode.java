@@ -23,6 +23,7 @@ public enum CharacterErrorCode implements BaseErrorCode {
     INVALID_TRAIT_SELECTION(HttpStatus.BAD_REQUEST, "CHARACTER400_7", "매력 키워드와 우선순위는 중복될 수 없고 1부터 연속되어야 합니다."),
     CHARACTER_ALREADY_EDITED(HttpStatus.BAD_REQUEST, "CHARACTER400_8", "캐릭터 정보는 최초 1회만 수정할 수 있습니다.");
 
+
     private final HttpStatus status;
     private final String code;
     private final String message;

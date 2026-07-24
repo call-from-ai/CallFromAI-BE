@@ -4,10 +4,12 @@ import com.example.umcCall.domain.ai.dto.AiChatRequest;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.dto.AiHealthResponse;
 import com.example.umcCall.domain.ai.dto.AiCharacterSnapshot;
+import com.example.umcCall.domain.ai.dto.AiProactiveRequest;
 import com.example.umcCall.domain.ai.exception.AiErrorCode;
 import com.example.umcCall.domain.ai.exception.AiServerException;
 import java.time.Duration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -44,6 +46,31 @@ public class AiServerClient {
                     .uri("/chat")
                     .body(request)
                     .retrieve()
+                    .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
+                    })
+                    .body(AiChatResponse.class);
+            if (response == null) {
+                throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
+            }
+            return response;
+        } catch (AiServerException exception) {
+            throw exception;
+        } catch (RestClientException exception) {
+            throw new AiServerException(AiErrorCode.AI_SERVER_UNAVAILABLE, exception);
+        }
+    }
+
+    public AiChatResponse proactive(AiProactiveRequest request) {
+        try {
+            AiChatResponse response = restClient.post()
+                    .uri("/api/chat/proactive/send")
+                    .body(request)
+                    .retrieve()
+                    .onStatus(status -> status.value() == HttpStatus.CONFLICT.value(),
+                            (httpRequest, httpResponse) -> {
+                                throw new AiServerException(AiErrorCode.DUPLICATE_REQUEST);
+                            })
                     .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
                         throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
                     })

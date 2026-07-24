@@ -1,6 +1,7 @@
 package com.example.umcCall.global.config;
 
 import com.example.umcCall.domain.call.handler.CallAudioWebSocketHandler;
+import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -19,20 +20,24 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final CallAudioWebSocketHandler callAudioWebSocketHandler;
+    private final WsTicketHandshakeInterceptor wsTicketHandshakeInterceptor;
     private final List<String> allowedOrigins;
 
     public WebSocketConfig(
             CallAudioWebSocketHandler callAudioWebSocketHandler,
+            WsTicketHandshakeInterceptor wsTicketHandshakeInterceptor,
             @Value("${cors.allowed-origins}") List<String> allowedOrigins
     ) {
         this.callAudioWebSocketHandler = callAudioWebSocketHandler;
+        this.wsTicketHandshakeInterceptor = wsTicketHandshakeInterceptor;
         this.allowedOrigins = allowedOrigins;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        // TODO(AI 연동): JWT 대신 짧은 수명 wsTicket 발급/검증 방식으로 변경 필요
+        // 핸드셰이크 시 wsTicket을 검증하고, 검증된 신원을 세션에 실어 핸들러가 바인딩한다.
         registry.addHandler(callAudioWebSocketHandler, "/ws/call")
+                .addInterceptors(wsTicketHandshakeInterceptor)
                 .setAllowedOrigins(allowedOrigins.toArray(String[]::new));
     }
 

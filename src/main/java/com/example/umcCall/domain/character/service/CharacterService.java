@@ -26,6 +26,10 @@ import com.example.umcCall.domain.ai.enums.CharacterSyncOperation;
 import com.example.umcCall.domain.ai.service.CharacterSyncTaskService;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.repository.MemberRepository;
+<<<<<<< HEAD
+=======
+import com.example.umcCall.domain.proactive.service.ProactiveScheduleCoordinator;
+>>>>>>> 628b71259d5d058cbca979824f8cfaa2606da5a8
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -59,6 +63,7 @@ public class CharacterService {
     private final MemberRepository memberRepository;
     private final CharacterSyncTaskService syncTaskService;
     private final PresetImageRepository presetImageRepository;
+    private final ProactiveScheduleCoordinator proactiveScheduleCoordinator;
 
 
     // 캐릭터 생성 (관계, 관계 통계, 채팅방 함께 생성) — 응답 바디 없음
@@ -129,6 +134,7 @@ public class CharacterService {
 
         // 캐릭터 생성 시 채팅방도 함께 생성 (ChatRoomService 로직 재사용)
         chatRoomService.createRoom(memberId, relationship.getId(), RoomType.CHARACTER);
+        proactiveScheduleCoordinator.create(relationship);
         member.markCharacterCreated();
     }
 
@@ -159,6 +165,7 @@ public class CharacterService {
                             .main(relationship.isMain())
                             .createdAt(character.getCreatedAt())
                             .startedAt(relationship.getStartedAt())
+                            .daysTogether(daysTogether)
                             .lastMessageAt(lastMessageAt)
                             .build();
                 })
@@ -200,6 +207,10 @@ public class CharacterService {
                                 .build()))
                 .toList();
         characterAiProfileService.calculateAndSave(character, savedTraits);
+<<<<<<< HEAD
+=======
+        proactiveScheduleCoordinator.reschedule(relationship);
+>>>>>>> 628b71259d5d058cbca979824f8cfaa2606da5a8
     }
 
     // 활성 캐릭터 변경
@@ -222,9 +233,11 @@ public class CharacterService {
                         throw new BaseException(CharacterErrorCode.ACTIVE_CHARACTER_CHANGE_TOO_SOON);
                     }
                     current.deactivate();
+                    proactiveScheduleCoordinator.deactivate(current);
                 });
 
         target.activate();
+        proactiveScheduleCoordinator.activate(target);
     }
 
     // 캐릭터 삭제 (하드 딜리트)
@@ -240,6 +253,7 @@ public class CharacterService {
 
         character.markDeleted();
         relationship.deactivate();
+        proactiveScheduleCoordinator.delete(relationship);
         chatRoomService.archiveRoom(relationship.getId());
         syncTaskService.enqueue(characterId, CharacterSyncOperation.DELETE);
     }
