@@ -4,6 +4,7 @@ import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.enums.SenderType;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -13,6 +14,20 @@ import org.springframework.data.repository.query.Param;
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
     void deleteByChatRoomId(Long chatRoomId);
+
+    boolean existsByProactiveRequestId(String proactiveRequestId);
+
+    Optional<ChatMessage> findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(Long chatRoomId);
+
+    Optional<ChatMessage> findTopByChatRoomIdAndSenderTypeAndDeletedFalseOrderByIdDesc(
+            Long chatRoomId, SenderType senderType);
+
+    @Query("""
+            select m from ChatMessage m
+            where m.chatRoom.id = :roomId and m.deleted = false
+            order by m.id desc
+            """)
+    List<ChatMessage> findRecent(@Param("roomId") Long roomId, Pageable pageable);
 
     /**
      * 방별 안 읽음 수 일괄 집계

@@ -6,6 +6,11 @@ package com.example.umcCall.domain.character.enums;
  */
 public enum Job {
     UNIVERSITY_STUDENT("대학생"),
+    /**
+     * 기존 DB 호환용. 신규 요청은 UNIVERSITY_STUDENT를 사용한다.
+     */
+    @Deprecated
+    STUDENT("대학생"),
     EMPLOYED("직장인"),
     UNEMPLOYED("무직");
 

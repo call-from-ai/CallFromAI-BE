@@ -7,6 +7,7 @@ import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
+import com.example.umcCall.domain.proactive.repository.ProactiveContactScheduleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,10 +24,12 @@ public class CharacterHardDeleteService {
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final ProactiveContactScheduleRepository proactiveContactScheduleRepository;
 
     @Transactional
     public void purge(Long characterId) {
         relationshipRepository.findByCharacterId(characterId).ifPresent(relationship -> {
+            proactiveContactScheduleRepository.deleteByRelationshipId(relationship.getId());
             chatRoomRepository.findByRelationshipId(relationship.getId()).ifPresent(chatRoom -> {
                 chatMessageRepository.deleteByChatRoomId(chatRoom.getId());
                 chatRoomRepository.delete(chatRoom);

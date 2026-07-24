@@ -6,6 +6,8 @@ import com.example.umcCall.domain.call.enums.CallStatus;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.data.domain.Pageable;
+import com.example.umcCall.domain.call.enums.CallSender;
+import java.time.LocalDateTime;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -32,4 +34,11 @@ public interface CallRepository extends JpaRepository<Call, Long> {
     List<CallListItem> findRecentCallList(@Param("memberId") Long memberId,
                                           @Param("statuses") Collection<CallStatus> statuses,
                                           Pageable pageable);
+    boolean existsByRelationshipIdAndStatusIn(Long relationshipId, Collection<CallStatus> statuses);
+
+    long countByRelationshipIdAndSenderAndStatusInAndCreatedAtAfter(
+            Long relationshipId,
+            CallSender sender,
+            Collection<CallStatus> statuses,
+            LocalDateTime createdAt);
 }
