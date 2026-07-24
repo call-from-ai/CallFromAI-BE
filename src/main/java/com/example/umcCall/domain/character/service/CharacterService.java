@@ -207,10 +207,9 @@ public class CharacterService {
                                 .build()))
                 .toList();
         characterAiProfileService.calculateAndSave(character, savedTraits);
-<<<<<<< HEAD
-=======
+
         proactiveScheduleCoordinator.reschedule(relationship);
->>>>>>> 628b71259d5d058cbca979824f8cfaa2606da5a8
+
     }
 
     // 활성 캐릭터 변경
