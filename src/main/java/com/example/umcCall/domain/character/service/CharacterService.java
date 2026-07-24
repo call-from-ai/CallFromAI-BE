@@ -26,10 +26,8 @@ import com.example.umcCall.domain.ai.enums.CharacterSyncOperation;
 import com.example.umcCall.domain.ai.service.CharacterSyncTaskService;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.repository.MemberRepository;
-<<<<<<< HEAD
-=======
 import com.example.umcCall.domain.proactive.service.ProactiveScheduleCoordinator;
->>>>>>> 628b71259d5d058cbca979824f8cfaa2606da5a8
+
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
