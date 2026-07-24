@@ -28,7 +28,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatMessage extends BaseTimeEntity {
 
-    // TODO(AI 연동): request_id, ai_status, in_reply_to_id 컬럼 추가 필요.
+    // TODO(AI 연동): ai_status, in_reply_to_id 컬럼 추가 필요.
     // AiConversationService.chat() 호출 결과를 여기에 저장.
 
     @Id
@@ -63,14 +63,19 @@ public class ChatMessage extends BaseTimeEntity {
     @JoinColumn(name = "chat_room_id", nullable = false)
     private ChatRoom chatRoom;
 
+    /** 선제 연락 멱등성 키. 일반 메시지는 null이다. */
+    @Column(name = "proactive_request_id", unique = true, length = 80)
+    private String proactiveRequestId;
+
     @Builder
     private ChatMessage(SenderType senderType, String content, MessageType messageType,
-                        boolean read, boolean deleted, ChatRoom chatRoom) {
+                        boolean read, boolean deleted, ChatRoom chatRoom, String proactiveRequestId) {
         this.senderType = senderType;
         this.content = content;
         this.messageType = messageType;
         this.read = read;
         this.deleted = deleted;
         this.chatRoom = chatRoom;
+        this.proactiveRequestId = proactiveRequestId;
     }
 }

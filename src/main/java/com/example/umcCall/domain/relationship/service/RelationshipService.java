@@ -12,6 +12,7 @@ import com.example.umcCall.domain.relationship.exception.RelationshipErrorCode;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import com.example.umcCall.global.exception.BaseException;
+import com.example.umcCall.domain.proactive.service.ProactiveScheduleCoordinator;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class RelationshipService {
     private final RelationshipRepository relationshipRepository;
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final CharacterSyncTaskService characterSyncTaskService;
+    private final ProactiveScheduleCoordinator proactiveScheduleCoordinator;
 
     public CurrentRelationshipResponse getCurrentRelationship(Long memberId) {
         Relationship relationship = getCurrent(memberId);
@@ -45,8 +47,10 @@ public class RelationshipService {
 
     @Transactional
     public ContactPreferenceResponse updateContactPreference(Long memberId, PreferTime preferTime) {
-        Character character = getCurrent(memberId).getCharacter();
+        Relationship relationship = getCurrent(memberId);
+        Character character = relationship.getCharacter();
         character.updatePreferTime(preferTime);
+        proactiveScheduleCoordinator.reschedule(relationship);
         characterSyncTaskService.enqueue(character.getId(), CharacterSyncOperation.UPSERT);
         return new ContactPreferenceResponse(character.getPreferTime());
     }
