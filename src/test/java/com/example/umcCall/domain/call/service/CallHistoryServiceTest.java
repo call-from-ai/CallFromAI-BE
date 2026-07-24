@@ -2,12 +2,19 @@ package com.example.umcCall.domain.call.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.umcCall.domain.call.dto.response.CallListItem;
+import com.example.umcCall.domain.call.dto.response.CallListResponse;
 import com.example.umcCall.domain.call.dto.response.CallScriptResponse;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.entity.CallHistory;
+import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
@@ -16,6 +23,7 @@ import com.example.umcCall.domain.call.repository.CallHistoryRepository;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -24,6 +32,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.springframework.data.domain.Pageable;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /** 전사 저장(appendHistory)·조회(getScript) 검증. */
@@ -112,6 +121,28 @@ class CallHistoryServiceTest {
                 .isInstanceOf(CallException.class)
                 .extracting(e -> ((CallException) e).getErrorCode())
                 .isEqualTo(CallErrorCode.CALL_NOT_COMPLETED);
+    }
+
+    @Test
+    void getCallList는_종료된_통화만_최신순_최대20건을_요청해_반환한다() {
+        CallListItem item1 = new CallListItem(
+                12L, "민준", CallSender.USER, "요약", LocalDateTime.now(), CallStatus.COMPLETED);
+        CallListItem item2 = new CallListItem(
+                9L, "동휘", CallSender.USER, null, LocalDateTime.now().minusHours(1), CallStatus.CANCELED);
+        when(callRepository.findRecentCallList(eq(MEMBER_ID), anySet(), any(Pageable.class)))
+                .thenReturn(List.of(item1, item2));
+
+        CallListResponse response = callHistoryService.getCallList(MEMBER_ID);
+
+        assertThat(response.content()).containsExactly(item1, item2);
+        // 터미널 상태 4개만 + 최대 20건(page 0)으로 요청하는지 검증.
+        ArgumentCaptor<Collection<CallStatus>> statusCaptor = ArgumentCaptor.forClass(Collection.class);
+        ArgumentCaptor<Pageable> pageCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(callRepository).findRecentCallList(eq(MEMBER_ID), statusCaptor.capture(), pageCaptor.capture());
+        assertThat(statusCaptor.getValue()).containsExactlyInAnyOrder(
+                CallStatus.COMPLETED, CallStatus.CANCELED, CallStatus.MISSED, CallStatus.REJECTED);
+        assertThat(pageCaptor.getValue().getPageNumber()).isZero();
+        assertThat(pageCaptor.getValue().getPageSize()).isEqualTo(20);
     }
 
     /** memberId 소유 + 주어진 상태의 통화 목(mock). */

@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.call.service;
 
+import com.example.umcCall.domain.call.dto.response.CallListResponse;
 import com.example.umcCall.domain.call.dto.response.CallScriptResponse;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.entity.CallHistory;
@@ -9,7 +10,10 @@ import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallHistoryRepository;
 import com.example.umcCall.domain.call.repository.CallRepository;
+import java.util.EnumSet;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +27,13 @@ public class CallHistoryService {
 
     private final CallRepository callRepository;
     private final CallHistoryRepository callHistoryRepository;
+
+    /** 목록에 노출할 통화 상태 = 종료된 것만. 진행 중(DIALING/RINGING/IN_PROGRESS)은 아직 기록이 아니라 제외한다. */
+    private static final Set<CallStatus> TERMINAL_STATUSES = EnumSet.of(
+            CallStatus.COMPLETED, CallStatus.CANCELED, CallStatus.MISSED, CallStatus.REJECTED);
+
+    /** 최근 통화 노출 개수. 프론트와 20건 고정 합의(페이지네이션 없음). */
+    private static final int RECENT_CALL_LIMIT = 20;
 
     /**
      * 통화 전사 한 줄을 저장한다. 발화가 일어난 순간마다(USER final · AI TTS 송신 성공) 호출되는 append-only 저장.
@@ -55,5 +66,16 @@ public class CallHistoryService {
             throw new CallException(CallErrorCode.CALL_NOT_COMPLETED);
         }
         return CallScriptResponse.of(callId, callHistoryRepository.findByCallIdOrderByIdAsc(callId));
+    }
+
+    /**
+     * 내 통화 목록을 조회한다. <b>종료된 통화(COMPLETED/CANCELED/MISSED/REJECTED)만 최신순 최대 20건</b>.
+     * <p>진행 중인 통화는 아직 기록이 아니라 제외한다. 페이지네이션 없음(20건 고정 합의).
+     * 캐릭터 이름까지 리포지토리가 조인·프로젝션해 N+1 없이 한 방에 가져온다.
+     */
+    @Transactional(readOnly = true)
+    public CallListResponse getCallList(Long memberId) {
+        return CallListResponse.of(callRepository.findRecentCallList(
+                memberId, TERMINAL_STATUSES, PageRequest.of(0, RECENT_CALL_LIMIT)));
     }
 }

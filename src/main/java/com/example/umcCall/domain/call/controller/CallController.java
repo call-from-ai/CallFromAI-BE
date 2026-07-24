@@ -2,6 +2,7 @@ package com.example.umcCall.domain.call.controller;
 
 import com.example.umcCall.domain.call.dto.request.CallDialRequest;
 import com.example.umcCall.domain.call.dto.response.CallDialResponse;
+import com.example.umcCall.domain.call.dto.response.CallListResponse;
 import com.example.umcCall.domain.call.dto.response.CallScriptResponse;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
@@ -37,6 +38,13 @@ public class CallController {
             @AuthenticationPrincipal Long memberId,
             @RequestBody @Valid CallDialRequest request) {
         return ApiResponse.onSuccess(callService.dial(memberId, request.characterId()));
+    }
+
+    @Operation(summary = "내 통화 목록 조회",
+            description = "본인의 종료된 통화(완료/취소/부재중/거절)를 최신순 최대 20건 반환한다. 페이지네이션 없음.")
+    @GetMapping
+    public ApiResponse<CallListResponse> getCallList(@AuthenticationPrincipal Long memberId) {
+        return ApiResponse.onSuccess(callHistoryService.getCallList(memberId));
     }
 
     @Operation(summary = "통화 전사(script) 조회",
