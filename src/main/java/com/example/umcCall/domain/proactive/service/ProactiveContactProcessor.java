@@ -133,6 +133,21 @@ public class ProactiveContactProcessor {
         return new Claim(schedule.getId(), requestId);
     }
 
+    /**
+     * local Swagger 테스트 전용 claim. 시간 간격 정책은 우회하지만 활성 관계·삭제·enabled는 검증한다.
+     */
+    @Transactional
+    public Claim forceClaimForDebug(Long scheduleId) {
+        ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(scheduleId).orElse(null);
+        if (schedule == null || !schedule.isEnabled()) return null;
+        if (schedule.getPendingRequestId() != null) return null;
+        Relationship relationship = schedule.getRelationship();
+        if (!relationship.isMain() || relationship.getCharacter().getDeletedAt() != null) return null;
+        String requestId = "proactive-debug-" + UUID.randomUUID();
+        schedule.claim(requestId, ProactiveAction.CHAT, "DEBUG_FORCE_SEND");
+        return new Claim(schedule.getId(), requestId);
+    }
+
     @Transactional(readOnly = true)
     public String generate(Claim claim) {
         ProactiveContactSchedule schedule = scheduleRepository.findById(claim.scheduleId()).orElseThrow();

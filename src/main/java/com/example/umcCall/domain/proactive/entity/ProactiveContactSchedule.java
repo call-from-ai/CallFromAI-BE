@@ -112,6 +112,12 @@ public class ProactiveContactSchedule extends BaseTimeEntity {
         this.nextCheckAt = nextCheckAt;
     }
 
+    public void forceDue(LocalDateTime now) {
+        clearPending();
+        this.pausedUntil = null;
+        this.nextCheckAt = now;
+    }
+
     public void claim(String requestId, ProactiveAction action, String contactReason) {
         this.pendingRequestId = requestId;
         this.pendingAction = action;
