@@ -5,23 +5,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 import com.example.umcCall.domain.call.entity.Call;
-import com.example.umcCall.domain.call.entity.CallHistory;
 import com.example.umcCall.domain.call.enums.CallSender;
-import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.exception.CallException;
-import com.example.umcCall.domain.call.repository.CallHistoryRepository;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.ticket.WsTicketStore;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /** 통화 상태 전이 위임(connect/finish) 검증. 엔티티 전이는 실제 {@link Call}로 확인한다. */
@@ -32,7 +27,6 @@ class CallServiceTest {
 
     @Mock private RelationshipRepository relationshipRepository;
     @Mock private CallRepository callRepository;
-    @Mock private CallHistoryRepository callHistoryRepository;
     @Mock private WsTicketStore wsTicketStore;
 
     @InjectMocks private CallService callService;
@@ -87,24 +81,6 @@ class CallServiceTest {
         callService.finish(CALL_ID);
 
         assertThat(call.getStatus()).isEqualTo(CallStatus.COMPLETED);
-    }
-
-    @Test
-    void appendHistory는_getReferenceById로_FK만_연결해_전사를_저장한다() {
-        Call callProxy = dialingCall();
-        // 프록시만 얻어 FK를 채운다 — 턴마다 Call을 재조회(findById)하지 않는다.
-        when(callRepository.getReferenceById(CALL_ID)).thenReturn(callProxy);
-
-        callService.appendHistory(CALL_ID, CallSpeaker.USER, "안녕");
-
-        ArgumentCaptor<CallHistory> captor = ArgumentCaptor.forClass(CallHistory.class);
-        Mockito.verify(callHistoryRepository).save(captor.capture());
-        CallHistory saved = captor.getValue();
-        assertThat(saved.getSpeaker()).isEqualTo(CallSpeaker.USER);
-        assertThat(saved.getContent()).isEqualTo("안녕");
-        assertThat(saved.getCall()).isSameAs(callProxy);
-        // findById가 아니라 getReferenceById로만 로드했는지(불필요한 SELECT 회피) 확인.
-        Mockito.verify(callRepository, Mockito.never()).findById(CALL_ID);
     }
 
     @Test

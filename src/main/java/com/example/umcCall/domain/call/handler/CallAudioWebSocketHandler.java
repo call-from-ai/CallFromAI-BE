@@ -8,6 +8,7 @@ import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.service.CallConversationService;
+import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
@@ -55,6 +56,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final ClovaVoiceClient clovaVoiceClient;
     private final CallConversationService callConversationService;
     private final CallService callService;
+    private final CallHistoryService callHistoryService;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -67,12 +69,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                                      ClovaVoiceClient clovaVoiceClient,
                                      CallConversationService callConversationService,
                                      CallService callService,
+                                     CallHistoryService callHistoryService,
                                      ClovaSpeechProperties speechProperties,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
         this.callConversationService = callConversationService;
         this.callService = callService;
+        this.callHistoryService = callHistoryService;
         this.objectMapper = objectMapper;
         this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
         log.info("[Clova] recognize CONFIG = {}", configJson);
@@ -248,7 +252,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      */
     private void persistHistory(String sessionId, Long callId, CallSpeaker speaker, String content) {
         try {
-            callService.appendHistory(callId, speaker, content);
+            callHistoryService.appendHistory(callId, speaker, content);
         } catch (RuntimeException e) {
             log.error("[Call] 전사 저장 실패(통화는 유지). session={}, callId={}, speaker={}",
                     sessionId, callId, speaker, e);
