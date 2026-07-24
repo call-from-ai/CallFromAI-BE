@@ -65,11 +65,15 @@ public class ChatSseService {
     }
 
     private void sendTo(SseEmitter emitter, String eventName, Object data) {
-        try {
-            emitter.send(SseEmitter.event().name(eventName).data(data));
-        } catch (IOException e) {
-            // 전송 실패 = 끊긴 연결 → 에러로 완료 처리(→ 콜백에서 맵 제거)
-            emitter.completeWithError(e);
+        // heartbeat(스케줄러)·AI 답장(worker)·구독(요청 스레드)이 같은 emitter에 동시에 보낼 수 있다.
+        // SseEmitter.send는 스레드 세이프하지 않으므로 emitter 단위로 직렬화한다(유저 간에는 병렬).
+        synchronized (emitter) {
+            try {
+                emitter.send(SseEmitter.event().name(eventName).data(data));
+            } catch (IOException e) {
+                // 전송 실패 = 끊긴 연결 → 에러로 완료 처리(→ 콜백에서 맵 제거)
+                emitter.completeWithError(e);
+            }
         }
     }
 }

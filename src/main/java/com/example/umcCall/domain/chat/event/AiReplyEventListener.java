@@ -1,76 +1,31 @@
 package com.example.umcCall.domain.chat.event;
 
-import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
-import com.example.umcCall.domain.chat.dto.response.ChatMessageResponse;
-import com.example.umcCall.domain.chat.entity.ChatMessage;
-import com.example.umcCall.domain.chat.entity.ChatRoom;
-import com.example.umcCall.domain.chat.enums.SenderType;
-import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
-import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
-import com.example.umcCall.domain.chat.service.AiReplyGenerator;
-import com.example.umcCall.domain.chat.service.ChatMessageService;
-import com.example.umcCall.domain.chat.service.ChatSseService;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import com.example.umcCall.domain.chat.service.AiReplyDebouncer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * 유저 메시지 전송 커밋 후, 비동기로 AI 답장을 생성해 SSE로 전달한다.
+ * 유저 메시지 전송 커밋 후, AI 답장 디바운서에 "방에 활동이 있었다"는 신호만 전달한다.
+ * 실제 답장 생성(모으기·AI 호출·저장·SSE)은 디바운서가 방 단위로 처리한다.
+ * 커밋 후(AFTER_COMMIT)라 방금 저장된 유저 메시지가 배치 조회에 반드시 보인다.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AiReplyEventListener {
 
-    private static final int HISTORY_SIZE = 20;
+    private final AiReplyDebouncer aiReplyDebouncer;
 
-    private final ChatRoomRepository chatRoomRepository;
-    private final ChatMessageRepository chatMessageRepository;
-    private final AiReplyGenerator aiReplyGenerator;
-    private final ChatMessageService chatMessageService;
-    private final ChatSseService chatSseService;
-
-    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onUserMessageSent(UserMessageSentEvent event) {
         try {
-            ChatRoom room = chatRoomRepository.findById(event.chatRoomId()).orElse(null);
-            if (room == null || room.getRelationshipId() == null) {
-                return;
-            }
-
-            List<AiChatHistoryItem> history = buildHistory(event.chatRoomId(), event.userMessageId());
-            String reply = aiReplyGenerator.generateReply(room.getRelationshipId(), event.userMessage(), history);
-            if (reply == null || reply.isBlank()) {
-                return;
-            }
-
-            ChatMessage aiMessage = chatMessageService.saveAiMessage(event.chatRoomId(), reply);
-            chatSseService.sendToMember(event.memberId(), "message", ChatMessageResponse.from(aiMessage));
+            aiReplyDebouncer.onActivity(event.chatRoomId());
         } catch (Exception e) {
-            log.error("AI 답장 처리 실패. chatRoomId={}", event.chatRoomId(), e);
+            // 스케줄 등록 실패가 유저 전송(이미 201 반환)에 영향을 주지 않도록 로깅만 한다.
+            log.error("AI 답장 스케줄 등록 실패. chatRoomId={}", event.chatRoomId(), e);
         }
-    }
-
-    /** 현재 메시지 이전의 최근 대화 이력을 과거→최신 순으로 만든다. */
-    private List<AiChatHistoryItem> buildHistory(Long chatRoomId, Long beforeMessageId) {
-        List<ChatMessage> recent = new ArrayList<>(chatMessageRepository.findMessagesByCursor(
-                chatRoomId, null, beforeMessageId, PageRequest.of(0, HISTORY_SIZE)));
-        Collections.reverse(recent);   // DESC → ASC(과거→최신)
-        return recent.stream()
-                .map(m -> new AiChatHistoryItem(toRole(m.getSenderType()), m.getContent(), m.getCreatedAt()))
-                .toList();
-    }
-
-    /** 발신자 타입을 AI 서버 계약의 role 값으로 변환한다. 유저=user, 그 외(AI/SYSTEM)=assistant. */
-    private String toRole(SenderType senderType) {
-        return senderType == SenderType.USER ? "user" : "assistant";
     }
 }

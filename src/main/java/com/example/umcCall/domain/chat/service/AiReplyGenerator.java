@@ -2,12 +2,10 @@ package com.example.umcCall.domain.chat.service;
 
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
-import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.dto.AiCharacterSnapshot;
 import com.example.umcCall.domain.ai.dto.AiRelationshipSnapshot;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
-import com.example.umcCall.domain.ai.service.AiConversationService;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.character.entity.CharacterAiProfile;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
@@ -22,7 +20,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 채팅방 정보로 AI 서버에 답장을 요청해 텍스트를 받아오는 컴포넌트
+ * AI 서버로 보낼 요청(AiChatRequest)을 조립하는 컴포넌트.
+ * DB 조회와 스냅샷 조립까지만 트랜잭션 안에서 끝내고 순수 DTO를 반환한다.
+ * 느린 AI REST 호출은 호출부가 트랜잭션 밖에서 하도록 분리해, DB 커넥션을 오래 쥐지 않는다.
+ * 지연로딩(relationship.getCharacter 등)은 반드시 이 트랜잭션 안에서 모두 꺼내 DTO로 만든다.
  */
 @Component
 @RequiredArgsConstructor
@@ -33,13 +34,12 @@ public class AiReplyGenerator {
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final AiCharacterSnapshotMapper characterSnapshotMapper;
     private final AiRelationshipSnapshotMapper relationshipSnapshotMapper;
-    private final AiConversationService aiConversationService;
 
     /**
-     * relationshipId + 유저 메시지 + 대화 이력으로 AI 서버를 호출해 답장 텍스트를 반환한다.
+     * relationshipId + 유저 메시지 + 대화 이력으로 AI 서버 요청 DTO를 만든다.
      */
     @Transactional(readOnly = true)
-    public String generateReply(Long relationshipId, String userMessage, List<AiChatHistoryItem> history) {
+    public AiChatRequest buildRequest(Long relationshipId, String userMessage, List<AiChatHistoryItem> history) {
         Relationship relationship = relationshipRepository.findById(relationshipId)
                 .orElseThrow(() -> new IllegalStateException("관계를 찾을 수 없습니다: " + relationshipId));
         Character character = relationship.getCharacter();
@@ -51,10 +51,8 @@ public class AiReplyGenerator {
         AiCharacterSnapshot characterSnapshot = characterSnapshotMapper.toSnapshot(character, profile, relationship);
         AiRelationshipSnapshot relationshipSnapshot = relationshipSnapshotMapper.toSnapshot(relationship, status);
 
-        AiChatRequest request = new AiChatRequest(
+        return new AiChatRequest(
                 UUID.randomUUID().toString(),   // 멱등성 키. 논리 요청마다 고유값(같은 값 재전송 시 AI 서버가 409)
                 character.getId(), userMessage, characterSnapshot, relationshipSnapshot, history);
-        AiChatResponse response = aiConversationService.chat(request);
-        return response.reply();
     }
 }

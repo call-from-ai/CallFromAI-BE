@@ -90,8 +90,10 @@ public class ChatMessageService {
         // 목록 정렬용 마지막 메시지 시각 갱신
         room.updateLastMessageAt(message.getCreatedAt());
 
-        // 커밋 후 비동기로 AI 답장 생성을 트리거한다(전송 응답은 기다리지 않음)
-        eventPublisher.publishEvent(new UserMessageSentEvent(chatRoomId, memberId, message.getId(), content));
+        // 커밋 후 AI 답장 생성을 트리거한다(캐릭터방만). 전송 응답은 기다리지 않는다.
+        if (room.getRelationshipId() != null) {
+            eventPublisher.publishEvent(new UserMessageSentEvent(chatRoomId));
+        }
 
         return ChatMessageResponse.from(message);
     }

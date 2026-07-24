@@ -83,6 +83,30 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
                            @Param("cutoff") Long cutoff,
                            @Param("excludedSender") SenderType excludedSender);
 
+    /**
+     * 방의 마지막 AI 메시지 id를 조회
+     * ai가 "이미 답한 경계"의 근사값으로 쓴다.
+     */
+    @Query("select max(m.id) from ChatMessage m where m.chatRoom.id = :roomId and m.senderType = :aiSender")
+    Long findMaxAiMessageId(@Param("roomId") Long roomId, @Param("aiSender") SenderType aiSender);
+
+    /**
+     * afterId 초과의 유저 메시지를 오래된 순(id ASC)으로 조회한다.
+     * 디바운스 배치 = "아직 AI가 답하지 않은 유저 메시지들"
+     */
+    @Query("""
+            select m from ChatMessage m
+            where m.chatRoom.id = :roomId
+              and m.senderType = :userSender
+              and m.deleted = false
+              and m.id > :afterId
+            order by m.id asc
+            """)
+    List<ChatMessage> findUserMessagesAfter(@Param("roomId") Long roomId,
+                                            @Param("userSender") SenderType userSender,
+                                            @Param("afterId") Long afterId,
+                                            Pageable pageable);
+
     /** 방별 안 읽음 수 집계 결과 프로젝션. */
     interface UnreadCountRow {
         Long getRoomId();
