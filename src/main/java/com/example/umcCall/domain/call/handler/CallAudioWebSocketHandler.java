@@ -6,6 +6,7 @@ import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
+import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallService;
 import com.example.umcCall.domain.call.ticket.WsTicket;
@@ -209,6 +210,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // STT final 확정 → 사용자 발화를 먼저 남긴다. AI 응답 성공 여부와 무관한 사실이다.
                     // (respond가 실패해도 남는다 — 연속 user는 이 모델에서 정상.) role은 계약대로 소문자.
                     history.add(new AiChatHistoryItem("user", text, LocalDateTime.now()));
+                    persistHistory(sessionId, ticket.callId(), CallSpeaker.USER, text);
 
                     // respond는 로그의 마지막(방금 넣은 user)을 이번 message로, 그 앞을 이전 턴으로 파생한다.
                     AiChatResponse response = callConversationService.respond(
@@ -226,6 +228,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // TTS 송신 성공 시에만 AI 발화를 남긴다.
                     if (sendAudio(session, wav)) {
                         history.add(new AiChatHistoryItem("assistant", reply, LocalDateTime.now()));
+                        persistHistory(sessionId, ticket.callId(), CallSpeaker.AI, reply);
                     }
                 } catch (Exception e) {
                     // stale/AI/TTS 오류 등: 이번 assistant 턴만 버린다(user 로그는 남는다). 통화는 유지.
@@ -235,6 +238,20 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         } catch (RejectedExecutionException e) {
             // 통화 종료와 겹쳐 워커가 이미 내려간 경우. 정상 경로다.
             log.debug("[Call] 워커 종료됨 → 발화를 버림. session={}", sessionId);
+        }
+    }
+
+    /**
+     * 전사 한 줄을 DB에 남긴다. 워커 스레드에서 발화가 실제로 일어난 순간(USER final · AI TTS 송신 성공)마다 호출된다.
+     * <p>저장 실패로 통화·턴을 끊지 않는다 — 로그만 남긴다(connect/finish 상태저장 실패 정책과 동일).
+     * {@code chat()}의 느린 REST는 이 저장 트랜잭션 밖에서 이미 끝났다.
+     */
+    private void persistHistory(String sessionId, Long callId, CallSpeaker speaker, String content) {
+        try {
+            callService.appendHistory(callId, speaker, content);
+        } catch (RuntimeException e) {
+            log.error("[Call] 전사 저장 실패(통화는 유지). session={}, callId={}, speaker={}",
+                    sessionId, callId, speaker, e);
         }
     }
 

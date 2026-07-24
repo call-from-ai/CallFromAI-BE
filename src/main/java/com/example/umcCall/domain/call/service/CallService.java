@@ -2,9 +2,12 @@ package com.example.umcCall.domain.call.service;
 
 import com.example.umcCall.domain.call.dto.response.CallDialResponse;
 import com.example.umcCall.domain.call.entity.Call;
+import com.example.umcCall.domain.call.entity.CallHistory;
 import com.example.umcCall.domain.call.enums.CallSender;
+import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.exception.CallException;
+import com.example.umcCall.domain.call.repository.CallHistoryRepository;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketStore;
@@ -21,6 +24,7 @@ public class CallService {
 
     private final RelationshipRepository relationshipRepository;
     private final CallRepository callRepository;
+    private final CallHistoryRepository callHistoryRepository;
     private final WsTicketStore wsTicketStore;
 
     /**
@@ -74,5 +78,19 @@ public class CallService {
             case DIALING -> call.cancel();
             default -> { /* 이미 종료 상태 등 — 전이 없음 */ }
         }
+    }
+
+    /**
+     * 통화 전사 한 줄을 저장한다. 발화가 일어난 순간마다(USER final · AI TTS 송신 성공) 호출되는 append-only 저장.
+     * <p>callId로 Call 프록시({@code getReferenceById})만 얻어 FK를 채우므로 턴마다 Call을 재조회하지 않는다.
+     * <p>이 메서드의 트랜잭션은 짧게 끝난다 — {@code chat()}의 느린 REST는 이 트랜잭션 밖(호출부 워커)에서 돈다.
+     */
+    public void appendHistory(Long callId, CallSpeaker speaker, String content) {
+        callHistoryRepository.save(
+                CallHistory.builder()
+                        .call(callRepository.getReferenceById(callId))
+                        .speaker(speaker)
+                        .content(content)
+                        .build());
     }
 }
