@@ -98,7 +98,7 @@ public class CharacterAiProfileService implements ApplicationRunner {
 
     private static String lifeType(Character character) {
         return switch (character.getJob()) {
-            case UNIVERSITY_STUDENT -> "STUDENT";
+            case UNIVERSITY_STUDENT, STUDENT -> "STUDENT";
             case EMPLOYED -> "WORKER";
             case UNEMPLOYED -> "FLEXIBLE";
         };

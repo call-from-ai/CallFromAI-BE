@@ -40,6 +40,11 @@ CREATE UNIQUE INDEX uk_chat_message_proactive_request
 CREATE INDEX idx_calls_relationship_status_created
     ON calls (relationship_id, status, created_at);
 
+-- 과거 코드에서 저장한 직업 enum을 현재 canonical code로 정규화한다.
+UPDATE `character`
+SET job = 'UNIVERSITY_STUDENT'
+WHERE job = 'STUDENT';
+
 INSERT INTO proactive_contact_schedule (
     relationship_id,
     enabled,

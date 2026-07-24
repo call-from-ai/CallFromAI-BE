@@ -1,13 +1,11 @@
 package com.example.umcCall.domain.proactive.service;
 
-import com.example.umcCall.domain.proactive.repository.ProactiveContactScheduleRepository;
-import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 스케줄 기능 도입 전에 생성된 기존 관계에도 스케줄 행을 보장한다.
@@ -18,22 +16,33 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ProactiveScheduleBackfillRunner implements ApplicationRunner {
 
-    private final RelationshipRepository relationshipRepository;
-    private final ProactiveContactScheduleRepository scheduleRepository;
-    private final ProactiveScheduleCoordinator coordinator;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
-        int created = 0;
-        for (var relationship : relationshipRepository.findAll()) {
-            if (relationship.getCharacter().getDeletedAt() != null
-                    || scheduleRepository.findByRelationshipId(relationship.getId()).isPresent()) {
-                continue;
-            }
-            coordinator.create(relationship);
-            created++;
-        }
+        // Character 엔티티를 로딩하지 않는다. 레거시 enum 값 등 다른 도메인의 데이터가
+        // 잘못돼 있어도 스케줄 backfill 때문에 애플리케이션 시작 전체가 실패하지 않게 한다.
+        int created = jdbcTemplate.update("""
+                INSERT INTO proactive_contact_schedule (
+                    relationship_id, enabled, next_check_at,
+                    consecutive_no_response_count, awaiting_user_response,
+                    daily_contact_count, pending_attempts, version,
+                    created_at, updated_at
+                )
+                SELECT
+                    r.relationship_id,
+                    CASE WHEN r.is_main = 1 AND c.deleted_at IS NULL THEN 1 ELSE 0 END,
+                    CASE WHEN r.is_main = 1 AND c.deleted_at IS NULL
+                         THEN DATE_ADD(NOW(6), INTERVAL 2 HOUR)
+                         ELSE NULL END,
+                    0, 0, 0, 0, 0, NOW(6), NOW(6)
+                FROM relationship r
+                JOIN `character` c ON c.character_id = r.character_id
+                LEFT JOIN proactive_contact_schedule pcs
+                       ON pcs.relationship_id = r.relationship_id
+                WHERE c.deleted_at IS NULL
+                  AND pcs.proactive_contact_schedule_id IS NULL
+                """);
         if (created > 0) {
             log.info("기존 관계 선제 연락 스케줄 backfill 완료. created={}", created);
         }
