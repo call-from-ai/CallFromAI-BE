@@ -146,6 +146,11 @@ public class ProactiveContactSchedule extends BaseTimeEntity {
                 : message.substring(0, Math.min(message.length(), 1000));
     }
 
+    public void retryWithNewRequest(LocalDateTime now) {
+        clearPending();
+        this.nextCheckAt = enabled ? now : null;
+    }
+
     public void recordNoResponse() {
         if (!awaitingUserResponse) return;
         consecutiveNoResponseCount++;

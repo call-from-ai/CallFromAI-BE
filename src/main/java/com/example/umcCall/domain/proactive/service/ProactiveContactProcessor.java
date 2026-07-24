@@ -4,6 +4,8 @@ import com.example.umcCall.domain.ai.client.AiServerClient;
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.dto.AiProactiveRequest;
+import com.example.umcCall.domain.ai.exception.AiErrorCode;
+import com.example.umcCall.domain.ai.exception.AiServerException;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
 import com.example.umcCall.domain.call.enums.CallStatus;
@@ -218,7 +220,12 @@ public class ProactiveContactProcessor {
     public void fail(Claim claim, RuntimeException exception, LocalDateTime now) {
         ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(claim.scheduleId()).orElse(null);
         if (schedule != null && claim.requestId().equals(schedule.getPendingRequestId())) {
-            schedule.retry(exception, now);
+            if (exception instanceof AiServerException aiException
+                    && aiException.getErrorCode() == AiErrorCode.DUPLICATE_REQUEST) {
+                schedule.retryWithNewRequest(now);
+            } else {
+                schedule.retry(exception, now);
+            }
         }
     }
 
