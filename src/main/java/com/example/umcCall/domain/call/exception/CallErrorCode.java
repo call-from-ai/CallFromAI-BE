@@ -28,8 +28,8 @@ public enum CallErrorCode implements BaseErrorCode {
     // 404 - callId로 통화 기록을 찾을 수 없음(상태 전이 대상 부재)
     CALL_NOT_FOUND(HttpStatus.NOT_FOUND, "CALL404_2", "통화를 찾을 수 없습니다."),
 
-    // 409 - 완료되지 않은 통화의 전문(script) 조회 시도
-    CALL_NOT_COMPLETED(HttpStatus.CONFLICT, "CALL409_1", "완료된 통화만 전문을 조회할 수 있습니다.");
+    // 409 - 완료되지 않은 통화의 기록(상세/전문) 조회 시도. 상세·전문 조회가 공유한다.
+    CALL_NOT_COMPLETED(HttpStatus.CONFLICT, "CALL409_1", "완료된 통화만 조회할 수 있습니다.");
 
     private final HttpStatus status;
     private final String code;

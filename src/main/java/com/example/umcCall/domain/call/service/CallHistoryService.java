@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.call.service;
 
+import com.example.umcCall.domain.call.dto.response.CallDetailResponse;
 import com.example.umcCall.domain.call.dto.response.CallListResponse;
 import com.example.umcCall.domain.call.dto.response.CallScriptResponse;
 import com.example.umcCall.domain.call.entity.Call;
@@ -57,6 +58,27 @@ public class CallHistoryService {
      */
     @Transactional(readOnly = true)
     public CallScriptResponse getScript(Long memberId, Long callId) {
+        loadCompletedOwnedCall(memberId, callId);
+        return CallScriptResponse.of(callId, callHistoryRepository.findByCallIdOrderByIdAsc(callId));
+    }
+
+    /**
+     * 통화 기록 상세(요약/시작시각/오디오)를 조회한다. 통화 목록에서 탭해 들어오는 화면용 메타데이터.
+     * <p>검증 계단은 {@link #getScript}와 동일하다 — 존재({@code CALL_NOT_FOUND}) → 본인 소유
+     * ({@code CALL_ACCESS_DENIED}) → 완료({@code CALL_NOT_COMPLETED}). 상세도 <b>완료된 통화의
+     * 완결된 기록</b>이라는 계약을 전문과 공유한다. {@code aiSummary}·{@code audioUrl}은 생성 로직
+     * 미구현이라 현재 항상 null(응답에서 키 생략) — 컬럼→응답 배관만 담당한다.
+     */
+    @Transactional(readOnly = true)
+    public CallDetailResponse getCallDetail(Long memberId, Long callId) {
+        return CallDetailResponse.of(loadCompletedOwnedCall(memberId, callId));
+    }
+
+    /**
+     * callId로 Call을 로드하고 <b>존재 → 본인 소유 → 완료</b> 3단 검증을 통과시킨다.
+     * 전문·상세 조회가 공유하는 검증 계단(완료된 통화의 기록만 조회 가능하다는 계약).
+     */
+    private Call loadCompletedOwnedCall(Long memberId, Long callId) {
         Call call = callRepository.findById(callId)
                 .orElseThrow(() -> new CallException(CallErrorCode.CALL_NOT_FOUND));
         if (!call.getRelationship().getMemberId().equals(memberId)) {
@@ -65,7 +87,7 @@ public class CallHistoryService {
         if (call.getStatus() != CallStatus.COMPLETED) {
             throw new CallException(CallErrorCode.CALL_NOT_COMPLETED);
         }
-        return CallScriptResponse.of(callId, callHistoryRepository.findByCallIdOrderByIdAsc(callId));
+        return call;
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.call.controller;
 
 import com.example.umcCall.domain.call.dto.request.CallDialRequest;
+import com.example.umcCall.domain.call.dto.response.CallDetailResponse;
 import com.example.umcCall.domain.call.dto.response.CallDialResponse;
 import com.example.umcCall.domain.call.dto.response.CallListResponse;
 import com.example.umcCall.domain.call.dto.response.CallScriptResponse;
@@ -45,6 +46,15 @@ public class CallController {
     @GetMapping
     public ApiResponse<CallListResponse> getCallList(@AuthenticationPrincipal Long memberId) {
         return ApiResponse.onSuccess(callHistoryService.getCallList(memberId));
+    }
+
+    @Operation(summary = "통화 기록 상세 조회",
+            description = "통화 한 건의 상세(요약/시작시각/오디오)를 반환한다. 완료된 본인 소유 통화만 조회할 수 있다.")
+    @GetMapping("/{callId}")
+    public ApiResponse<CallDetailResponse> getCallDetail(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long callId) {
+        return ApiResponse.onSuccess(callHistoryService.getCallDetail(memberId, callId));
     }
 
     @Operation(summary = "통화 전사(script) 조회",
