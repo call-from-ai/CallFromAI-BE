@@ -4,6 +4,7 @@ import com.example.umcCall.domain.call.dto.response.CallScriptResponse;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.entity.CallHistory;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
+import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallHistoryRepository;
@@ -35,5 +36,24 @@ public class CallHistoryService {
                         .speaker(speaker)
                         .content(content)
                         .build());
+    }
+
+    /**
+     * 통화 전사(script) 전문을 조회한다. 발화 순서(id ASC)대로 전체를 반환한다(페이지네이션 없음).
+     * <p>검증: 통화 존재({@code CALL_NOT_FOUND}) → 본인 소유({@code CALL_ACCESS_DENIED}) →
+     * 완료 상태({@code CALL_NOT_COMPLETED}). <b>완료된 통화만 전문을 준다</b> — 진행 중/취소/거절/부재중은 막는다
+     * (전문은 종료된 통화의 완결된 기록이라는 계약). 존재·소유·완료를 백엔드가 구분해 내려주고, 화면 분기는 프론트가 정한다.
+     */
+    @Transactional(readOnly = true)
+    public CallScriptResponse getScript(Long memberId, Long callId) {
+        Call call = callRepository.findById(callId)
+                .orElseThrow(() -> new CallException(CallErrorCode.CALL_NOT_FOUND));
+        if (!call.getRelationship().getMemberId().equals(memberId)) {
+            throw new CallException(CallErrorCode.CALL_ACCESS_DENIED);
+        }
+        if (call.getStatus() != CallStatus.COMPLETED) {
+            throw new CallException(CallErrorCode.CALL_NOT_COMPLETED);
+        }
+        return CallScriptResponse.of(callId, callHistoryRepository.findByCallIdOrderByIdAsc(callId));
     }
 }
