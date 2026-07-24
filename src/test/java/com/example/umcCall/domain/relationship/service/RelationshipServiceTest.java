@@ -12,6 +12,7 @@ import com.example.umcCall.domain.character.enums.PreferTime;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
+import com.example.umcCall.domain.proactive.service.ProactiveScheduleCoordinator;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +32,9 @@ class RelationshipServiceTest {
 
     @Mock
     private CharacterSyncTaskService characterSyncTaskService;
+
+    @Mock
+    private ProactiveScheduleCoordinator proactiveScheduleCoordinator;
 
     @InjectMocks
     private RelationshipService relationshipService;
@@ -57,6 +61,7 @@ class RelationshipServiceTest {
 
         assertThat(response.preferTime()).isEqualTo(PreferTime.LATE_EVENING);
         assertThat(character.getPreferTime()).isEqualTo(PreferTime.LATE_EVENING);
+        verify(proactiveScheduleCoordinator).reschedule(relationship);
         verify(characterSyncTaskService).enqueue(10L, CharacterSyncOperation.UPSERT);
     }
 }

@@ -4,6 +4,7 @@ import com.example.umcCall.domain.ai.dto.AiChatRequest;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.dto.AiHealthResponse;
 import com.example.umcCall.domain.ai.dto.AiCharacterSnapshot;
+import com.example.umcCall.domain.ai.dto.AiProactiveRequest;
 import com.example.umcCall.domain.ai.exception.AiErrorCode;
 import com.example.umcCall.domain.ai.exception.AiServerException;
 import java.time.Duration;
@@ -42,6 +43,27 @@ public class AiServerClient {
         try {
             AiChatResponse response = restClient.post()
                     .uri("/chat")
+                    .body(request)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
+                    })
+                    .body(AiChatResponse.class);
+            if (response == null) {
+                throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
+            }
+            return response;
+        } catch (AiServerException exception) {
+            throw exception;
+        } catch (RestClientException exception) {
+            throw new AiServerException(AiErrorCode.AI_SERVER_UNAVAILABLE, exception);
+        }
+    }
+
+    public AiChatResponse proactive(AiProactiveRequest request) {
+        try {
+            AiChatResponse response = restClient.post()
+                    .uri("/api/chat/proactive/send")
                     .body(request)
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {

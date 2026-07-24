@@ -81,4 +81,8 @@ public class ChatRoom extends BaseTimeEntity {
     public void archive() {
         this.deleted = true;
     }
+
+    public void touch(LocalDateTime messageAt) {
+        this.lastMessageAt = messageAt;
+    }
 }
