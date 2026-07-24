@@ -4,11 +4,18 @@ import com.example.umcCall.domain.chat.dto.response.ChatMessageCursorResponse;
 import com.example.umcCall.domain.chat.dto.response.ChatMessageResponse;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
+import com.example.umcCall.domain.chat.enums.MessageType;
+import com.example.umcCall.domain.chat.enums.SenderType;
+import com.example.umcCall.domain.chat.event.UserMessageSentEvent;
+import com.example.umcCall.domain.chat.exception.ChatErrorCode;
+import com.example.umcCall.domain.chat.exception.ChatException;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
+import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +30,8 @@ public class ChatMessageService {
 
     private final ChatRoomFinder chatRoomFinder;
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatRoomRepository chatRoomRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 채팅방 메시지 커서 조회.
@@ -50,6 +59,64 @@ public class ChatMessageService {
                 .toList();
 
         return ChatMessageCursorResponse.of(content, nextCursor, hasNext);
+    }
+
+    /**
+     * 채팅 메시지 전송(텍스트).
+     * 방 소유 검증 후 유저 메시지를 저장하고, 저장된 메시지만 반환한다.
+     * AI 답장은 이 응답에 포함되지 않고 이후 SSE로 별도 전달한다.
+     * (사진 전송은 S3 연동 후 image 파라미터로 확장 예정)
+     */
+    @Transactional
+    public ChatMessageResponse sendMessage(Long memberId, Long chatRoomId, String content) {
+        ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
+
+        // 내용이 없으면 전송 불가 (이미지 붙으면 "content 또는 image 최소 하나"로 완화)
+        if (content == null || content.isBlank()) {
+            throw new ChatException(ChatErrorCode.EMPTY_MESSAGE);
+        }
+
+        ChatMessage message = chatMessageRepository.save(
+                ChatMessage.builder()
+                        .senderType(SenderType.USER)
+                        .content(content)
+                        .messageType(MessageType.TEXT)
+                        .read(true)      // 내가 보낸 메시지는 읽음 처리
+                        .deleted(false)
+                        .chatRoom(room)
+                        .build()
+        );
+
+        // 목록 정렬용 마지막 메시지 시각 갱신
+        room.updateLastMessageAt(message.getCreatedAt());
+
+        // 커밋 후 AI 답장 생성을 트리거한다(캐릭터방만). 전송 응답은 기다리지 않는다.
+        if (room.getRelationshipId() != null) {
+            eventPublisher.publishEvent(new UserMessageSentEvent(chatRoomId));
+        }
+
+        return ChatMessageResponse.from(message);
+    }
+
+    /**
+     * AI 답장 메시지를 저장하고 방의 마지막 메시지 시각을 갱신한다(AI 답장 처리에서 호출).
+     */
+    @Transactional
+    public ChatMessage saveAiMessage(Long chatRoomId, String content) {
+        ChatRoom room = chatRoomRepository.findById(chatRoomId)
+                .orElseThrow(() -> new ChatException(ChatErrorCode.CHATROOM_NOT_FOUND));
+        ChatMessage message = chatMessageRepository.save(
+                ChatMessage.builder()
+                        .senderType(SenderType.AI)
+                        .content(content)
+                        .messageType(MessageType.TEXT)
+                        .read(false)     // 유저가 아직 안 읽음 → 안읽음 집계 대상
+                        .deleted(false)
+                        .chatRoom(room)
+                        .build()
+        );
+        room.updateLastMessageAt(message.getCreatedAt());
+        return message;
     }
 
     /** size 미지정/비정상은 기본값, 상한 초과는 상한으로 */
