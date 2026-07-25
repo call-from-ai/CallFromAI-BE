@@ -2,9 +2,9 @@ package com.example.umcCall.domain.call.controller;
 
 import com.example.umcCall.domain.call.dto.request.CallDialRequest;
 import com.example.umcCall.domain.call.dto.response.CallDetailResponse;
-import com.example.umcCall.domain.call.dto.response.CallDialResponse;
 import com.example.umcCall.domain.call.dto.response.CallListResponse;
 import com.example.umcCall.domain.call.dto.response.CallScriptResponse;
+import com.example.umcCall.domain.call.dto.response.CallTicketResponse;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,10 +36,19 @@ public class CallController {
     @Operation(summary = "사용자 발신(dial)",
             description = "메인(활성) 캐릭터에게 통화를 건다. Call을 생성하고 WebSocket 접속용 단명 wsTicket을 발급한다.")
     @PostMapping
-    public ApiResponse<CallDialResponse> dial(
+    public ApiResponse<CallTicketResponse> dial(
             @AuthenticationPrincipal Long memberId,
             @RequestBody @Valid CallDialRequest request) {
         return ApiResponse.onSuccess(callService.dial(memberId, request.characterId()));
+    }
+
+    @Operation(summary = "AI 발신(착신) 수락",
+            description = "착신 대기 중(RINGING)인 통화를 받는다. 상태를 PENDING(받았지만 연결 전)으로 전이하고 WebSocket 접속용 단명 wsTicket을 발급한다.")
+    @PatchMapping("/{callId}/accept")
+    public ApiResponse<CallTicketResponse> accept(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long callId) {
+        return ApiResponse.onSuccess(callService.accept(memberId, callId));
     }
 
     @Operation(summary = "내 통화 목록 조회",

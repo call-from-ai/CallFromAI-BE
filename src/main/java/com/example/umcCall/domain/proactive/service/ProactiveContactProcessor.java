@@ -93,7 +93,8 @@ public class ProactiveContactProcessor {
         }
         CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElse(null);
         boolean activeCall = callRepository.existsByRelationshipIdAndStatusIn(
-                relationship.getId(), EnumSet.of(CallStatus.DIALING, CallStatus.RINGING, CallStatus.IN_PROGRESS));
+                relationship.getId(), EnumSet.of(CallStatus.DIALING, CallStatus.RINGING,
+                        CallStatus.PENDING, CallStatus.IN_PROGRESS));
 
         ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
         RecentResponse recentResponse = schedule.getConsecutiveNoResponseCount() > 0

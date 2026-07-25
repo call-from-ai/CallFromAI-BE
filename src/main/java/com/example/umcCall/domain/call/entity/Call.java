@@ -59,9 +59,25 @@ public class Call extends BaseTimeEntity {
                 CallStatus.DIALING : CallStatus.RINGING;
     }
 
-    /** 통화 연결됨. 연결 대기 중(DIALING 또는 RINGING)에서만 IN_PROGRESS로 전이한다. */
+    /**
+     * 사용자가 착신을 받음(AI 발신). RINGING → PENDING.
+     * <p>아직 오디오가 흐르지 않으므로 IN_PROGRESS로 가지 않는다 — WS가 열려야 {@code connect()}가 그 전이를 한다.
+     * 이 상태 구분이 "받았지만 연결 전"인 통화를 부재중 판정에서 제외해 준다.
+     */
+    public void accept() {
+        if (status != CallStatus.RINGING) {
+            throw new IllegalStateException("착신 대기 중인 통화만 받을 수 있습니다. 현재 상태=" + status);
+        }
+        this.status = CallStatus.PENDING;
+    }
+
+    /**
+     * 통화 연결됨. 연결 대기 중(DIALING 또는 PENDING)에서만 IN_PROGRESS로 전이한다.
+     * <p>RINGING은 허용하지 않는다 — wsTicket은 accept에서만 발급되므로 accept를 거치지 않은 통화는
+     * 애초에 소켓을 열 수 없다.
+     */
     public void connect() {
-        if (status != CallStatus.DIALING && status != CallStatus.RINGING) {
+        if (status != CallStatus.DIALING && status != CallStatus.PENDING) {
             throw new IllegalStateException("연결 대기 중인 통화만 연결할 수 있습니다. 현재 상태=" + status);
         }
         this.status = CallStatus.IN_PROGRESS;
