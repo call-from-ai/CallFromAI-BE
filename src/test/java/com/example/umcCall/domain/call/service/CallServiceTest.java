@@ -3,12 +3,14 @@ package com.example.umcCall.domain.call.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.example.umcCall.domain.call.dto.response.CallIncomingResponse;
 import com.example.umcCall.domain.call.dto.response.CallTicketResponse;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.enums.CallSender;
@@ -21,6 +23,8 @@ import com.example.umcCall.domain.call.ticket.WsTicketStore;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +32,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 /** 통화 상태 전이 위임(connect/finish) 검증. 엔티티 전이는 실제 {@link Call}로 확인한다. */
 @ExtendWith(MockitoExtension.class)
@@ -114,6 +119,37 @@ class CallServiceTest {
         callService.finish(CALL_ID);
 
         assertThat(call.getStatus()).isEqualTo(CallStatus.COMPLETED);
+    }
+
+    @Test
+    void getIncomingCall은_RINGING_통화를_단건으로_준다() {
+        CallIncomingResponse incoming = new CallIncomingResponse(
+                CALL_ID, CHARACTER_ID, "지호", "https://cdn.example.com/jiho.png", LocalDateTime.now());
+        when(callRepository.findIncomingCalls(eq(MEMBER_ID), eq(CallStatus.RINGING), any(Pageable.class)))
+                .thenReturn(List.of(incoming));
+
+        assertThat(callService.getIncomingCall(MEMBER_ID)).isEqualTo(incoming);
+    }
+
+    @Test
+    void getIncomingCall은_착신이_없으면_null을_준다() {
+        when(callRepository.findIncomingCalls(eq(MEMBER_ID), eq(CallStatus.RINGING), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        assertThat(callService.getIncomingCall(MEMBER_ID)).isNull();
+    }
+
+    @Test
+    void getIncomingCall은_착신이_겹치면_가장_최근_것을_준다() {
+        CallIncomingResponse latest = new CallIncomingResponse(
+                CALL_ID, CHARACTER_ID, "지호", null, LocalDateTime.now());
+        CallIncomingResponse older = new CallIncomingResponse(
+                99L, 98L, "이전메인", null, LocalDateTime.now().minusMinutes(1));
+        // 리포지토리가 최신순으로 주므로 첫 건이 최신이다(메인 캐릭터 교체 엣지).
+        when(callRepository.findIncomingCalls(eq(MEMBER_ID), eq(CallStatus.RINGING), any(Pageable.class)))
+                .thenReturn(List.of(latest, older));
+
+        assertThat(callService.getIncomingCall(MEMBER_ID)).isEqualTo(latest);
     }
 
     @Test

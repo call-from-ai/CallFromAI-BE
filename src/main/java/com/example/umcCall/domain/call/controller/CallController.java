@@ -2,6 +2,7 @@ package com.example.umcCall.domain.call.controller;
 
 import com.example.umcCall.domain.call.dto.request.CallDialRequest;
 import com.example.umcCall.domain.call.dto.response.CallDetailResponse;
+import com.example.umcCall.domain.call.dto.response.CallIncomingResponse;
 import com.example.umcCall.domain.call.dto.response.CallListResponse;
 import com.example.umcCall.domain.call.dto.response.CallScriptResponse;
 import com.example.umcCall.domain.call.dto.response.CallTicketResponse;
@@ -40,6 +41,13 @@ public class CallController {
             @AuthenticationPrincipal Long memberId,
             @RequestBody @Valid CallDialRequest request) {
         return ApiResponse.onSuccess(callService.dial(memberId, request.characterId()));
+    }
+
+    @Operation(summary = "착신 대기 통화 조회",
+            description = "지금 걸려온 전화(RINGING) 한 건을 반환한다. 착신이 없으면 result 없음. 받기/거절은 이 응답의 callId로 호출한다.")
+    @GetMapping("/incoming")
+    public ApiResponse<CallIncomingResponse> getIncomingCall(@AuthenticationPrincipal Long memberId) {
+        return ApiResponse.onSuccess(callService.getIncomingCall(memberId));
     }
 
     @Operation(summary = "AI 발신(착신) 수락",
