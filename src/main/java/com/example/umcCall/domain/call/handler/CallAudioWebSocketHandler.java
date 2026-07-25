@@ -144,12 +144,16 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     .setConfig(NestConfig.newBuilder().setConfig(configJson).build())
                     .build());
 
-            // DIALING → IN_PROGRESS. 상태 persist 실패로 통화를 끊지는 않는다(로그만) — chat() 턴 폐기 정책과 결이 같다.
+            // DIALING/PENDING → IN_PROGRESS.
+            // ⚠ 실패하면 소켓을 닫는다(로그만 남기고 유지하지 않는다) — 스위퍼가 먼저 MISSED/CANCELED로
+            // 마감한 통화일 수 있고, 그 경우 오디오는 흐르는데 startedAt이 없어 종료 시 complete()가 터진다.
             try {
                 callService.connect(ticket.callId());
             } catch (RuntimeException e) {
-                log.error("[Call] 통화 연결 상태 저장 실패(통화는 유지). session={}, callId={}",
+                log.error("[Call] 통화 연결 상태 전이 실패 → WebSocket 종료. session={}, callId={}",
                         sessionId, ticket.callId(), e);
+                terminateCall(session, CloseStatus.SERVER_ERROR);
+                return;
             }
 
             log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}, callId={}",

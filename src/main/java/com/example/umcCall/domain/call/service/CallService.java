@@ -163,9 +163,11 @@ public class CallService {
      * 통화 종료(소켓 끊김). 연결됐었으면 정상 완료, 연결 전이었으면 취소로 마감한다.
      * <p>PENDING(착신을 받았지만 스트림 개설이 실패한 경우)도 서버 측 사유라 CANCELED로 닫는다.
      * 이미 종료 상태면 no-op(정리 경로가 겹쳐도 안전). RINGING은 소켓을 열 수 없어 여기 도달하지 않는다.
+     * <p>스위퍼(PENDING 마감)와 겹칠 수 있어 다른 전이 경로와 같이 락으로 집는다 — 겹쳐도 결과는
+     * 같은 CANCELED지만, 상태를 읽고 전이하는 구간이 갈라지지 않게 한다.
      */
     public void finish(Long callId) {
-        Call call = callRepository.findById(callId)
+        Call call = callRepository.findByIdForUpdate(callId)
                 .orElseThrow(() -> new CallException(CallErrorCode.CALL_NOT_FOUND));
         switch (call.getStatus()) {
             case IN_PROGRESS -> call.complete();

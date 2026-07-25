@@ -59,6 +59,29 @@ public interface CallRepository extends JpaRepository<Call, Long> {
                                                  @Param("status") CallStatus status,
                                                  Pageable pageable);
 
+    /**
+     * 특정 상태로 너무 오래 머문 통화 id를 오래된 것부터 조회한다(부재중/미접속 스위퍼용).
+     * <p>기준 시각은 {@code createdAt}이다 — AI 발신은 "Call 생성 = 벨 울림"이라 이게 벨 시작 시각이다
+     * (FCM 푸시가 붙으면 전달 시각과 어긋날 수 있어 재검토 대상).
+     */
+    @Query("""
+            select c.id from Call c
+            where c.status = :status
+              and c.createdAt < :threshold
+            order by c.createdAt, c.id
+            """)
+    List<Long> findTimedOutIds(@Param("status") CallStatus status,
+                               @Param("threshold") LocalDateTime threshold,
+                               Pageable pageable);
+
+    /**
+     * 마감 대상 통화를 비관적 락으로 집는다(claim). 스위퍼의 마감과 사용자의 accept/connect가 겹칠 때
+     * 한쪽만 이기게 한다 — 잠근 뒤 호출부가 상태를 다시 확인해야 한다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Call c where c.id = :id")
+    Optional<Call> findByIdForUpdate(@Param("id") Long id);
+
     boolean existsByRelationshipIdAndStatusIn(Long relationshipId, Collection<CallStatus> statuses);
 
     long countByRelationshipIdAndSenderAndStatusInAndCreatedAtAfter(

@@ -105,6 +105,18 @@ public class Call extends BaseTimeEntity {
     }
 
     /**
+     * 벨을 울렸으나 사용자가 받지 않음(부재중). RINGING → MISSED.
+     * <p>스위퍼가 {@code createdAt} + 벨 타임아웃을 넘긴 통화를 이 상태로 닫는다. RINGING만 대상이다 —
+     * 이미 받은 통화(PENDING)는 사용자 부재가 아니므로 부재중이 아니다.
+     */
+    public void markMissed() {
+        if (status != CallStatus.RINGING) {
+            throw new IllegalStateException("착신 대기 중인 통화만 부재중 처리할 수 있습니다. 현재 상태=" + status);
+        }
+        this.status = CallStatus.MISSED;
+    }
+
+    /**
      * 사용자가 착신을 거절함(AI 발신). RINGING → REJECTED.
      * <p>API로 직접 호출되는 전이라 상태 검증을 엔티티가 직접 한다.
      */

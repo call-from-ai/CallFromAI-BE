@@ -47,6 +47,13 @@ call:
     scheduler-delay-ms: 60000
     # 예약 시각이 이 분보다 더 지났으면 발신하지 않고 CANCELED로 종결한다.
     grace-minutes: 5
+  timeout:
+    # 연결되지 못한 통화를 걷는 주기(ms). 벨 타임아웃보다 촘촘해야 판정이 제시간에 떨어진다.
+    scheduler-delay-ms: 10000
+    # 이 초만큼 벨이 울렸는데 안 받으면 부재중(MISSED). 기준 시각은 Call.createdAt(= 벨 울린 시각).
+    ring-seconds: 60
+    # 받았지만(PENDING) 이 초 안에 WebSocket을 열지 않으면 CANCELED. wsTicket TTL(30초) + 여유.
+    pending-seconds: 60
 
 kakao:
   base-url: https://kapi.kakao.com

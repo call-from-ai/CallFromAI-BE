@@ -77,7 +77,7 @@ class CallServiceTest {
     @Test
     void connect는_DIALING을_IN_PROGRESS로_전이하고_startedAt을_채운다() {
         Call call = dialingCall();
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         callService.connect(CALL_ID);
 
@@ -89,7 +89,7 @@ class CallServiceTest {
     void finish는_연결된_통화를_COMPLETED로_마감한다() {
         Call call = dialingCall();
         call.connect(); // IN_PROGRESS
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         callService.finish(CALL_ID);
 
@@ -101,7 +101,7 @@ class CallServiceTest {
     @Test
     void finish는_연결_전_통화를_CANCELED로_마감한다() {
         Call call = dialingCall(); // DIALING (connect 전)
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         callService.finish(CALL_ID);
 
@@ -113,7 +113,7 @@ class CallServiceTest {
         Call call = dialingCall();
         call.connect();
         call.complete(); // COMPLETED
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         // 정리 경로가 겹쳐 두 번 불려도 안전해야 한다(no-op).
         callService.finish(CALL_ID);
@@ -158,7 +158,7 @@ class CallServiceTest {
         Character character = characterOf(CHARACTER_ID); // 중첩 스터빙 금지 — 먼저 만들고 주입한다
         when(relationship.getCharacter()).thenReturn(character);
         Call call = ringingCall(relationship);
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
         when(wsTicketStore.issue(any())).thenReturn(TICKET);
 
         CallTicketResponse response = callService.accept(MEMBER_ID, CALL_ID);
@@ -177,7 +177,7 @@ class CallServiceTest {
     @Test
     void accept는_남의_통화면_CALL_ACCESS_DENIED를_던진다() {
         Call call = ringingCall(relationshipOf(OTHER_MEMBER_ID));
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         assertThatThrownBy(() -> callService.accept(MEMBER_ID, CALL_ID))
                 .isInstanceOf(CallException.class)
@@ -190,7 +190,7 @@ class CallServiceTest {
         Call call = ringingCall(relationshipOf(MEMBER_ID));
         call.accept();
         call.connect(); // IN_PROGRESS — 이미 통화 중
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         assertThatThrownBy(() -> callService.accept(MEMBER_ID, CALL_ID))
                 .isInstanceOf(CallException.class)
@@ -204,7 +204,7 @@ class CallServiceTest {
         Character character = characterOf(CHARACTER_ID);
         when(relationship.getCharacter()).thenReturn(character);
         Call call = ringingCall(relationship);
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
         callService.accept(MEMBER_ID, CALL_ID); // PENDING
 
         // 스트림 개설 실패 등 서버 측 사유 — 사용자는 받았으므로 부재중이 아니다.
@@ -216,7 +216,7 @@ class CallServiceTest {
     @Test
     void reject는_RINGING_통화를_REJECTED로_마감하고_티켓을_발급하지_않는다() {
         Call call = ringingCall(relationshipOf(MEMBER_ID));
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         callService.reject(MEMBER_ID, CALL_ID);
 
@@ -227,7 +227,7 @@ class CallServiceTest {
     @Test
     void reject는_남의_통화면_CALL_ACCESS_DENIED를_던진다() {
         Call call = ringingCall(relationshipOf(OTHER_MEMBER_ID));
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         assertThatThrownBy(() -> callService.reject(MEMBER_ID, CALL_ID))
                 .isInstanceOf(CallException.class)
@@ -239,7 +239,7 @@ class CallServiceTest {
     void reject는_이미_받은_통화를_거절하지_못한다() {
         Call call = ringingCall(relationshipOf(MEMBER_ID));
         call.accept(); // PENDING — 받은 뒤 끊는 것은 소켓 경로의 CANCELED다
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         assertThatThrownBy(() -> callService.reject(MEMBER_ID, CALL_ID))
                 .isInstanceOf(CallException.class)
@@ -249,7 +249,7 @@ class CallServiceTest {
 
     @Test
     void reject는_통화가_없으면_CALL_NOT_FOUND를_던진다() {
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.empty());
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> callService.reject(MEMBER_ID, CALL_ID))
                 .isInstanceOf(CallException.class)
@@ -259,7 +259,7 @@ class CallServiceTest {
 
     @Test
     void accept는_통화가_없으면_CALL_NOT_FOUND를_던진다() {
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.empty());
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> callService.accept(MEMBER_ID, CALL_ID))
                 .isInstanceOf(CallException.class)
@@ -268,8 +268,61 @@ class CallServiceTest {
     }
 
     @Test
+    void markMissed는_RINGING_통화를_MISSED로_마감한다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        callService.markMissed(CALL_ID);
+
+        assertThat(call.getStatus()).isEqualTo(CallStatus.MISSED);
+    }
+
+    @Test
+    void markMissed는_그_사이_사용자가_받았으면_마감하지_않는다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        call.accept(); // PENDING — 스위퍼가 조회한 뒤 사용자가 받은 상황
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        callService.markMissed(CALL_ID);
+
+        // 락 뒤 상태 재확인이 "받는 순간 부재중 처리" 레이스를 막는다.
+        assertThat(call.getStatus()).isEqualTo(CallStatus.PENDING);
+    }
+
+    @Test
+    void cancelStalePending은_PENDING_통화를_CANCELED로_마감한다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        call.accept(); // PENDING
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        callService.cancelStalePending(CALL_ID);
+
+        assertThat(call.getStatus()).isEqualTo(CallStatus.CANCELED);
+    }
+
+    @Test
+    void cancelStalePending은_그_사이_연결된_통화를_마감하지_않는다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        call.accept();
+        call.connect(); // IN_PROGRESS — 막 접속 성공
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        callService.cancelStalePending(CALL_ID);
+
+        assertThat(call.getStatus()).isEqualTo(CallStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void 스위퍼_전이는_통화가_없으면_아무것도_하지_않는다() {
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.empty());
+
+        callService.markMissed(CALL_ID);
+        callService.cancelStalePending(CALL_ID);
+    }
+
+    @Test
     void connect는_통화가_없으면_CALL_NOT_FOUND를_던진다() {
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.empty());
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> callService.connect(CALL_ID))
                 .isInstanceOf(CallException.class)
@@ -279,7 +332,7 @@ class CallServiceTest {
 
     @Test
     void finish는_통화가_없으면_CALL_NOT_FOUND를_던진다() {
-        when(callRepository.findById(CALL_ID)).thenReturn(Optional.empty());
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> callService.finish(CALL_ID))
                 .isInstanceOf(CallException.class)

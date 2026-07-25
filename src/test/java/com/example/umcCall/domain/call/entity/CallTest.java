@@ -57,6 +57,36 @@ class CallTest {
     }
 
     @Test
+    void markMissed는_RINGING을_MISSED로_전이한다() {
+        Call call = ringingCall();
+
+        call.markMissed();
+
+        assertThat(call.getStatus()).isEqualTo(CallStatus.MISSED);
+    }
+
+    @Test
+    void markMissed는_이미_받은_통화를_부재중_처리하지_않는다() {
+        Call call = ringingCall();
+        call.accept(); // PENDING — 사용자는 받았으므로 부재중이 아니다
+
+        assertThatThrownBy(call::markMissed)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("PENDING");
+    }
+
+    @Test
+    void 부재중_처리된_통화는_연결되지_않는다() {
+        Call call = ringingCall();
+        call.markMissed();
+
+        // 스위퍼가 먼저 마감한 통화에 소켓이 붙는 레이스 — 엔티티가 막고 핸들러가 소켓을 닫는다.
+        assertThatThrownBy(call::connect)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("MISSED");
+    }
+
+    @Test
     void reject는_RINGING을_REJECTED로_전이한다() {
         Call call = ringingCall();
 
