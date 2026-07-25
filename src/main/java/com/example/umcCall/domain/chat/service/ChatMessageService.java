@@ -3,6 +3,7 @@ package com.example.umcCall.domain.chat.service;
 import com.example.umcCall.domain.chat.dto.response.ChatMessageCursorResponse;
 import com.example.umcCall.domain.chat.dto.response.ChatMessageResponse;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
+import com.example.umcCall.domain.chat.entity.ChatPhoto;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
 import com.example.umcCall.domain.chat.enums.MessageType;
 import com.example.umcCall.domain.chat.enums.SenderType;
@@ -10,15 +11,19 @@ import com.example.umcCall.domain.chat.event.UserMessageSentEvent;
 import com.example.umcCall.domain.chat.exception.ChatErrorCode;
 import com.example.umcCall.domain.chat.exception.ChatException;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
+import com.example.umcCall.domain.chat.repository.ChatPhotoRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
+import com.example.umcCall.global.infra.s3.S3Uploader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -28,9 +33,16 @@ public class ChatMessageService {
     private static final int DEFAULT_SIZE = 30;
     private static final int MAX_SIZE = 50;
 
+    /** 허용 이미지 형식. AI 서버가 받는 것과 통일한다. */
+    private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of("image/jpeg", "image/png");
+    /** S3 내 채팅 사진 접두어. 프리셋 등 다른 객체와 섞이지 않게 분리한다. */
+    private static final String CHAT_PHOTO_DIR = "chat-photos";
+
     private final ChatRoomFinder chatRoomFinder;
     private final ChatMessageRepository chatMessageRepository;
     private final ChatRoomRepository chatRoomRepository;
+    private final ChatPhotoRepository chatPhotoRepository;
+    private final S3Uploader s3Uploader;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -62,30 +74,45 @@ public class ChatMessageService {
     }
 
     /**
-     * 채팅 메시지 전송(텍스트).
+     * 채팅 메시지 전송(텍스트/사진).
      * 방 소유 검증 후 유저 메시지를 저장하고, 저장된 메시지만 반환한다.
+     * content·image 중 최소 하나가 있어야 하며, message_type은 조합으로 서버가 계산한다.
+     * 이미지는 S3에 먼저 올린 뒤 DB를 저장해, S3 실패 시 깨진 메시지가 남지 않게 한다.
      * AI 답장은 이 응답에 포함되지 않고 이후 SSE로 별도 전달한다.
-     * (사진 전송은 S3 연동 후 image 파라미터로 확장 예정)
      */
     @Transactional
-    public ChatMessageResponse sendMessage(Long memberId, Long chatRoomId, String content) {
+    public ChatMessageResponse sendMessage(Long memberId, Long chatRoomId, String content, MultipartFile image) {
         ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
 
-        // 내용이 없으면 전송 불가 (이미지 붙으면 "content 또는 image 최소 하나"로 완화)
-        if (content == null || content.isBlank()) {
+        boolean hasText = content != null && !content.isBlank();
+        boolean hasImage = image != null && !image.isEmpty();
+        if (!hasText && !hasImage) {
             throw new ChatException(ChatErrorCode.EMPTY_MESSAGE);
+        }
+
+        // 이미지가 있으면 형식 검증 후 S3에 먼저 업로드한다(DB 저장 전).
+        String photoUrl = null;
+        if (hasImage) {
+            validateImageType(image);
+            photoUrl = s3Uploader.upload(image, CHAT_PHOTO_DIR + "/" + room.getId());
         }
 
         ChatMessage message = chatMessageRepository.save(
                 ChatMessage.builder()
                         .senderType(SenderType.USER)
-                        .content(content)
-                        .messageType(MessageType.TEXT)
+                        .content(hasText ? content : null)
+                        .messageType(resolveMessageType(hasText, hasImage))
                         .read(true)      // 내가 보낸 메시지는 읽음 처리
                         .deleted(false)
                         .chatRoom(room)
                         .build()
         );
+
+        // 사진은 별도 테이블에 1:1로 저장한다.
+        if (hasImage) {
+            chatPhotoRepository.save(
+                    ChatPhoto.builder().chatMessage(message).photoUrl(photoUrl).build());
+        }
 
         // 목록 정렬용 마지막 메시지 시각 갱신
         room.updateLastMessageAt(message.getCreatedAt());
@@ -95,7 +122,23 @@ public class ChatMessageService {
             eventPublisher.publishEvent(new UserMessageSentEvent(chatRoomId));
         }
 
-        return ChatMessageResponse.from(message);
+        return ChatMessageResponse.from(message, photoUrl);
+    }
+
+    /** content·image 조합으로 메시지 타입을 계산한다. */
+    private MessageType resolveMessageType(boolean hasText, boolean hasImage) {
+        if (hasText && hasImage) {
+            return MessageType.TEXT_IMAGE;
+        }
+        return hasImage ? MessageType.IMAGE : MessageType.TEXT;
+    }
+
+    /** 이미지 content-type이 허용 목록(JPEG/PNG)에 있는지 검증한다. */
+    private void validateImageType(MultipartFile image) {
+        String contentType = image.getContentType();
+        if (contentType == null || !ALLOWED_IMAGE_TYPES.contains(contentType)) {
+            throw new ChatException(ChatErrorCode.INVALID_IMAGE_TYPE);
+        }
     }
 
     /**
