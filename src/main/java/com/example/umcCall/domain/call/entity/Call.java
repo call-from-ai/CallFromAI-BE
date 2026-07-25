@@ -81,9 +81,21 @@ public class Call extends BaseTimeEntity {
     }
 
     /**
-     * 발신자가 연결 전에 끊음. DIALING → CANCELED.
+     * 연결되지 못한 채 서버/AI 측 사유로 취소됨(스트림 개설 실패 등). → CANCELED.
+     * <p>사용자 취소가 아니다 — 연결 전 사용자 취소는 취소 API가 없어 현재 도달 불가다.
      */
     public void cancel() {
         this.status = CallStatus.CANCELED;
+    }
+
+    /**
+     * 사용자가 착신을 거절함(AI 발신). RINGING → REJECTED.
+     * <p>API로 직접 호출되는 전이라 상태 검증을 엔티티가 직접 한다.
+     */
+    public void reject() {
+        if (status != CallStatus.RINGING) {
+            throw new IllegalStateException("착신 대기 중인 통화만 거절할 수 있습니다. 현재 상태=" + status);
+        }
+        this.status = CallStatus.REJECTED;
     }
 }
