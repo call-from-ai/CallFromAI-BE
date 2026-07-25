@@ -11,6 +11,7 @@ import com.example.umcCall.domain.call.port.ChatHistoryProvider;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
+import com.example.umcCall.domain.call.event.CallEndedEvent;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -34,6 +35,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -135,7 +138,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 등록은 CONFIG 전에 — onNext가 처음 뜰 땐 이미 맵에 있어야 한다.
             // LLM 맥락은 빈 상태가 아니라 그 관계의 채팅 최근 대화로 시딩한다(전화가 채팅에서 이어지도록).
             activeCalls.put(sessionId,
-                    new ActiveCall(stream, Executors.newSingleThreadExecutor(), ticket,
+                    new ActiveCall(session, stream, Executors.newSingleThreadExecutor(), ticket,
                             seedHistory(sessionId, ticket.relationshipId())));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
@@ -328,6 +331,31 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         completeCall(session.getId());
     }
 
+    /**
+     * REST 종료({@code PATCH /calls/{callId}/end})가 상태를 마감한 뒤, 아직 살아 있는 소켓·STT 스트림·워커를
+     * 서버가 닫는다. 세션이 없으면 no-op(이미 끊긴 통화).
+     *
+     * <p>커밋 이후에만 받는다 — 마감 트랜잭션이 롤백되면 통화는 유지돼야 하므로 소켓도 살아 있어야 한다.
+     *
+     * <p>맵이 sessionId 키라 callId는 순회로 찾는다 — 역색인 맵을 두면 두 맵 동기화 문제가 생기고,
+     * 종료는 통화당 한 번뿐인 드문 이벤트라 순회 비용이 문제되지 않는다.
+     *
+     * <p>정상 종료라 {@link CloseStatus#NORMAL}로 닫아 에러 통지를 보내지 않는다. 상태는 이미
+     * COMPLETED이므로 {@code terminateCall} 안의 마감 호출은 no-op으로 지나간다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onCallEnded(CallEndedEvent event) {
+        Long callId = event.callId();
+        activeCalls.values().stream()
+                .filter(call -> call.ticket().callId().equals(callId))
+                .findFirst()
+                .ifPresent(call -> {
+                    log.info("[Call] 사용자 종료 요청으로 세션 정리. callId={}, session={}",
+                            callId, call.session().getId());
+                    terminateCall(call.session(), CloseStatus.NORMAL);
+                });
+    }
+
     /** 소켓이 <b>이미 닫힌 뒤</b>의 뒷정리. CLOVA에 half-close를 보낸다. (짝: {@link #terminateCall}) */
     private void completeCall(String sessionId) {
         ActiveCall call = activeCalls.remove(sessionId);
@@ -409,12 +437,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * 진행 중인 통화 하나가 들고 있는 것 전부. 수명이 같아 한 홀더로 묶었다 — 정리를 한 번에 하기 위함.
      * 통화 스코프 상태(전사 버퍼·LLM 컨텍스트 등)가 늘면 평행 맵을 만들지 말고 여기 필드로 붙인다.
      *
+     * @param session 이 통화의 WebSocket 세션. REST 종료({@code PATCH /calls/{callId}/end})가 callId로
+     *                소켓을 찾아 닫아야 해서 들고 있는다(평행 맵을 만들지 않기 위해 여기 필드로).
      * @param worker  통화당 단일 스레드 — 제출 순서 = 실행 순서(AI 응답 순서 보장).
      * @param ticket  핸드셰이크에서 검증된 신원(callId/relationshipId/characterId). AI 배선·전사 저장의 기준.
      * @param history 세션 스코프 대화 이력. <b>워커 스레드만</b> 읽고 쓴다(스레드 confine → 동기화 불필요).
      */
-    private record ActiveCall(SttStream stream, ExecutorService worker, WsTicket ticket,
-                              List<AiChatHistoryItem> history) {
+    private record ActiveCall(WebSocketSession session, SttStream stream, ExecutorService worker,
+                              WsTicket ticket, List<AiChatHistoryItem> history) {
     }
 
     /**

@@ -12,9 +12,11 @@ import static org.mockito.Mockito.when;
 
 import com.example.umcCall.domain.call.dto.response.CallIncomingResponse;
 import com.example.umcCall.domain.call.dto.response.CallTicketResponse;
+import com.example.umcCall.domain.call.dto.response.CallEndResponse;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
+import com.example.umcCall.domain.call.event.CallEndedEvent;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallRepository;
@@ -32,6 +34,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 
 /** 통화 상태 전이 위임(connect/finish) 검증. 엔티티 전이는 실제 {@link Call}로 확인한다. */
@@ -48,6 +51,7 @@ class CallServiceTest {
     @Mock private RelationshipRepository relationshipRepository;
     @Mock private CallRepository callRepository;
     @Mock private WsTicketStore wsTicketStore;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private CallService callService;
 
@@ -262,6 +266,69 @@ class CallServiceTest {
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> callService.accept(MEMBER_ID, CALL_ID))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_NOT_FOUND);
+    }
+
+    @Test
+    void end는_진행_중_통화를_COMPLETED로_마감하고_통화시간을_준다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        call.accept();
+        call.connect(); // IN_PROGRESS
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        CallEndResponse response = callService.end(MEMBER_ID, CALL_ID);
+
+        assertThat(call.getStatus()).isEqualTo(CallStatus.COMPLETED);
+        // 종료 화면이 쓰는 값 — 서버가 startedAt~endedAt으로 계산한다(프론트 자체 측정과 어긋나지 않게).
+        assertThat(response.callTime()).isNotNull().isGreaterThanOrEqualTo(0);
+        assertThat(response.endedAt()).isNotNull();
+    }
+
+    @Test
+    void end는_세션_정리를_위해_종료_이벤트를_발행한다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        call.accept();
+        call.connect();
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        callService.end(MEMBER_ID, CALL_ID);
+
+        // 소켓을 안 닫으면 오디오가 계속 CLOVA로 흘러 STT 비용이 발생한다.
+        verify(eventPublisher).publishEvent(new CallEndedEvent(CALL_ID));
+    }
+
+    @Test
+    void end는_남의_통화면_CALL_ACCESS_DENIED를_던진다() {
+        Call call = ringingCall(relationshipOf(OTHER_MEMBER_ID));
+        call.accept();
+        call.connect();
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        assertThatThrownBy(() -> callService.end(MEMBER_ID, CALL_ID))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_ACCESS_DENIED);
+    }
+
+    @Test
+    void end는_연결_전_통화면_CALL_NOT_IN_PROGRESS를_던진다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        call.accept(); // PENDING — 아직 오디오가 흐르지 않는다
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        assertThatThrownBy(() -> callService.end(MEMBER_ID, CALL_ID))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_NOT_IN_PROGRESS);
+    }
+
+    @Test
+    void end는_통화가_없으면_CALL_NOT_FOUND를_던진다() {
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> callService.end(MEMBER_ID, CALL_ID))
                 .isInstanceOf(CallException.class)
                 .extracting(e -> ((CallException) e).getErrorCode())
                 .isEqualTo(CallErrorCode.CALL_NOT_FOUND);

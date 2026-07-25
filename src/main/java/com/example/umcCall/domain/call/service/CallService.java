@@ -1,11 +1,13 @@
 package com.example.umcCall.domain.call.service;
 
+import com.example.umcCall.domain.call.dto.response.CallEndResponse;
 import com.example.umcCall.domain.call.dto.response.CallIncomingResponse;
 import com.example.umcCall.domain.call.dto.response.CallTicketResponse;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
+import com.example.umcCall.domain.call.event.CallEndedEvent;
 import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.ticket.WsTicket;
@@ -14,6 +16,7 @@ import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +32,7 @@ public class CallService {
     private final RelationshipRepository relationshipRepository;
     private final CallRepository callRepository;
     private final WsTicketStore wsTicketStore;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 사용자 발신. characterId의 관계를 확인해 Call을 만들고 단명 wsTicket을 발급한다.
@@ -99,6 +103,31 @@ public class CallService {
      */
     public void reject(Long memberId, Long callId) {
         loadOwnedRingingCall(memberId, callId).reject();
+    }
+
+    /**
+     * 사용자가 통화 중에 전화를 끊음. IN_PROGRESS → COMPLETED(+ endedAt·callTime).
+     * <p>검증은 존재({@code CALL_NOT_FOUND}) → 소유({@code CALL_ACCESS_DENIED}) →
+     * 진행 중({@code CALL_NOT_IN_PROGRESS}) 순서다. 연결 전(DIALING/PENDING) 취소는 이 API가 다루지 않는다.
+     * <p>⚠ <b>상태만 바꾸고 끝내면 안 된다</b> — 소켓이 열려 있으면 오디오가 계속 CLOVA로 흘러 STT 비용이
+     * 발생하고 워커·스트림이 살아남는다. 그래서 {@link CallEndedEvent}를 발행해 세션을 아는 쪽(WS 핸들러)이
+     * 정리하게 한다. <b>핸들러를 직접 주입하지 않는 이유</b>: 핸들러가 이미 이 서비스에 의존해서
+     * 순환 참조로 앱이 기동하지 않는다. 수신은 커밋 이후(AFTER_COMMIT)라 롤백 시엔 소켓이 유지된다.
+     */
+    public CallEndResponse end(Long memberId, Long callId) {
+        Call call = callRepository.findByIdForUpdate(callId)
+                .orElseThrow(() -> new CallException(CallErrorCode.CALL_NOT_FOUND));
+
+        if (!call.getRelationship().getMemberId().equals(memberId)) {
+            throw new CallException(CallErrorCode.CALL_ACCESS_DENIED);
+        }
+        if (call.getStatus() != CallStatus.IN_PROGRESS) {
+            throw new CallException(CallErrorCode.CALL_NOT_IN_PROGRESS);
+        }
+        call.complete();
+        eventPublisher.publishEvent(new CallEndedEvent(callId));
+
+        return CallEndResponse.of(call);
     }
 
     /**

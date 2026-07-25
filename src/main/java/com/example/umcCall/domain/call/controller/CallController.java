@@ -2,6 +2,7 @@ package com.example.umcCall.domain.call.controller;
 
 import com.example.umcCall.domain.call.dto.request.CallDialRequest;
 import com.example.umcCall.domain.call.dto.response.CallDetailResponse;
+import com.example.umcCall.domain.call.dto.response.CallEndResponse;
 import com.example.umcCall.domain.call.dto.response.CallIncomingResponse;
 import com.example.umcCall.domain.call.dto.response.CallListResponse;
 import com.example.umcCall.domain.call.dto.response.CallScriptResponse;
@@ -67,6 +68,15 @@ public class CallController {
             @PathVariable Long callId) {
         callService.reject(memberId, callId);
         return ApiResponse.onSuccess();
+    }
+
+    @Operation(summary = "통화 종료(사용자가 끊기)",
+            description = "진행 중인 통화를 종료한다. 상태를 COMPLETED로 마감하고 통화 시간을 반환하며, 서버가 WebSocket 세션도 정리한다.")
+    @PatchMapping("/{callId}/end")
+    public ApiResponse<CallEndResponse> end(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long callId) {
+        return ApiResponse.onSuccess(callService.end(memberId, callId));
     }
 
     @Operation(summary = "내 통화 목록 조회",

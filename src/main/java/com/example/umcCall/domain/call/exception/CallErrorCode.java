@@ -43,6 +43,9 @@ public enum CallErrorCode implements BaseErrorCode {
     // 409 - 이미 발신됐거나 취소된 예약을 수정하려는 시도
     CALL_RESERVATION_NOT_SCHEDULED(HttpStatus.CONFLICT, "CALL409_3", "대기 중인 통화 예약만 수정할 수 있습니다."),
 
+    // 409 - 진행 중이 아닌 통화를 종료하려는 시도
+    CALL_NOT_IN_PROGRESS(HttpStatus.CONFLICT, "CALL409_4", "진행 중인 통화만 종료할 수 있습니다.");
+
     private final HttpStatus status;
     private final String code;
     private final String message;
