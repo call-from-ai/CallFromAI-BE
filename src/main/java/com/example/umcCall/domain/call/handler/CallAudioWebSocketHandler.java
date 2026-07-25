@@ -6,7 +6,10 @@ import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
+import com.example.umcCall.domain.call.enums.CallSpeaker;
+import com.example.umcCall.domain.call.port.ChatHistoryProvider;
 import com.example.umcCall.domain.call.service.CallConversationService;
+import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
@@ -50,10 +53,15 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /** AI 응답 화자. 캐릭터별 음성 매핑은 후순위 — 지금은 고정값(캐릭터 음성이 들어올 자리다). */
     private static final String AI_SPEAKER = "nara";
 
+    /** 통화 시작 시 채팅 최근 대화로 LLM 맥락을 시딩하기 위해 가져올 개수(채팅 HISTORY_SIZE와 동일). */
+    private static final int SEED_HISTORY_SIZE = 20;
+
     private final ClovaSpeechClient clovaSpeechClient;
     private final ClovaVoiceClient clovaVoiceClient;
     private final CallConversationService callConversationService;
     private final CallService callService;
+    private final CallHistoryService callHistoryService;
+    private final ChatHistoryProvider chatHistoryProvider;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -66,12 +74,16 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                                      ClovaVoiceClient clovaVoiceClient,
                                      CallConversationService callConversationService,
                                      CallService callService,
+                                     CallHistoryService callHistoryService,
+                                     ChatHistoryProvider chatHistoryProvider,
                                      ClovaSpeechProperties speechProperties,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
         this.callConversationService = callConversationService;
         this.callService = callService;
+        this.callHistoryService = callHistoryService;
+        this.chatHistoryProvider = chatHistoryProvider;
         this.objectMapper = objectMapper;
         this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
         log.info("[Clova] recognize CONFIG = {}", configJson);
@@ -121,8 +133,10 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             SttStream stream = new SttStream(requestObserver);
             // 워커는 스트림 개설 성공 뒤에 만든다(실패하면 정리할 워커도 없도록).
             // 등록은 CONFIG 전에 — onNext가 처음 뜰 땐 이미 맵에 있어야 한다.
+            // LLM 맥락은 빈 상태가 아니라 그 관계의 채팅 최근 대화로 시딩한다(전화가 채팅에서 이어지도록).
             activeCalls.put(sessionId,
-                    new ActiveCall(stream, Executors.newSingleThreadExecutor(), ticket, new ArrayList<>()));
+                    new ActiveCall(stream, Executors.newSingleThreadExecutor(), ticket,
+                            seedHistory(sessionId, ticket.relationshipId())));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
@@ -209,6 +223,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // STT final 확정 → 사용자 발화를 먼저 남긴다. AI 응답 성공 여부와 무관한 사실이다.
                     // (respond가 실패해도 남는다 — 연속 user는 이 모델에서 정상.) role은 계약대로 소문자.
                     history.add(new AiChatHistoryItem("user", text, LocalDateTime.now()));
+                    persistHistory(sessionId, ticket.callId(), CallSpeaker.USER, text);
 
                     // respond는 로그의 마지막(방금 넣은 user)을 이번 message로, 그 앞을 이전 턴으로 파생한다.
                     AiChatResponse response = callConversationService.respond(
@@ -226,6 +241,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // TTS 송신 성공 시에만 AI 발화를 남긴다.
                     if (sendAudio(session, wav)) {
                         history.add(new AiChatHistoryItem("assistant", reply, LocalDateTime.now()));
+                        persistHistory(sessionId, ticket.callId(), CallSpeaker.AI, reply);
                     }
                 } catch (Exception e) {
                     // stale/AI/TTS 오류 등: 이번 assistant 턴만 버린다(user 로그는 남는다). 통화는 유지.
@@ -235,6 +251,36 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         } catch (RejectedExecutionException e) {
             // 통화 종료와 겹쳐 워커가 이미 내려간 경우. 정상 경로다.
             log.debug("[Call] 워커 종료됨 → 발화를 버림. session={}", sessionId);
+        }
+    }
+
+    /**
+     * 전사 한 줄을 DB에 남긴다. 워커 스레드에서 발화가 실제로 일어난 순간(USER final · AI TTS 송신 성공)마다 호출된다.
+     * <p>저장 실패로 통화·턴을 끊지 않는다 — 로그만 남긴다(connect/finish 상태저장 실패 정책과 동일).
+     * {@code chat()}의 느린 REST는 이 저장 트랜잭션 밖에서 이미 끝났다.
+     */
+    private void persistHistory(String sessionId, Long callId, CallSpeaker speaker, String content) {
+        try {
+            callHistoryService.appendHistory(callId, speaker, content);
+        } catch (RuntimeException e) {
+            log.error("[Call] 전사 저장 실패(통화는 유지). session={}, callId={}, speaker={}",
+                    sessionId, callId, speaker, e);
+        }
+    }
+
+    /**
+     * 통화 LLM 맥락 버퍼의 초기값을 만든다 = 그 관계의 채팅 최근 대화(과거→최신).
+     * <p>⚠ 반드시 <b>가변 리스트</b>다 — 이후 통화 턴이 여기에 append된다.
+     * ⚠ 이 시드는 {@code submitChat}(전사 저장 경로)을 거치지 않으므로 <b>전사(call_history)에 저장되지 않는다</b>
+     * (채팅에 이미 있는 대화라 통화 전사가 아니다). 조회 실패는 로그만 남기고 빈 맥락으로 시작한다(통화 유지).
+     */
+    private List<AiChatHistoryItem> seedHistory(String sessionId, Long relationshipId) {
+        try {
+            return new ArrayList<>(chatHistoryProvider.recentHistory(relationshipId, SEED_HISTORY_SIZE));
+        } catch (RuntimeException e) {
+            log.error("[Call] 채팅 맥락 시딩 실패 → 빈 맥락으로 시작(통화 유지). session={}, relationshipId={}",
+                    sessionId, relationshipId, e);
+            return new ArrayList<>();
         }
     }
 

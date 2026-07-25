@@ -92,6 +92,25 @@ class CallConversationServiceTest {
     }
 
     @Test
+    void history는_최근_20개로_윈도잉되고_message는_항상_마지막이다() {
+        // user 22개(0~21)를 쌓으면: 마지막(21)이 message, 그 앞 21개 중 최근 20개(1~20)만 history로.
+        List<AiChatHistoryItem> log = new ArrayList<>();
+        for (int i = 0; i < 22; i++) {
+            log.add(new AiChatHistoryItem("user", "m" + i, T));
+        }
+
+        service.respond(CHARACTER_ID, RELATIONSHIP_ID, log);
+
+        AiChatRequest sent = captureRequest();
+        assertThat(sent.message()).isEqualTo("m21");
+        assertThat(sent.history()).hasSize(20);
+        assertThat(sent.history()).extracting(AiChatHistoryItem::content)
+                .first().isEqualTo("m1");   // m0은 윈도우 밖으로 밀림
+        assertThat(sent.history()).extracting(AiChatHistoryItem::content)
+                .last().isEqualTo("m20");
+    }
+
+    @Test
     void 로그가_한_개면_message는_그것이고_history는_비어있다() {
         List<AiChatHistoryItem> log = new ArrayList<>(List.of(
                 new AiChatHistoryItem("user", "혼잣말", T)));

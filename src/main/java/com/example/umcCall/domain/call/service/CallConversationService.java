@@ -29,6 +29,9 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class CallConversationService {
 
+    /** AI에 보낼 맥락(history) 최대 개수. 채팅 {@code HISTORY_SIZE}와 동일하게 맞춰 일관성·지연·비용을 잡는다. */
+    private static final int CONTEXT_HISTORY_SIZE = 20;
+
     private final CharacterRepository characterRepository;
     private final CharacterAiProfileRepository characterAiProfileRepository;
     private final RelationshipRepository relationshipRepository;
@@ -59,8 +62,10 @@ public class CallConversationService {
 
         int last = conversation.size() - 1;
         String message = conversation.get(last).content();
-        // subList는 뷰지만 AiChatRequest 생성자가 List.copyOf로 복사하므로 안전하다.
-        List<AiChatHistoryItem> history = conversation.subList(0, last);
+        // 맥락은 최근 CONTEXT_HISTORY_SIZE개로 윈도잉한다 — 채팅 시드 + 통화 턴이 쌓여도 매 턴 보낼 양을 상한한다
+        // (지연·비용). subList는 뷰지만 AiChatRequest 생성자가 List.copyOf로 복사하므로 안전하다.
+        int from = Math.max(0, last - CONTEXT_HISTORY_SIZE);
+        List<AiChatHistoryItem> history = conversation.subList(from, last);
 
         AiChatRequest request = new AiChatRequest(
                 UUID.randomUUID().toString(), // 멱등성 키. 턴마다 고유값(같은 값 재전송 시 409).

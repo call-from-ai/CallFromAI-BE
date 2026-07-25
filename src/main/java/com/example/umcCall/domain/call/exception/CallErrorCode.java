@@ -19,11 +19,17 @@ public enum CallErrorCode implements BaseErrorCode {
     // 403 - 본인 소유가 아닌 캐릭터로 통화 시도
     CALL_TARGET_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CALL403_1", "본인의 캐릭터에게만 통화할 수 있습니다."),
 
+    // 403 - 본인 소유가 아닌 통화의 전사 조회 시도
+    CALL_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CALL403_2", "본인의 통화 기록만 조회할 수 있습니다."),
+
     // 404 - 통화 대상 캐릭터(관계)를 찾을 수 없음
     CALL_TARGET_NOT_FOUND(HttpStatus.NOT_FOUND, "CALL404_1", "통화할 캐릭터를 찾을 수 없습니다."),
 
     // 404 - callId로 통화 기록을 찾을 수 없음(상태 전이 대상 부재)
-    CALL_NOT_FOUND(HttpStatus.NOT_FOUND, "CALL404_2", "통화를 찾을 수 없습니다.");
+    CALL_NOT_FOUND(HttpStatus.NOT_FOUND, "CALL404_2", "통화를 찾을 수 없습니다."),
+
+    // 409 - 완료되지 않은 통화의 기록(상세/전문) 조회 시도. 상세·전문 조회가 공유한다.
+    CALL_NOT_COMPLETED(HttpStatus.CONFLICT, "CALL409_1", "완료된 통화만 조회할 수 있습니다.");
 
     private final HttpStatus status;
     private final String code;
