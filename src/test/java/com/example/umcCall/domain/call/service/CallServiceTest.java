@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.example.umcCall.domain.call.dto.response.CallTicketResponse;
@@ -174,6 +175,50 @@ class CallServiceTest {
         callService.finish(CALL_ID);
 
         assertThat(call.getStatus()).isEqualTo(CallStatus.CANCELED);
+    }
+
+    @Test
+    void reject는_RINGING_통화를_REJECTED로_마감하고_티켓을_발급하지_않는다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+
+        callService.reject(MEMBER_ID, CALL_ID);
+
+        assertThat(call.getStatus()).isEqualTo(CallStatus.REJECTED);
+        verifyNoInteractions(wsTicketStore);
+    }
+
+    @Test
+    void reject는_남의_통화면_CALL_ACCESS_DENIED를_던진다() {
+        Call call = ringingCall(relationshipOf(OTHER_MEMBER_ID));
+        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+
+        assertThatThrownBy(() -> callService.reject(MEMBER_ID, CALL_ID))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_ACCESS_DENIED);
+    }
+
+    @Test
+    void reject는_이미_받은_통화를_거절하지_못한다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        call.accept(); // PENDING — 받은 뒤 끊는 것은 소켓 경로의 CANCELED다
+        when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+
+        assertThatThrownBy(() -> callService.reject(MEMBER_ID, CALL_ID))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_NOT_RINGING);
+    }
+
+    @Test
+    void reject는_통화가_없으면_CALL_NOT_FOUND를_던진다() {
+        when(callRepository.findById(CALL_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> callService.reject(MEMBER_ID, CALL_ID))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_NOT_FOUND);
     }
 
     @Test

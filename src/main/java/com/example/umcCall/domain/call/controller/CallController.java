@@ -51,6 +51,16 @@ public class CallController {
         return ApiResponse.onSuccess(callService.accept(memberId, callId));
     }
 
+    @Operation(summary = "AI 발신(착신) 거절",
+            description = "착신 대기 중(RINGING)인 통화를 거절한다. 상태를 REJECTED로 마감하며 wsTicket은 발급하지 않는다.")
+    @PatchMapping("/{callId}/reject")
+    public ApiResponse<Void> reject(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long callId) {
+        callService.reject(memberId, callId);
+        return ApiResponse.onSuccess();
+    }
+
     @Operation(summary = "내 통화 목록 조회",
             description = "본인의 종료된 통화(완료/취소/부재중/거절)를 최신순 최대 20건 반환한다. 페이지네이션 없음.")
     @GetMapping

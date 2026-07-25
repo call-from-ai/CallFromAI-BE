@@ -60,22 +60,40 @@ public class CallService {
      * 남고, 부재중(MISSED) 판정 대상은 RINGING뿐이라 받은 사용자가 부재중으로 오판되지 않는다.
      */
     public CallTicketResponse accept(Long memberId, Long callId) {
+        Call call = loadOwnedRingingCall(memberId, callId);
+        call.accept();
+
+        Relationship relationship = call.getRelationship();
+        String wsTicket = wsTicketStore.issue(
+                new WsTicket(call.getId(), relationship.getId(), relationship.getCharacter().getId()));
+
+        return new CallTicketResponse(call.getId(), call.getStatus(), wsTicket);
+    }
+
+    /**
+     * AI 발신(착신) 거절. RINGING → REJECTED. 티켓을 발급하지 않으므로 반환값이 없다.
+     * <p>검증은 accept와 같은 계단(존재 → 소유 → RINGING)이다. PENDING(이미 받은 통화)은 거절 대상이
+     * 아니다 — 받은 뒤 끊는 것은 소켓 경로가 CANCELED로 마감한다.
+     */
+    public void reject(Long memberId, Long callId) {
+        loadOwnedRingingCall(memberId, callId).reject();
+    }
+
+    /**
+     * 착신 응답(수락/거절)의 공통 검증. 존재 → 소유 → 착신 대기(RINGING) 순서로 본다.
+     * <p>부재중·거절로 이미 마감된 통화에 늦게 도착한 요청은 여기서 {@code CALL_NOT_RINGING}으로 막힌다.
+     */
+    private Call loadOwnedRingingCall(Long memberId, Long callId) {
         Call call = callRepository.findById(callId)
                 .orElseThrow(() -> new CallException(CallErrorCode.CALL_NOT_FOUND));
 
-        Relationship relationship = call.getRelationship();
-        if (!relationship.getMemberId().equals(memberId)) {
+        if (!call.getRelationship().getMemberId().equals(memberId)) {
             throw new CallException(CallErrorCode.CALL_ACCESS_DENIED);
         }
         if (call.getStatus() != CallStatus.RINGING) {
             throw new CallException(CallErrorCode.CALL_NOT_RINGING);
         }
-        call.accept();
-
-        String wsTicket = wsTicketStore.issue(
-                new WsTicket(call.getId(), relationship.getId(), relationship.getCharacter().getId()));
-
-        return new CallTicketResponse(call.getId(), call.getStatus(), wsTicket);
+        return call;
     }
 
     /**
