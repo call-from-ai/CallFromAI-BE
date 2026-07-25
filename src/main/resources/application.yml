@@ -41,6 +41,13 @@ clova:
     connect-timeout-ms: 2000
     read-timeout-ms: 10000
 
+call:
+  reservation:
+    # 예약 폴링 주기(ms). 예약 시각 대비 최대 이만큼 늦게 발신된다.
+    scheduler-delay-ms: 60000
+    # 예약 시각이 이 분보다 더 지났으면 발신하지 않고 CANCELED로 종결한다.
+    grace-minutes: 5
+
 kakao:
   base-url: https://kapi.kakao.com
 
