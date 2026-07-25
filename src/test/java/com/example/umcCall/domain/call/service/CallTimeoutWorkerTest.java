@@ -71,7 +71,7 @@ class CallTimeoutWorkerTest {
         verify(callRepository).findTimedOutIds(
                 eq(CallStatus.PENDING), pendingThreshold.capture(), any(Pageable.class));
 
-        // 벨은 30초, 받은 뒤 미접속은 60초(wsTicket TTL 30초 + 여유) — 기준이 서로 달라야 한다.
+        // 벨과 미접속의 기준이 서로 달라야 한다(미접속 쪽이 더 길다).
         assertThat(ringThreshold.getValue()).isBetween(
                 before.minusSeconds(RING_TIMEOUT_SECONDS), after.minusSeconds(RING_TIMEOUT_SECONDS));
         assertThat(pendingThreshold.getValue()).isBetween(

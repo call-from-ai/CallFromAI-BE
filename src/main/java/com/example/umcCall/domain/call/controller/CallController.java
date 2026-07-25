@@ -24,9 +24,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 통화 API. 현재 범위는 사용자 발신(dial)뿐 — AI 발신(착신)은 후순위로 여기에 평행하게 붙는다.
+ * 통화 API. 사용자 발신(dial)과 AI 발신(착신 조회·수락·거절)이 평행하게 있고, 종료·기록 조회가 뒤따른다.
  */
-@Tag(name = "통화", description = "통화 발신 API")
+@Tag(name = "통화", description = "통화 발신·착신·종료·기록 조회 API")
 @RestController
 @RequestMapping("/calls")
 @RequiredArgsConstructor

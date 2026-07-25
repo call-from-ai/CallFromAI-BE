@@ -148,8 +148,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     .build());
 
             // DIALING/PENDING → IN_PROGRESS.
-            // ⚠ 실패하면 소켓을 닫는다(로그만 남기고 유지하지 않는다) — 스위퍼가 먼저 MISSED/CANCELED로
-            // 마감한 통화일 수 있고, 그 경우 오디오는 흐르는데 startedAt이 없어 종료 시 complete()가 터진다.
+            // ⚠ 실패하면 소켓을 닫는다 — 스위퍼가 먼저 MISSED/CANCELED로 마감한 통화일 수 있고,
+            // 그 경우 오디오는 흐르는데 startedAt이 없어 종료 시 complete()가 터진다(유령 통화).
             try {
                 callService.connect(ticket.callId());
             } catch (RuntimeException e) {
@@ -332,16 +332,10 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     /**
-     * REST 종료({@code PATCH /calls/{callId}/end})가 상태를 마감한 뒤, 아직 살아 있는 소켓·STT 스트림·워커를
-     * 서버가 닫는다. 세션이 없으면 no-op(이미 끊긴 통화).
-     *
-     * <p>커밋 이후에만 받는다 — 마감 트랜잭션이 롤백되면 통화는 유지돼야 하므로 소켓도 살아 있어야 한다.
-     *
-     * <p>맵이 sessionId 키라 callId는 순회로 찾는다 — 역색인 맵을 두면 두 맵 동기화 문제가 생기고,
-     * 종료는 통화당 한 번뿐인 드문 이벤트라 순회 비용이 문제되지 않는다.
-     *
-     * <p>정상 종료라 {@link CloseStatus#NORMAL}로 닫아 에러 통지를 보내지 않는다. 상태는 이미
-     * COMPLETED이므로 {@code terminateCall} 안의 마감 호출은 no-op으로 지나간다.
+     * REST 종료({@code PATCH /calls/{callId}/end}) 후 남은 소켓·STT 스트림·워커를 닫는다. 세션이 없으면 no-op.
+     * <p>맵이 sessionId 키라 callId는 순회로 찾는다 — 역색인 맵은 동기화 문제가 생기고, 종료는 드문 이벤트다.
+     * <p>정상 종료라 {@link CloseStatus#NORMAL}로 닫아 에러 통지를 보내지 않는다. 상태가 이미 COMPLETED라
+     * {@code terminateCall} 안의 마감 호출은 no-op으로 지나간다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCallEnded(CallEndedEvent event) {
@@ -437,8 +431,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * 진행 중인 통화 하나가 들고 있는 것 전부. 수명이 같아 한 홀더로 묶었다 — 정리를 한 번에 하기 위함.
      * 통화 스코프 상태(전사 버퍼·LLM 컨텍스트 등)가 늘면 평행 맵을 만들지 말고 여기 필드로 붙인다.
      *
-     * @param session 이 통화의 WebSocket 세션. REST 종료({@code PATCH /calls/{callId}/end})가 callId로
-     *                소켓을 찾아 닫아야 해서 들고 있는다(평행 맵을 만들지 않기 위해 여기 필드로).
+     * @param session 이 통화의 WebSocket 세션. REST 종료가 callId로 소켓을 찾아 닫아야 해서 들고 있는다.
      * @param worker  통화당 단일 스레드 — 제출 순서 = 실행 순서(AI 응답 순서 보장).
      * @param ticket  핸드셰이크에서 검증된 신원(callId/relationshipId/characterId). AI 배선·전사 저장의 기준.
      * @param history 세션 스코프 대화 이력. <b>워커 스레드만</b> 읽고 쓴다(스레드 confine → 동기화 불필요).

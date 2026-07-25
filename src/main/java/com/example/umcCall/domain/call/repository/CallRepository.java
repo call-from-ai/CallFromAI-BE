@@ -40,10 +40,9 @@ public interface CallRepository extends JpaRepository<Call, Long> {
                                           Pageable pageable);
 
     /**
-     * 회원의 착신 대기(RINGING) 통화를 최신순으로 조회한다. 상대 캐릭터까지 조인해 DTO로 프로젝션한다.
-     * <p>착신은 하나뿐이라 호출부가 1건만 요청하지만, 반환형은 {@code List}로 둔다 — 회원 기준
-     * RINGING이 2건 생기는 엣지(메인 캐릭터 교체)에서 {@code Optional} 반환은 예외로 터진다.
-     * <p>상태를 파라미터로 받아 "무엇이 착신인가"는 호출부(서비스)가 정한다.
+     * 회원의 착신 대기 통화를 최신순으로 조회한다. 캐릭터까지 조인해 DTO로 프로젝션한다(N+1 회피).
+     * <p>⚠ 반환형이 {@code List}인 이유: 호출부는 1건만 쓰지만 회원 기준 RINGING이 2건 생기는
+     * 엣지(메인 캐릭터 교체)가 있어 {@code Optional} 반환은 예외로 터진다.
      */
     @Query("""
             select new com.example.umcCall.domain.call.dto.response.CallIncomingResponse(
@@ -60,9 +59,9 @@ public interface CallRepository extends JpaRepository<Call, Long> {
                                                  Pageable pageable);
 
     /**
-     * 특정 상태로 너무 오래 머문 통화 id를 오래된 것부터 조회한다(부재중/미접속 스위퍼용).
-     * <p>기준 시각은 {@code createdAt}이다 — AI 발신은 "Call 생성 = 벨 울림"이라 이게 벨 시작 시각이다
-     * (FCM 푸시가 붙으면 전달 시각과 어긋날 수 있어 재검토 대상).
+     * 특정 상태로 너무 오래 머문 통화 id를 오래된 것부터 조회한다(스위퍼용).
+     * <p>기준 시각은 {@code createdAt} — AI 발신은 "Call 생성 = 벨 울림"이다.
+     * ⚠ FCM 푸시가 붙으면 전달 시각과 어긋날 수 있어 재검토 대상.
      */
     @Query("""
             select c.id from Call c
@@ -75,8 +74,8 @@ public interface CallRepository extends JpaRepository<Call, Long> {
                                Pageable pageable);
 
     /**
-     * 마감 대상 통화를 비관적 락으로 집는다(claim). 스위퍼의 마감과 사용자의 accept/connect가 겹칠 때
-     * 한쪽만 이기게 한다 — 잠근 뒤 호출부가 상태를 다시 확인해야 한다.
+     * 상태 전이 대상 통화를 비관적 락으로 집는다. 스위퍼 마감과 사용자 accept/connect가 겹칠 때
+     * 한쪽만 이기게 한다 — 호출부는 락 뒤 상태를 다시 확인해야 한다.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Call c where c.id = :id")

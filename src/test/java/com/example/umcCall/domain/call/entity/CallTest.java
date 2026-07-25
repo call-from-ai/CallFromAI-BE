@@ -7,7 +7,7 @@ import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import org.junit.jupiter.api.Test;
 
-/** AI 발신 통화의 수락·거절 전이 검증. 둘 다 API로 직접 호출되므로 엔티티가 상태를 스스로 막는다. */
+/** AI 발신 통화의 수락·거절·부재중 전이 검증. API로 직접 호출되는 전이라 엔티티가 상태를 스스로 막는다. */
 class CallTest {
 
     /** AI 발신 초기 상태 = RINGING. */
@@ -68,7 +68,7 @@ class CallTest {
     @Test
     void markMissed는_이미_받은_통화를_부재중_처리하지_않는다() {
         Call call = ringingCall();
-        call.accept(); // PENDING — 사용자는 받았으므로 부재중이 아니다
+        call.accept(); // 사용자는 받았으므로 부재중이 아니다
 
         assertThatThrownBy(call::markMissed)
                 .isInstanceOf(IllegalStateException.class)
@@ -80,7 +80,7 @@ class CallTest {
         Call call = ringingCall();
         call.markMissed();
 
-        // 스위퍼가 먼저 마감한 통화에 소켓이 붙는 레이스 — 엔티티가 막고 핸들러가 소켓을 닫는다.
+        // 스위퍼가 먼저 마감한 통화에 소켓이 붙는 레이스 — 엔티티가 막는다.
         assertThatThrownBy(call::connect)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("MISSED");

@@ -7,7 +7,7 @@ import com.example.umcCall.domain.call.enums.CallReservationStatus;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 
-/** 예약 상태 전이 검증. 예약 하나는 한 번만 울려야 하므로 SCHEDULED 밖에서는 어느 전이도 허용하지 않는다. */
+/** 예약 상태 전이 검증 — 한 예약은 한 번만 울려야 하므로 SCHEDULED 밖에서는 전이를 허용하지 않는다. */
 class CallReservationTest {
 
     private CallReservation scheduled() {
@@ -44,7 +44,7 @@ class CallReservationTest {
         CallReservation reservation = scheduled();
         reservation.markFired();
 
-        // 다중 인스턴스·중복 tick이 같은 예약을 집어도 두 번 울리지 않아야 한다.
+        // 중복 tick·다중 인스턴스가 같은 예약을 집어도 두 번 울리지 않아야 한다.
         assertThatThrownBy(reservation::markFired)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("FIRED");

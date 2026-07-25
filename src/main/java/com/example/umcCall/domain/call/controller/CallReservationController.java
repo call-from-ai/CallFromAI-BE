@@ -17,8 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 통화 예약 API. 예약 생성은 아직 범위 밖(채팅 대화 또는 AI 서버가 만드는 방식이 미정)이라
- * 조회·수정만 있다.
+ * 통화 예약 API. 예약 생성 주체(채팅 대화 vs AI 서버)가 미정이라 지금은 조회·수정만 있다.
  */
 @Tag(name = "통화 예약", description = "AI 발신(예약 통화) 조회·수정 API")
 @RestController

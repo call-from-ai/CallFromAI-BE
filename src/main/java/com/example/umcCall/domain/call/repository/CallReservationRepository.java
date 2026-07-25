@@ -14,19 +14,16 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 /**
- * 예약 통화 저장/조회. 스케줄러가 도달한 예약을 집어 AI 발신(Call 생성)으로 옮기는 데 쓴다.
- * <p>조회 조건이 모두 {@code status='SCHEDULED'} + {@code scheduled_at} 범위라
- * 복합 인덱스 {@code idx_reservation_status_scheduled_at (status, scheduled_at)}를 그대로 탄다.
+ * 예약 통화 저장/조회. 조회 조건이 모두 {@code status} + {@code scheduled_at} 범위라
+ * 복합 인덱스 {@code idx_reservation_status_scheduled_at}를 그대로 탄다.
  */
 public interface CallReservationRepository extends JpaRepository<CallReservation, Long> {
 
     /**
-     * 발신할 예약 id를 예약 시각 순으로 조회한다. {@code graceFrom} 이후 ~ {@code now} 이하만 본다.
-     * <p>⚠ 하한(graceFrom)이 있는 이유: 서버가 죽어 있다가 재기동하면 {@code scheduled_at <= now}에
-     * 과거 예약이 전부 걸려 한꺼번에 울린다(새벽 예약이 아침에 오는 문제). 하한 밖은
-     * {@link #findExpiredIds}가 발신 없이 종결한다.
-     * <p>엔티티가 아니라 id만 가져온다 — 실제 처리는 건당 {@link #findByIdForUpdate}로 다시 잠그고 하므로
-     * 여기서 엔티티를 들고 있을 이유가 없다(proactive 스케줄러와 동일 패턴).
+     * 발신할 예약 id를 예약 시각 순으로 조회한다({@code graceFrom} 이상 ~ {@code now} 이하).
+     * <p>⚠ 하한이 있는 이유: 재기동 시 {@code scheduled_at <= now}만 보면 밀린 과거 예약이 한꺼번에
+     * 울린다(새벽 예약이 아침에 오는 문제). 하한 밖은 {@link #findExpiredIds}가 발신 없이 종결한다.
+     * <p>id만 가져온다 — 처리는 건당 {@link #findByIdForUpdate}로 다시 잠그고 한다(proactive와 동일 패턴).
      */
     @Query("""
             select r.id from CallReservation r
@@ -52,10 +49,9 @@ public interface CallReservationRepository extends JpaRepository<CallReservation
                               Pageable pageable);
 
     /**
-     * 회원의 대기 중 예약을 <b>주어진 시간 창 안에서 가까운 시각부터</b> 조회한다.
-     * 캐릭터까지 조인해 DTO로 프로젝션한다(N+1 회피).
-     * <p>정렬이 통화 목록(최신순)과 반대인 이유: 예약은 미래의 약속이라 곧 올 전화가 위여야 한다.
-     * <p>창의 경계(오늘 하루를 어디까지로 보는지)는 호출부가 정한다 — 리포지토리는 범위 조회만 안다.
+     * 회원의 대기 중 예약을 주어진 창 안에서 <b>가까운 시각부터</b> 조회한다(캐릭터 조인 + DTO 프로젝션).
+     * <p>정렬이 통화 목록(최신순)과 반대다 — 예약은 미래의 약속이라 곧 올 전화가 위여야 한다.
+     * 창의 경계는 호출부가 정한다.
      */
     @Query("""
             select new com.example.umcCall.domain.call.dto.response.CallReservationItem(
@@ -75,9 +71,8 @@ public interface CallReservationRepository extends JpaRepository<CallReservation
                                                  @Param("to") LocalDateTime to);
 
     /**
-     * 처리 대상 예약을 비관적 락으로 집는다(claim). 다중 인스턴스에서 같은 예약을 두 번 울리지 않게 한다.
-     * <p>락만으로는 부족해서, 호출부가 잠근 뒤 상태가 여전히 SCHEDULED인지 다시 확인해야 한다
-     * (먼저 집은 쪽이 이미 FIRED로 바꿨을 수 있다).
+     * 처리 대상 예약을 비관적 락으로 집는다. 다중 인스턴스가 같은 예약을 두 번 울리지 않게 한다.
+     * <p>락만으론 부족하다 — 호출부가 락 뒤 상태가 여전히 SCHEDULED인지 확인해야 한다.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from CallReservation r where r.id = :id")

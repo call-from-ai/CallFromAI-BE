@@ -21,11 +21,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 예약 통화의 발신 처리. 스케줄러({@code CallReservationWorker})가 골라 온 예약 id를 하나씩 받아
- * AI 발신 {@link Call}로 옮긴다.
+ * 통화 예약 조회·수정과, 스케줄러({@code CallReservationWorker})가 골라 온 예약의 발신 처리.
  *
- * <p>⚠ <b>예약 1건 = 트랜잭션 1개</b>다(배치 전체가 한 tx가 아니다). 한 예약이 실패해도 나머지가
- * 처리되고, 락을 오래 잡지 않는다. 루프는 워커가 트랜잭션 밖에서 돈다.
+ * <p>⚠ <b>예약 1건 = 트랜잭션 1개</b>다 — 한 예약이 실패해도 나머지가 처리되고 락을 오래 잡지 않는다.
+ * 루프는 워커가 트랜잭션 밖에서 돈다.
  */
 @Service
 @Slf4j
@@ -34,8 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class CallReservationService {
 
     /**
-     * "이미 통화 중"으로 볼 상태. 착신 대기(RINGING)·수락 후 연결 전(PENDING)도 포함한다 —
-     * 벨이 울리는 중에 또 벨을 울리면 안 된다. 부재중/미접속 스위퍼가 이 상태들을 유계로 유지한다.
+     * "이미 통화 중"으로 볼 상태. RINGING·PENDING도 포함한다(벨이 울리는 중에 또 울리면 안 된다).
+     * ⚠ 이 집합은 스위퍼가 두 상태를 유계로 유지하는 걸 전제로 한다 — 스위퍼를 빼면 함께 재검토할 것.
      */
     private static final Set<CallStatus> ACTIVE_CALL_STATUSES =
             EnumSet.of(CallStatus.DIALING, CallStatus.RINGING,
@@ -48,10 +47,9 @@ public class CallReservationService {
     private final CallRepository callRepository;
 
     /**
-     * <b>오늘 하루의</b> 대기 중 예약을 가까운 시각부터 조회한다(페이지네이션 없음).
-     * <p>창은 <b>당일 00:00 ~ 다음날 새벽 5시</b>다 — 체감상 "오늘 밤"에 속하는 새벽 예약(예: 01시)이
-     * 자정을 넘겼다고 목록에서 사라지지 않게 넉넉히 잡았다.
-     * <p>대기 중(SCHEDULED)만 준다 — 지난 예약의 결과는 통화 기록({@code GET /calls})에서 본다.
+     * 오늘 하루의 대기 중 예약을 가까운 시각부터 조회한다(페이지네이션 없음).
+     * <p>창은 <b>당일 00:00 ~ 다음날 05:00</b> — 체감상 "오늘 밤"인 새벽 예약이 자정을 넘겼다고
+     * 사라지지 않게 넉넉히 잡았다. 지난 예약의 결과는 통화 기록({@code GET /calls})에서 본다.
      */
     @Transactional(readOnly = true)
     public CallReservationListResponse getMyReservations(Long memberId) {
@@ -64,11 +62,9 @@ public class CallReservationService {
     }
 
     /**
-     * 예약 시각을 변경한다.
-     * <p>검증은 존재({@code CALL_RESERVATION_NOT_FOUND}) → 소유({@code CALL_RESERVATION_ACCESS_DENIED})
-     * → 대기 중({@code CALL_RESERVATION_NOT_SCHEDULED}) 순서다. 미래 시각인지는 요청 검증이 본다.
-     * <p>⚠ 스케줄러의 fire/expire와 경쟁하므로 <b>락으로 집는다</b> — 예약 시각이 방금 도달해 발신된
-     * 예약(FIRED)을 뒤늦게 옮기면, 이미 벨이 울린 통화와 예약 시각이 어긋난다.
+     * 예약 시각을 변경한다. 검증은 존재 → 소유 → 대기 중 순서이고, 미래 시각인지는 요청 검증이 본다.
+     * <p>⚠ 스케줄러의 fire/expire와 경쟁하므로 락으로 집는다 — 방금 발신된 예약을 뒤늦게 옮기면
+     * 이미 울린 통화와 예약 시각이 어긋난다.
      */
     public void reschedule(Long memberId, Long reservationId, LocalDateTime scheduledAt) {
         CallReservation reservation = reservationRepository.findByIdForUpdate(reservationId)
@@ -84,9 +80,8 @@ public class CallReservationService {
     }
 
     /**
-     * 예약 1건을 발신으로 옮긴다. 발신하면 예약은 FIRED, 발신 조건이 아니면 CANCELED로 종결한다.
-     * <p>비관적 락으로 집은 뒤 <b>상태를 다시 확인</b>한다 — 다른 인스턴스나 중복 tick이 먼저 집었으면
-     * 그쪽이 이미 FIRED로 바꿨으므로 조용히 반환한다(예약 하나는 한 번만 울린다).
+     * 예약 1건을 발신으로 옮긴다. 발신하면 FIRED, 발신 조건이 아니면 CANCELED로 종결한다.
+     * <p>락 뒤 상태를 다시 확인한다 — 다른 인스턴스·중복 tick이 먼저 집었으면 no-op(한 예약은 한 번만 울린다).
      */
     public void fire(Long reservationId) {
         CallReservation reservation = reservationRepository.findByIdForUpdate(reservationId).orElse(null);
@@ -122,7 +117,7 @@ public class CallReservationService {
 
     /**
      * grace window를 넘겨 뒤늦게 발견된 예약을 발신 없이 종결한다. SCHEDULED가 아니면 no-op.
-     * <p>무시하고 두면 {@code SCHEDULED}로 영원히 남아 매 tick 인덱스 스캔 대상이 되므로 상태로 닫는다.
+     * <p>무시하면 SCHEDULED로 영원히 남아 매 tick 조회에 걸리므로 상태로 닫는다.
      */
     public void expire(Long reservationId) {
         CallReservation reservation = reservationRepository.findByIdForUpdate(reservationId).orElse(null);

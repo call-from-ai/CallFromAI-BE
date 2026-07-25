@@ -12,17 +12,15 @@ import org.springframework.stereotype.Service;
 /**
  * 예약 통화 스케줄러. 도달한 예약을 골라 {@link CallReservationService}에 한 건씩 넘긴다.
  *
- * <p>⚠ <b>이 클래스에는 트랜잭션이 없다</b> — 루프를 tx 밖에서 돌려야 예약 하나가 실패해도 나머지가
- * 처리되고, 배치 전체가 하나의 긴 트랜잭션·락으로 묶이지 않는다. 트랜잭션 경계는 서비스의 건당 메서드다.
- *
- * <p>정책 값(grace window)은 워커가 갖는다 — 리포지토리는 "이 범위를 조회한다"만 알게 해서
- * 시각 계산을 한곳에 모은다.
+ * <p>⚠ <b>트랜잭션이 없다</b> — 루프를 tx 밖에서 돌려야 예약 하나가 실패해도 나머지가 처리되고,
+ * 배치가 하나의 긴 트랜잭션·락으로 묶이지 않는다. 경계는 서비스의 건당 메서드다.
+ * <p>정책 값(grace window)은 워커가 갖고, 리포지토리는 범위 조회만 안다.
  */
 @Service
 @Slf4j
 public class CallReservationWorker {
 
-    /** 한 tick에 처리할 최대 건수. 밀린 예약이 많아도 tick 하나가 길어지지 않게 자른다(다음 tick이 이어받음). */
+    /** 한 tick에 처리할 최대 건수. 밀려도 tick이 길어지지 않게 자른다(다음 tick이 이어받음). */
     private static final int BATCH_SIZE = 50;
 
     private final CallReservationRepository reservationRepository;
@@ -39,8 +37,7 @@ public class CallReservationWorker {
 
     /**
      * 도달한 예약을 발신하고, 너무 늦은 예약은 발신 없이 종결한다.
-     * <p>{@code graceFrom} 하한이 재기동 직후의 몰림 발신을 막는다 — 그 하한보다 과거인 예약은
-     * "지각한 전화"를 울리는 대신 CANCELED로 닫는다.
+     * <p>{@code graceFrom} 하한이 재기동 직후의 몰림 발신("지각한 전화")을 막는다.
      */
     @Scheduled(fixedDelayString = "${call.reservation.scheduler-delay-ms:60000}")
     public void processDueReservations() {
@@ -59,7 +56,7 @@ public class CallReservationWorker {
                         () -> reservationService.expire(reservationId)));
     }
 
-    /** 예약 하나의 실패가 나머지 처리를 막지 않게 격리한다(로그만 남기고 계속). */
+    /** 예약 하나의 실패가 나머지 처리를 막지 않게 격리한다. */
     private void runIsolated(Long reservationId, String action, Runnable task) {
         try {
             task.run();

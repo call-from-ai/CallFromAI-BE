@@ -10,9 +10,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.example.umcCall.domain.call.dto.response.CallEndResponse;
 import com.example.umcCall.domain.call.dto.response.CallIncomingResponse;
 import com.example.umcCall.domain.call.dto.response.CallTicketResponse;
-import com.example.umcCall.domain.call.dto.response.CallEndResponse;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
@@ -37,7 +37,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 
-/** 통화 상태 전이 위임(connect/finish) 검증. 엔티티 전이는 실제 {@link Call}로 확인한다. */
+/** 착신 응답(accept/reject)·종료·스위퍼 마감과 상태 전이 위임 검증. 전이는 실제 {@link Call}로 확인한다. */
 @ExtendWith(MockitoExtension.class)
 class CallServiceTest {
 
@@ -149,7 +149,7 @@ class CallServiceTest {
                 CALL_ID, CHARACTER_ID, "지호", null, LocalDateTime.now());
         CallIncomingResponse older = new CallIncomingResponse(
                 99L, 98L, "이전메인", null, LocalDateTime.now().minusMinutes(1));
-        // 리포지토리가 최신순으로 주므로 첫 건이 최신이다(메인 캐릭터 교체 엣지).
+        // 최신순 조회라 첫 건이 최신이다(메인 캐릭터 교체 엣지).
         when(callRepository.findIncomingCalls(eq(MEMBER_ID), eq(CallStatus.RINGING), any(Pageable.class)))
                 .thenReturn(List.of(latest, older));
 
@@ -159,7 +159,7 @@ class CallServiceTest {
     @Test
     void accept는_RINGING_통화에_티켓을_발급하고_PENDING으로_전이한다() {
         Relationship relationship = relationshipOf(MEMBER_ID);
-        Character character = characterOf(CHARACTER_ID); // 중첩 스터빙 금지 — 먼저 만들고 주입한다
+        Character character = characterOf(CHARACTER_ID);
         when(relationship.getCharacter()).thenReturn(character);
         Call call = ringingCall(relationship);
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
@@ -168,7 +168,7 @@ class CallServiceTest {
         CallTicketResponse response = callService.accept(MEMBER_ID, CALL_ID);
 
         assertThat(response.wsTicket()).isEqualTo(TICKET);
-        // 수락은 PENDING까지만 — IN_PROGRESS는 WS가 열릴 때 connect()가 만든다.
+        // 수락은 PENDING까지만 — IN_PROGRESS는 connect()가 만든다.
         assertThat(response.callStatus()).isEqualTo(CallStatus.PENDING);
         assertThat(call.getStatus()).isEqualTo(CallStatus.PENDING);
         assertThat(call.getStartedAt()).isNull();
@@ -211,7 +211,7 @@ class CallServiceTest {
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
         callService.accept(MEMBER_ID, CALL_ID); // PENDING
 
-        // 스트림 개설 실패 등 서버 측 사유 — 사용자는 받았으므로 부재중이 아니다.
+        // 서버 측 사유(스트림 개설 실패 등) — 사용자는 받았으므로 부재중이 아니다.
         callService.finish(CALL_ID);
 
         assertThat(call.getStatus()).isEqualTo(CallStatus.CANCELED);
@@ -242,7 +242,7 @@ class CallServiceTest {
     @Test
     void reject는_이미_받은_통화를_거절하지_못한다() {
         Call call = ringingCall(relationshipOf(MEMBER_ID));
-        call.accept(); // PENDING — 받은 뒤 끊는 것은 소켓 경로의 CANCELED다
+        call.accept(); // 받은 뒤 끊는 것은 소켓 경로의 CANCELED다
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         assertThatThrownBy(() -> callService.reject(MEMBER_ID, CALL_ID))
@@ -281,7 +281,7 @@ class CallServiceTest {
         CallEndResponse response = callService.end(MEMBER_ID, CALL_ID);
 
         assertThat(call.getStatus()).isEqualTo(CallStatus.COMPLETED);
-        // 종료 화면이 쓰는 값 — 서버가 startedAt~endedAt으로 계산한다(프론트 자체 측정과 어긋나지 않게).
+        // 종료 화면이 쓰는 값 — 서버가 startedAt~endedAt으로 계산한다.
         assertThat(response.callTime()).isNotNull().isGreaterThanOrEqualTo(0);
         assertThat(response.endedAt()).isNotNull();
     }
@@ -315,7 +315,7 @@ class CallServiceTest {
     @Test
     void end는_연결_전_통화면_CALL_NOT_IN_PROGRESS를_던진다() {
         Call call = ringingCall(relationshipOf(MEMBER_ID));
-        call.accept(); // PENDING — 아직 오디오가 흐르지 않는다
+        call.accept(); // 아직 오디오가 흐르지 않는다
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         assertThatThrownBy(() -> callService.end(MEMBER_ID, CALL_ID))
@@ -347,7 +347,7 @@ class CallServiceTest {
     @Test
     void markMissed는_그_사이_사용자가_받았으면_마감하지_않는다() {
         Call call = ringingCall(relationshipOf(MEMBER_ID));
-        call.accept(); // PENDING — 스위퍼가 조회한 뒤 사용자가 받은 상황
+        call.accept(); // 스위퍼가 조회한 뒤 사용자가 받은 상황
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
         callService.markMissed(CALL_ID);

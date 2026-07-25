@@ -35,7 +35,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** 예약 발신 처리 검증. 예약 전이는 실제 {@link CallReservation}으로 확인한다. */
+/** 예약 조회·수정·발신 검증. 예약 전이는 실제 {@link CallReservation}으로 확인한다. */
 @ExtendWith(MockitoExtension.class)
 class CallReservationServiceTest {
 
@@ -98,7 +98,7 @@ class CallReservationServiceTest {
 
         LocalDate today = LocalDate.now();
         assertThat(from.getValue()).isEqualTo(today.atStartOfDay());
-        // 새벽 예약(예: 01시)이 자정을 넘겼다고 목록에서 사라지지 않게 다음날 05시까지 본다.
+        // 새벽 예약이 자정을 넘겼다고 사라지지 않게 다음날 05시까지 본다.
         assertThat(to.getValue()).isEqualTo(today.plusDays(1).atTime(5, 0));
     }
 
@@ -192,7 +192,7 @@ class CallReservationServiceTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<CallStatus>> captor = ArgumentCaptor.forClass(Collection.class);
         verify(callRepository).existsByRelationshipIdAndStatusIn(eq(RELATIONSHIP_ID), captor.capture());
-        // 벨이 울리는 중(RINGING)이나 수락 후 연결 전(PENDING)에 또 발신하면 안 된다.
+        // 벨이 울리는 중이나 수락 후 연결 전에 또 발신하면 안 된다.
         assertThat(captor.getValue()).containsExactlyInAnyOrder(
                 CallStatus.DIALING, CallStatus.RINGING, CallStatus.PENDING, CallStatus.IN_PROGRESS);
     }
