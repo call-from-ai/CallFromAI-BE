@@ -17,7 +17,9 @@ import com.example.umcCall.global.infra.s3.S3Uploader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
@@ -64,10 +66,13 @@ public class ChatMessageService {
         // 다음 커서 = 이번 페이지에서 가장 오래된(마지막) 메시지 id (더 없으면 null)
         Long nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
 
+        // 이 페이지 메시지들의 사진 URL을 한 번에 조회해 map으로 준비(없으면 빈 map)
+        Map<Long, String> photoUrlByMessageId = loadPhotoUrls(page);
+
         // 과거순으로 뒤집어 응답 -> 위에서 아래, 순차적으로 전송하기 위해
         Collections.reverse(page);
         List<ChatMessageResponse> content = page.stream()
-                .map(ChatMessageResponse::from)
+                .map(m -> ChatMessageResponse.from(m, photoUrlByMessageId.get(m.getId())))
                 .toList();
 
         return ChatMessageCursorResponse.of(content, nextCursor, hasNext);
@@ -160,6 +165,25 @@ public class ChatMessageService {
         );
         room.updateLastMessageAt(message.getCreatedAt());
         return message;
+    }
+
+    /**
+     * 페이지 메시지들 중 사진이 있는 것(IMAGE/TEXT_IMAGE)의 URL을 배치 조회해 messageId→URL map으로 만든다.
+     * 사진 있는 메시지가 없으면 빈 map을 반환해 불필요한 쿼리를 피한다.
+     */
+    private Map<Long, String> loadPhotoUrls(List<ChatMessage> messages) {
+        List<Long> imageMessageIds = messages.stream()
+                .filter(m -> m.getMessageType() == MessageType.IMAGE
+                        || m.getMessageType() == MessageType.TEXT_IMAGE)
+                .map(ChatMessage::getId)
+                .toList();
+        if (imageMessageIds.isEmpty()) {
+            return Map.of();
+        }
+        return chatPhotoRepository.findPhotoUrlsByMessageIds(imageMessageIds).stream()
+                .collect(Collectors.toMap(
+                        ChatPhotoRepository.MessagePhotoRow::getMessageId,
+                        ChatPhotoRepository.MessagePhotoRow::getPhotoUrl));
     }
 
     /** size 미지정/비정상은 기본값, 상한 초과는 상한으로 */
