@@ -71,6 +71,12 @@ public interface CallReservationRepository extends JpaRepository<CallReservation
                                                  @Param("to") LocalDateTime to);
 
     /**
+     * 관계에 대기 중인 예약이 이미 있는지 — 생성 시 "관계당 SCHEDULED 1건" 규칙을 본다.
+     * <p>{@code relationship_id} FK 인덱스로 좁힌 뒤 상태를 걸러낸다(예약은 관계당 소수라 충분하다).
+     */
+    boolean existsByRelationshipIdAndStatus(Long relationshipId, CallReservationStatus status);
+
+    /**
      * 처리 대상 예약을 비관적 락으로 집는다. 다중 인스턴스가 같은 예약을 두 번 울리지 않게 한다.
      * <p>락만으론 부족하다 — 호출부가 락 뒤 상태가 여전히 SCHEDULED인지 확인해야 한다.
      */

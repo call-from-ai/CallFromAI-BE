@@ -11,6 +11,7 @@ import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.repository.CallReservationRepository;
 import com.example.umcCall.domain.relationship.entity.Relationship;
+import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
@@ -21,7 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 통화 예약 조회·수정과, 스케줄러({@code CallReservationWorker})가 골라 온 예약의 발신 처리.
+ * 통화 예약 생성·조회·수정과, 스케줄러({@code CallReservationWorker})가 골라 온 예약의 발신 처리.
+ *
+ * <p>생성({@link #reserve})만 HTTP 진입점이 없다 — 다른 도메인(채팅·proactive)이 자바 메서드로 부른다.
  *
  * <p>⚠ <b>예약 1건 = 트랜잭션 1개</b>다 — 한 예약이 실패해도 나머지가 처리되고 락을 오래 잡지 않는다.
  * 루프는 워커가 트랜잭션 밖에서 돈다.
@@ -45,6 +48,52 @@ public class CallReservationService {
 
     private final CallReservationRepository reservationRepository;
     private final CallRepository callRepository;
+    private final RelationshipRepository relationshipRepository;
+
+    /**
+     * 예약을 생성한다. <b>같은 서버 안의 다른 도메인(채팅·proactive)이 호출하는 진입점</b>이고,
+     * HTTP API는 없다 — 사용자가 직접 예약을 만드는 화면이 아니라 대화 중 약속이 예약이 되기 때문이다.
+     * 호출자는 시각만 정하고, 예약 가능 여부·불변식은 전부 여기서 본다.
+     *
+     * <p>검증은 관계 유효(존재·미삭제 → 메인) → 시각 → 중복 순서다. 관계 규칙은 dial·fire와 같다
+     * (살아 있는 메인 캐릭터에게만 통화). 지난 시각을 막는 이유: 스케줄러가 grace window 밖으로 보고
+     * 발신 없이 {@code CANCELED}로 닫아버리므로 애초에 받지 않는다.
+     *
+     * <p>⚠ <b>관계당 대기 중 예약은 1건</b>이다 — 대화 중 AI가 여러 번 약속하면 예약이 쌓여 같은
+     * 상대에게 하루에 여러 번 전화가 간다. 시각을 옮기려면 {@link #reschedule}을 쓴다.
+     * (동시 호출로 2건이 들어가는 창은 막지 않는다: 실제 호출은 한 대화 흐름에서 오고, 그래도 새는 경우
+     * 두 번째 발신이 첫 통화의 진행 중 상태를 보고 스스로 CANCELED로 닫힌다.)
+     *
+     * @return 생성된 예약 id
+     */
+    public Long reserve(Long relationshipId, LocalDateTime scheduledAt) {
+        Relationship relationship = relationshipRepository.findById(relationshipId)
+                .orElseThrow(() -> new CallException(CallErrorCode.CALL_TARGET_NOT_FOUND));
+
+        if (relationship.getCharacter().getDeletedAt() != null) {
+            throw new CallException(CallErrorCode.CALL_TARGET_NOT_FOUND);
+        }
+        if (!relationship.isMain()) {
+            throw new CallException(CallErrorCode.CALL_TARGET_NOT_MAIN);
+        }
+        if (!scheduledAt.isAfter(LocalDateTime.now())) {
+            throw new CallException(CallErrorCode.CALL_RESERVATION_PAST_TIME);
+        }
+        if (reservationRepository.existsByRelationshipIdAndStatus(
+                relationshipId, CallReservationStatus.SCHEDULED)) {
+            throw new CallException(CallErrorCode.CALL_RESERVATION_ALREADY_EXISTS);
+        }
+
+        CallReservation reservation = reservationRepository.save(
+                CallReservation.builder()
+                        .relationship(relationship)
+                        .scheduledAt(scheduledAt)
+                        .build());
+
+        log.info("예약 생성. reservationId={}, relationshipId={}, scheduledAt={}",
+                reservation.getId(), relationshipId, scheduledAt);
+        return reservation.getId();
+    }
 
     /**
      * 오늘 하루의 대기 중 예약을 가까운 시각부터 조회한다(페이지네이션 없음).

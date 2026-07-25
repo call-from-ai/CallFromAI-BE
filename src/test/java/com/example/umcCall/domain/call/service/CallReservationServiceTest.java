@@ -23,6 +23,7 @@ import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.repository.CallReservationRepository;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.relationship.entity.Relationship;
+import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -46,6 +47,7 @@ class CallReservationServiceTest {
 
     @Mock private CallReservationRepository reservationRepository;
     @Mock private CallRepository callRepository;
+    @Mock private RelationshipRepository relationshipRepository;
 
     @InjectMocks private CallReservationService callReservationService;
 
@@ -73,6 +75,96 @@ class CallReservationServiceTest {
 
     private void givenNoActiveCall() {
         when(callRepository.existsByRelationshipIdAndStatusIn(anyLong(), any())).thenReturn(false);
+    }
+
+    private void givenRelationship(Relationship relationship) {
+        when(relationshipRepository.findById(RELATIONSHIP_ID)).thenReturn(Optional.of(relationship));
+    }
+
+    @Test
+    void reserve는_대기_중_예약을_만든다() {
+        givenRelationship(callableRelationship());
+        when(reservationRepository.existsByRelationshipIdAndStatus(
+                RELATIONSHIP_ID, CallReservationStatus.SCHEDULED)).thenReturn(false);
+        when(reservationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        LocalDateTime scheduledAt = LocalDateTime.now().plusHours(3);
+
+        callReservationService.reserve(RELATIONSHIP_ID, scheduledAt);
+
+        ArgumentCaptor<CallReservation> captor = ArgumentCaptor.forClass(CallReservation.class);
+        verify(reservationRepository).save(captor.capture());
+        CallReservation created = captor.getValue();
+        assertThat(created.getScheduledAt()).isEqualTo(scheduledAt);
+        assertThat(created.getStatus()).isEqualTo(CallReservationStatus.SCHEDULED);
+    }
+
+    @Test
+    void reserve는_관계가_없으면_TARGET_NOT_FOUND를_던진다() {
+        when(relationshipRepository.findById(RELATIONSHIP_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                callReservationService.reserve(RELATIONSHIP_ID, LocalDateTime.now().plusHours(3)))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_TARGET_NOT_FOUND);
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void reserve는_캐릭터가_삭제된_관계면_TARGET_NOT_FOUND를_던진다() {
+        Character deleted = mock(Character.class);
+        when(deleted.getDeletedAt()).thenReturn(LocalDateTime.now());
+        Relationship relationship = callableRelationship();
+        when(relationship.getCharacter()).thenReturn(deleted);
+        givenRelationship(relationship);
+
+        assertThatThrownBy(() ->
+                callReservationService.reserve(RELATIONSHIP_ID, LocalDateTime.now().plusHours(3)))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_TARGET_NOT_FOUND);
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void reserve는_메인이_아닌_관계면_TARGET_NOT_MAIN을_던진다() {
+        Relationship relationship = callableRelationship();
+        when(relationship.isMain()).thenReturn(false);
+        givenRelationship(relationship);
+
+        assertThatThrownBy(() ->
+                callReservationService.reserve(RELATIONSHIP_ID, LocalDateTime.now().plusHours(3)))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_TARGET_NOT_MAIN);
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void reserve는_지난_시각이면_PAST_TIME을_던진다() {
+        givenRelationship(callableRelationship());
+
+        // 스케줄러가 grace window 밖으로 보고 곧 종결시킬 예약이라 애초에 받지 않는다.
+        assertThatThrownBy(() ->
+                callReservationService.reserve(RELATIONSHIP_ID, LocalDateTime.now().minusMinutes(1)))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_RESERVATION_PAST_TIME);
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    void reserve는_같은_관계에_대기_중_예약이_있으면_ALREADY_EXISTS를_던진다() {
+        givenRelationship(callableRelationship());
+        when(reservationRepository.existsByRelationshipIdAndStatus(
+                RELATIONSHIP_ID, CallReservationStatus.SCHEDULED)).thenReturn(true);
+
+        assertThatThrownBy(() ->
+                callReservationService.reserve(RELATIONSHIP_ID, LocalDateTime.now().plusHours(3)))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_RESERVATION_ALREADY_EXISTS);
+        verify(reservationRepository, never()).save(any());
     }
 
     @Test
