@@ -1,13 +1,18 @@
 package com.example.umcCall.domain.call.service;
 
+import com.example.umcCall.domain.call.dto.response.CallReservationListResponse;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.entity.CallReservation;
 import com.example.umcCall.domain.call.enums.CallReservationStatus;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
+import com.example.umcCall.domain.call.exception.CallErrorCode;
+import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.repository.CallReservationRepository;
 import com.example.umcCall.domain.relationship.entity.Relationship;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -36,8 +41,47 @@ public class CallReservationService {
             EnumSet.of(CallStatus.DIALING, CallStatus.RINGING,
                     CallStatus.PENDING, CallStatus.IN_PROGRESS);
 
+    /** 오늘 예약 목록의 끝 경계(다음날 이 시각 직전까지). 새벽 예약도 "오늘"로 보이게 넉넉히 둔다. */
+    private static final int DAILY_WINDOW_END_HOUR = 5;
+
     private final CallReservationRepository reservationRepository;
     private final CallRepository callRepository;
+
+    /**
+     * <b>오늘 하루의</b> 대기 중 예약을 가까운 시각부터 조회한다(페이지네이션 없음).
+     * <p>창은 <b>당일 00:00 ~ 다음날 새벽 5시</b>다 — 체감상 "오늘 밤"에 속하는 새벽 예약(예: 01시)이
+     * 자정을 넘겼다고 목록에서 사라지지 않게 넉넉히 잡았다.
+     * <p>대기 중(SCHEDULED)만 준다 — 지난 예약의 결과는 통화 기록({@code GET /calls})에서 본다.
+     */
+    @Transactional(readOnly = true)
+    public CallReservationListResponse getMyReservations(Long memberId) {
+        LocalDate today = LocalDate.now();
+        return CallReservationListResponse.of(reservationRepository.findMyReservations(
+                memberId,
+                CallReservationStatus.SCHEDULED,
+                today.atStartOfDay(),
+                today.plusDays(1).atTime(DAILY_WINDOW_END_HOUR, 0)));
+    }
+
+    /**
+     * 예약 시각을 변경한다.
+     * <p>검증은 존재({@code CALL_RESERVATION_NOT_FOUND}) → 소유({@code CALL_RESERVATION_ACCESS_DENIED})
+     * → 대기 중({@code CALL_RESERVATION_NOT_SCHEDULED}) 순서다. 미래 시각인지는 요청 검증이 본다.
+     * <p>⚠ 스케줄러의 fire/expire와 경쟁하므로 <b>락으로 집는다</b> — 예약 시각이 방금 도달해 발신된
+     * 예약(FIRED)을 뒤늦게 옮기면, 이미 벨이 울린 통화와 예약 시각이 어긋난다.
+     */
+    public void reschedule(Long memberId, Long reservationId, LocalDateTime scheduledAt) {
+        CallReservation reservation = reservationRepository.findByIdForUpdate(reservationId)
+                .orElseThrow(() -> new CallException(CallErrorCode.CALL_RESERVATION_NOT_FOUND));
+
+        if (!reservation.getRelationship().getMemberId().equals(memberId)) {
+            throw new CallException(CallErrorCode.CALL_RESERVATION_ACCESS_DENIED);
+        }
+        if (reservation.getStatus() != CallReservationStatus.SCHEDULED) {
+            throw new CallException(CallErrorCode.CALL_RESERVATION_NOT_SCHEDULED);
+        }
+        reservation.reschedule(scheduledAt);
+    }
 
     /**
      * 예약 1건을 발신으로 옮긴다. 발신하면 예약은 FIRED, 발신 조건이 아니면 CANCELED로 종결한다.

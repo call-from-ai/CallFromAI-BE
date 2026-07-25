@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.call.repository;
 
+import com.example.umcCall.domain.call.dto.response.CallReservationItem;
 import com.example.umcCall.domain.call.entity.CallReservation;
 import com.example.umcCall.domain.call.enums.CallReservationStatus;
 import jakarta.persistence.LockModeType;
@@ -49,6 +50,29 @@ public interface CallReservationRepository extends JpaRepository<CallReservation
     List<Long> findExpiredIds(@Param("status") CallReservationStatus status,
                               @Param("graceFrom") LocalDateTime graceFrom,
                               Pageable pageable);
+
+    /**
+     * 회원의 대기 중 예약을 <b>주어진 시간 창 안에서 가까운 시각부터</b> 조회한다.
+     * 캐릭터까지 조인해 DTO로 프로젝션한다(N+1 회피).
+     * <p>정렬이 통화 목록(최신순)과 반대인 이유: 예약은 미래의 약속이라 곧 올 전화가 위여야 한다.
+     * <p>창의 경계(오늘 하루를 어디까지로 보는지)는 호출부가 정한다 — 리포지토리는 범위 조회만 안다.
+     */
+    @Query("""
+            select new com.example.umcCall.domain.call.dto.response.CallReservationItem(
+                r.id, ch.id, ch.firstName, ch.imageUrl, r.scheduledAt)
+            from CallReservation r
+                join r.relationship rel
+                join rel.character ch
+            where rel.memberId = :memberId
+              and r.status = :status
+              and r.scheduledAt >= :from
+              and r.scheduledAt < :to
+            order by r.scheduledAt asc
+            """)
+    List<CallReservationItem> findMyReservations(@Param("memberId") Long memberId,
+                                                 @Param("status") CallReservationStatus status,
+                                                 @Param("from") LocalDateTime from,
+                                                 @Param("to") LocalDateTime to);
 
     /**
      * 처리 대상 예약을 비관적 락으로 집는다(claim). 다중 인스턴스에서 같은 예약을 두 번 울리지 않게 한다.

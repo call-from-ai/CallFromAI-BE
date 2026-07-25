@@ -61,6 +61,16 @@ public class CallReservation extends BaseTimeEntity {
         this.status = CallReservationStatus.CANCELED;
     }
 
+    /**
+     * 예약 시각을 변경한다. 대기 중(SCHEDULED)인 예약만 바꿀 수 있다.
+     * <p>이미 발신했거나 취소된 예약은 지나간 사실이라 시각을 고칠 대상이 아니다 — 새로 예약해야 한다.
+     * 미래 시각인지는 요청 검증({@code @Future})이 본다.
+     */
+    public void reschedule(LocalDateTime scheduledAt) {
+        requireScheduled("변경");
+        this.scheduledAt = scheduledAt;
+    }
+
     private void requireScheduled(String action) {
         if (status != CallReservationStatus.SCHEDULED) {
             throw new IllegalStateException(

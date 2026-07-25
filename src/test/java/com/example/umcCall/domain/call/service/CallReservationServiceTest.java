@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.call.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -10,17 +11,22 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.umcCall.domain.call.dto.response.CallReservationItem;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.entity.CallReservation;
 import com.example.umcCall.domain.call.enums.CallReservationStatus;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
+import com.example.umcCall.domain.call.exception.CallErrorCode;
+import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.repository.CallReservationRepository;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.relationship.entity.Relationship;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +41,8 @@ class CallReservationServiceTest {
 
     private static final Long RESERVATION_ID = 1L;
     private static final Long RELATIONSHIP_ID = 30L;
+    private static final Long MEMBER_ID = 10L;
+    private static final Long OTHER_MEMBER_ID = 11L;
 
     @Mock private CallReservationRepository reservationRepository;
     @Mock private CallRepository callRepository;
@@ -47,6 +55,7 @@ class CallReservationServiceTest {
         Relationship relationship = mock(Relationship.class);
         lenient().when(relationship.getId()).thenReturn(RELATIONSHIP_ID);
         lenient().when(relationship.isMain()).thenReturn(true);
+        lenient().when(relationship.getMemberId()).thenReturn(MEMBER_ID);
         lenient().when(relationship.getCharacter()).thenReturn(character);
         return relationship;
     }
@@ -64,6 +73,82 @@ class CallReservationServiceTest {
 
     private void givenNoActiveCall() {
         when(callRepository.existsByRelationshipIdAndStatusIn(anyLong(), any())).thenReturn(false);
+    }
+
+    @Test
+    void getMyReservations는_대기_중_예약만_조회한다() {
+        CallReservationItem item = new CallReservationItem(
+                RESERVATION_ID, 20L, "지호", null, LocalDateTime.now().plusHours(2));
+        when(reservationRepository.findMyReservations(
+                eq(MEMBER_ID), eq(CallReservationStatus.SCHEDULED), any(), any()))
+                .thenReturn(List.of(item));
+
+        assertThat(callReservationService.getMyReservations(MEMBER_ID).content()).containsExactly(item);
+    }
+
+    @Test
+    void getMyReservations의_조회_창은_당일_0시부터_다음날_새벽5시까지다() {
+        when(reservationRepository.findMyReservations(any(), any(), any(), any())).thenReturn(List.of());
+
+        callReservationService.getMyReservations(MEMBER_ID);
+
+        ArgumentCaptor<LocalDateTime> from = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> to = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(reservationRepository).findMyReservations(any(), any(), from.capture(), to.capture());
+
+        LocalDate today = LocalDate.now();
+        assertThat(from.getValue()).isEqualTo(today.atStartOfDay());
+        // 새벽 예약(예: 01시)이 자정을 넘겼다고 목록에서 사라지지 않게 다음날 05시까지 본다.
+        assertThat(to.getValue()).isEqualTo(today.plusDays(1).atTime(5, 0));
+    }
+
+    @Test
+    void reschedule은_대기_중_예약의_시각을_바꾼다() {
+        CallReservation reservation = reservationOf(callableRelationship());
+        givenClaimed(reservation);
+        LocalDateTime newTime = LocalDateTime.now().plusDays(1);
+
+        callReservationService.reschedule(MEMBER_ID, RESERVATION_ID, newTime);
+
+        assertThat(reservation.getScheduledAt()).isEqualTo(newTime);
+        assertThat(reservation.getStatus()).isEqualTo(CallReservationStatus.SCHEDULED);
+    }
+
+    @Test
+    void reschedule은_남의_예약이면_ACCESS_DENIED를_던진다() {
+        Relationship relationship = callableRelationship();
+        when(relationship.getMemberId()).thenReturn(OTHER_MEMBER_ID);
+        givenClaimed(reservationOf(relationship));
+
+        assertThatThrownBy(() ->
+                callReservationService.reschedule(MEMBER_ID, RESERVATION_ID, LocalDateTime.now().plusDays(1)))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_RESERVATION_ACCESS_DENIED);
+    }
+
+    @Test
+    void reschedule은_이미_발신된_예약이면_NOT_SCHEDULED를_던진다() {
+        CallReservation reservation = reservationOf(callableRelationship());
+        reservation.markFired();
+        givenClaimed(reservation);
+
+        assertThatThrownBy(() ->
+                callReservationService.reschedule(MEMBER_ID, RESERVATION_ID, LocalDateTime.now().plusDays(1)))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_RESERVATION_NOT_SCHEDULED);
+    }
+
+    @Test
+    void reschedule은_예약이_없으면_NOT_FOUND를_던진다() {
+        when(reservationRepository.findByIdForUpdate(RESERVATION_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                callReservationService.reschedule(MEMBER_ID, RESERVATION_ID, LocalDateTime.now().plusDays(1)))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_RESERVATION_NOT_FOUND);
     }
 
     @Test
