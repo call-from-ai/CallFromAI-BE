@@ -5,9 +5,12 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 /**
@@ -55,6 +58,18 @@ public class S3Uploader {
         }
 
         return toUrl(key);
+    }
+
+    /**
+     * 저장된 URL의 객체를 바이트로 내려받는다(예: AI 서버에 원본 파일을 전달할 때).
+     * content-type은 업로드 시 저장된 값을 그대로 돌려준다.
+     * 객체가 없거나 접근 실패 시 AWS SDK 예외가 그대로 전파된다(호출부가 처리).
+     */
+    public S3DownloadedFile download(String fileUrl) {
+        String key = extractKey(fileUrl);
+        ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(
+                GetObjectRequest.builder().bucket(bucket).key(key).build());
+        return new S3DownloadedFile(object.asByteArray(), object.response().contentType());
     }
 
     /**
