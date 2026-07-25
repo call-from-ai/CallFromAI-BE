@@ -48,13 +48,19 @@ public class Call extends BaseTimeEntity {
     @JoinColumn(name="relationship_id",nullable = false)
     private Relationship relationship;
 
-    @Column(name="call_reservation_id")
-    private Long callReservationId;
+    /**
+     * 이 통화를 울린 예약. 사용자 발신은 null이다.
+     * <p>예약 하나는 한 번만 울리므로 1:1이고, 소유 측 {@code @OneToOne}이라 unique 제약이 그 불변식을 지킨다.
+     */
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name="call_reservation_id")
+    private CallReservation callReservation;
 
     @Builder
-    private Call(Relationship relationship, CallSender sender) {
+    private Call(Relationship relationship, CallSender sender, CallReservation callReservation) {
         this.relationship = relationship;
         this.sender = sender;
+        this.callReservation = callReservation;
         this.status = (sender == CallSender.USER) ?
                 CallStatus.DIALING : CallStatus.RINGING;
     }

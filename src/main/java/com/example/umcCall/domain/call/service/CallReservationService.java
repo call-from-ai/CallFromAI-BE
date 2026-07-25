@@ -23,8 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 통화 예약 생성·조회·수정과, 스케줄러({@code CallReservationWorker})가 골라 온 예약의 발신 처리.
- *
- * <p>생성({@link #reserve})만 HTTP 진입점이 없다 — 다른 도메인(채팅·proactive)이 자바 메서드로 부른다.
+ * 생성({@link #reserve})만 HTTP 진입점이 없다 — 다른 도메인(채팅·proactive)이 자바 메서드로 부른다.
  *
  * <p>⚠ <b>예약 1건 = 트랜잭션 1개</b>다 — 한 예약이 실패해도 나머지가 처리되고 락을 오래 잡지 않는다.
  * 루프는 워커가 트랜잭션 밖에서 돈다.
@@ -51,20 +50,12 @@ public class CallReservationService {
     private final RelationshipRepository relationshipRepository;
 
     /**
-     * 예약을 생성한다. <b>같은 서버 안의 다른 도메인(채팅·proactive)이 호출하는 진입점</b>이고,
-     * HTTP API는 없다 — 사용자가 직접 예약을 만드는 화면이 아니라 대화 중 약속이 예약이 되기 때문이다.
-     * 호출자는 시각만 정하고, 예약 가능 여부·불변식은 전부 여기서 본다.
+     * 예약을 생성한다. HTTP API가 아니라 <b>같은 서버의 다른 도메인(채팅·proactive)이 부르는 진입점</b>이다
+     * — 대화 중의 약속이 예약이 되기 때문이다. 검증은 관계 유효(dial·fire와 같은 규칙) → 시각 → 중복 순서.
      *
-     * <p>검증은 관계 유효(존재·미삭제 → 메인) → 시각 → 중복 순서다. 관계 규칙은 dial·fire와 같다
-     * (살아 있는 메인 캐릭터에게만 통화). 지난 시각을 막는 이유: 스케줄러가 grace window 밖으로 보고
-     * 발신 없이 {@code CANCELED}로 닫아버리므로 애초에 받지 않는다.
-     *
-     * <p>⚠ <b>관계당 대기 중 예약은 1건</b>이다 — 대화 중 AI가 여러 번 약속하면 예약이 쌓여 같은
-     * 상대에게 하루에 여러 번 전화가 간다. 시각을 옮기려면 {@link #reschedule}을 쓴다.
-     * (동시 호출로 2건이 들어가는 창은 막지 않는다: 실제 호출은 한 대화 흐름에서 오고, 그래도 새는 경우
-     * 두 번째 발신이 첫 통화의 진행 중 상태를 보고 스스로 CANCELED로 닫힌다.)
-     *
-     * @return 생성된 예약 id
+     * <p>지난 시각을 막는 이유: 스케줄러가 grace window 밖으로 보고 발신 없이 {@code CANCELED}로 닫아버린다.
+     * <p>⚠ <b>관계당 대기 중 예약은 1건</b> — 여러 번 약속하면 같은 상대에게 하루에 여러 번 전화가 간다.
+     * 시각을 옮기려면 {@link #reschedule}을 쓴다.
      */
     public Long reserve(Long relationshipId, LocalDateTime scheduledAt) {
         Relationship relationship = relationshipRepository.findById(relationshipId)
@@ -156,6 +147,7 @@ public class CallReservationService {
                 Call.builder()
                         .relationship(relationship)
                         .sender(CallSender.AI)
+                        .callReservation(reservation)
                         .build());
         reservation.markFired();
 

@@ -144,7 +144,6 @@ class CallReservationServiceTest {
     void reserve는_지난_시각이면_PAST_TIME을_던진다() {
         givenRelationship(callableRelationship());
 
-        // 스케줄러가 grace window 밖으로 보고 곧 종결시킬 예약이라 애초에 받지 않는다.
         assertThatThrownBy(() ->
                 callReservationService.reserve(RELATIONSHIP_ID, LocalDateTime.now().minusMinutes(1)))
                 .isInstanceOf(CallException.class)
@@ -257,6 +256,7 @@ class CallReservationServiceTest {
         Call created = captor.getValue();
         assertThat(created.getSender()).isEqualTo(CallSender.AI);
         assertThat(created.getStatus()).isEqualTo(CallStatus.RINGING);
+        assertThat(created.getCallReservation()).isSameAs(reservation);
         assertThat(reservation.getStatus()).isEqualTo(CallReservationStatus.FIRED);
     }
 
