@@ -8,8 +8,8 @@ spring:
     default-property-inclusion: non_null
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: 10MB       # 이미지 1장 한도
+      max-request-size: 12MB    # 파일 + 텍스트 + multipart 오버헤드 여유
 
 springdoc:
   swagger-ui:

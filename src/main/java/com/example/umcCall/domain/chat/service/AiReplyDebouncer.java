@@ -7,9 +7,14 @@ import com.example.umcCall.domain.ai.service.AiConversationService;
 import com.example.umcCall.domain.chat.dto.response.ChatMessageResponse;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
+import com.example.umcCall.domain.chat.enums.MessageType;
 import com.example.umcCall.domain.chat.enums.SenderType;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
+import com.example.umcCall.domain.chat.repository.ChatPhotoRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
+import com.example.umcCall.global.infra.s3.S3DownloadedFile;
+import com.example.umcCall.global.infra.s3.S3ObjectNotFoundException;
+import com.example.umcCall.global.infra.s3.S3Uploader;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -54,8 +59,11 @@ public class AiReplyDebouncer {
     private final Executor worker;
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatPhotoRepository chatPhotoRepository;
     private final AiReplyGenerator aiReplyGenerator;
     private final AiConversationService aiConversationService;
+    private final AiImageChatClient aiImageChatClient;
+    private final S3Uploader s3Uploader;
     private final ChatMessageService chatMessageService;
     private final ChatSseService chatSseService;
 
@@ -72,16 +80,22 @@ public class AiReplyDebouncer {
             @Qualifier("aiReplyWorker") Executor worker,
             ChatRoomRepository chatRoomRepository,
             ChatMessageRepository chatMessageRepository,
+            ChatPhotoRepository chatPhotoRepository,
             AiReplyGenerator aiReplyGenerator,
             AiConversationService aiConversationService,
+            AiImageChatClient aiImageChatClient,
+            S3Uploader s3Uploader,
             ChatMessageService chatMessageService,
             ChatSseService chatSseService) {
         this.timer = timer;
         this.worker = worker;
         this.chatRoomRepository = chatRoomRepository;
         this.chatMessageRepository = chatMessageRepository;
+        this.chatPhotoRepository = chatPhotoRepository;
         this.aiReplyGenerator = aiReplyGenerator;
         this.aiConversationService = aiConversationService;
+        this.aiImageChatClient = aiImageChatClient;
+        this.s3Uploader = s3Uploader;
         this.chatMessageService = chatMessageService;
         this.chatSseService = chatSseService;
     }
@@ -142,6 +156,8 @@ public class AiReplyDebouncer {
 
     /**
      * 진짜 AI 답장을 만드는 부분. worker 스레드에서 돌며, 한 방은 한 번에 하나만 여기 들어온다.
+     * 모은 메시지를 이미지 지점마다 조각으로 나눠, 조각마다 답장을 하나씩 만든다
+     * (예: 텍스트→사진→텍스트→사진 이면 답장 2번). 텍스트만 있으면 조각 1개라 예전과 동일하게 동작한다.
      */
     private void process(Long roomId) {
         ChatRoom room = chatRoomRepository.findById(roomId).orElse(null);
@@ -157,38 +173,109 @@ public class AiReplyDebouncer {
             return;   // 답할 새 메시지가 없으면 끝
         }
 
-        long batchMaxId = batch.get(batch.size() - 1).getId();   // 모은 것 중 가장 최신 id
-        long batchFirstId = batch.get(0).getId();                // 모은 것 중 가장 오래된 id
+        // 배치 내 사진 메시지들의 URL을 한 번에 조회한 뒤, 이미지 지점마다 조각으로 나눈다.
+        Map<Long, String> photoUrls = loadPhotoUrls(batch);
+        List<Chunk> chunks = splitIntoChunks(batch, photoUrls);
 
-        // 모은 메시지 내용을 줄바꿈으로 이어 하나의 말처럼 만든다. (예: "내가\n오늘\n화나")
-        String message = batch.stream()
+        // 조각을 순서대로 처리한다. 실패는 두 종류로 나눠 다룬다.
+        //  - 영구 실패(S3에 사진 없음 / AI 4xx 거부): 재시도해도 안 되므로 워터마크를 전진시켜 건너뛴다(방이 막히지 않게).
+        //  - 일시 실패(AI 타임아웃/5xx/네트워크): 워터마크를 두고 루프를 멈춰, 다음 활동 때 이 조각부터 재시도한다.
+        //  - 성공/빈 답장: 전진.
+        for (Chunk chunk : chunks) {
+            try {
+                processChunk(room, chunk);
+                answeredWatermark.put(roomId, chunk.lastId());
+            } catch (S3ObjectNotFoundException | AiImageRequestRejectedException e) {
+                log.error("AI 답장 조각 스킵(영구 실패). roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);
+                answeredWatermark.put(roomId, chunk.lastId());   // 영구 실패 → 전진(스킵)
+            } catch (Exception e) {
+                log.error("AI 답장 조각 처리 실패(재시도 예정). roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);
+                break;   // 일시 실패 → 전진 안 함, 다음 활동 때 이 조각부터 다시
+            }
+        }
+    }
+
+    /** 조각 하나를 AI에 보내 답장을 만든다(이미지 있으면 multipart, 없으면 JSON). */
+    private void processChunk(ChatRoom room, Chunk chunk) {
+        // 이미지가 있으면 S3에서 원본 바이트를 다시 받아온다(전송 시점의 원본은 이미 사라졌다).
+        byte[] imageBytes = null;
+        String imageContentType = null;
+        if (chunk.imageUrl() != null) {
+            S3DownloadedFile file = s3Uploader.download(chunk.imageUrl());
+            imageBytes = file.bytes();
+            imageContentType = file.contentType();
+        }
+
+        // 조각 내 텍스트를 하나로 합친다(이미지만 있는 조각이면 빈 문자열).
+        String message = chunk.messages().stream()
                 .map(ChatMessage::getContent)
                 .filter(content -> content != null && !content.isBlank())
                 .collect(Collectors.joining(MESSAGE_JOINER));
-        if (message.isBlank()) {
-            // TODO: 이미지가 붙으면 "내용이 비어도 이미지가 있으면" AI에게 이미지를 보내 답을 받아야 한다.
-            //   그때는 이 조건을 "텍스트도 없고 이미지도 없을 때만 스킵"으로 바꾸고, buildRequest를 이미지까지 싣도록 확장할 것.
-            answeredWatermark.put(roomId, batchMaxId);
-            return;
+        if (message.isBlank() && imageBytes == null) {
+            return;   // 텍스트도 이미지도 없으면 보낼 게 없다(방어적)
         }
 
-        // AI에게 참고용으로 줄 지난 대화도 준비한다.
-        List<AiChatHistoryItem> history = buildHistory(roomId, batchFirstId);
-
-        // AI 서버에 물어본다.
+        List<AiChatHistoryItem> history = buildHistory(room.getId(), chunk.firstId());
         AiChatRequest request = aiReplyGenerator.buildRequest(room.getRelationshipId(), message, history);
-        AiChatResponse response = aiConversationService.chat(request);
+
+        // 이미지가 있으면 multipart 전용 클라이언트로, 없으면 기존 JSON 경로로 보낸다.
+        AiChatResponse response = (imageBytes != null)
+                ? aiImageChatClient.chat(request, imageBytes, imageContentType)
+                : aiConversationService.chat(request);
         String reply = response.reply();
         if (reply == null || reply.isBlank()) {
-            return;
+            return;   // AI가 답을 안 줬으면 저장하지 않는다(워터마크는 상위 finally에서 전진).
         }
 
-        // 답장을 저장하고, 유저 화면(SSE)으로 실시간 전달한다.
-        ChatMessage aiMessage = chatMessageService.saveAiMessage(roomId, reply);
+        ChatMessage aiMessage = chatMessageService.saveAiMessage(room.getId(), reply);
         chatSseService.sendToMember(room.getMemberId(), "message", ChatMessageResponse.from(aiMessage));
+    }
 
-        // 여기까지 잘 됐으니 "이 방은 batchMaxId까지 답했다"고 경계를 옮긴다.
-        answeredWatermark.put(roomId, batchMaxId);
+    /** 배치를 이미지 지점마다 끊어 조각 목록으로 만든다. 이미지 있는 메시지가 그 조각을 닫는다. */
+    private List<Chunk> splitIntoChunks(List<ChatMessage> batch, Map<Long, String> photoUrls) {
+        List<Chunk> chunks = new ArrayList<>();
+        List<ChatMessage> current = new ArrayList<>();
+        for (int i = 0; i < batch.size(); i++) {
+            ChatMessage m = batch.get(i);
+            current.add(m);
+            boolean hasImage = m.getMessageType() == MessageType.IMAGE
+                    || m.getMessageType() == MessageType.TEXT_IMAGE;
+            boolean isLast = (i == batch.size() - 1);
+            if (hasImage || isLast) {
+                // 사진 메시지지만 URL이 없으면(데이터 불일치) 이미지 없는 조각으로 강등한다.
+                String imageUrl = hasImage ? photoUrls.get(m.getId()) : null;
+                chunks.add(new Chunk(new ArrayList<>(current), imageUrl));
+                current.clear();
+            }
+        }
+        return chunks;
+    }
+
+    /** 배치 내 사진 메시지(IMAGE/TEXT_IMAGE)의 URL을 배치 조회해 messageId→URL map으로 만든다. */
+    private Map<Long, String> loadPhotoUrls(List<ChatMessage> batch) {
+        List<Long> imageMessageIds = batch.stream()
+                .filter(m -> m.getMessageType() == MessageType.IMAGE
+                        || m.getMessageType() == MessageType.TEXT_IMAGE)
+                .map(ChatMessage::getId)
+                .toList();
+        if (imageMessageIds.isEmpty()) {
+            return Map.of();
+        }
+        return chatPhotoRepository.findPhotoUrlsByMessageIds(imageMessageIds).stream()
+                .collect(Collectors.toMap(
+                        ChatPhotoRepository.MessagePhotoRow::getMessageId,
+                        ChatPhotoRepository.MessagePhotoRow::getPhotoUrl));
+    }
+
+    /** 처리 단위. 이미지 지점에서 끊긴 메시지 묶음과 (있으면) 그 조각의 사진 URL. */
+    private record Chunk(List<ChatMessage> messages, String imageUrl) {
+        long firstId() {
+            return messages.get(0).getId();
+        }
+
+        long lastId() {
+            return messages.get(messages.size() - 1).getId();
+        }
     }
 
     /**
@@ -211,8 +298,18 @@ public class AiReplyDebouncer {
                 roomId, null, beforeMessageId, PageRequest.of(0, HISTORY_SIZE)));
         Collections.reverse(recent);   // 최신→과거로 뽑혔으니, 과거→최신으로 뒤집는다
         return recent.stream()
-                .map(m -> new AiChatHistoryItem(toRole(m.getSenderType()), m.getContent(), m.getCreatedAt()))
+                .map(m -> new AiChatHistoryItem(toRole(m.getSenderType()), toHistoryContent(m), m.getCreatedAt()))
                 .toList();
+    }
+
+    /**
+     * 히스토리 항목의 content를 만든다.
+     * 사진만 있는 메시지는 content가 null인데, AI 서버는 content가 null이면 거부하므로 "[사진]"으로 채운다.
+     * (과거 사진의 실제 이미지는 히스토리로 다시 보내지 않고, 텍스트 표시만 남긴다.)
+     */
+    private String toHistoryContent(ChatMessage message) {
+        String content = message.getContent();
+        return (content == null || content.isBlank()) ? "[사진]" : content;
     }
 
     /** 우리 쪽 발신자 값을 AI 서버가 쓰는 말로 바꾼다. 유저는 "user", 나머지는 "assistant". */
