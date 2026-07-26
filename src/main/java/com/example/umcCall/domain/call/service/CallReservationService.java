@@ -14,8 +14,6 @@ import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.EnumSet;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,14 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional
 public class CallReservationService {
-
-    /**
-     * "이미 통화 중"으로 볼 상태. RINGING·PENDING도 포함한다(벨이 울리는 중에 또 울리면 안 된다).
-     * ⚠ 이 집합은 스위퍼가 두 상태를 유계로 유지하는 걸 전제로 한다 — 스위퍼를 빼면 함께 재검토할 것.
-     */
-    private static final Set<CallStatus> ACTIVE_CALL_STATUSES =
-            EnumSet.of(CallStatus.DIALING, CallStatus.RINGING,
-                    CallStatus.PENDING, CallStatus.IN_PROGRESS);
 
     /** 오늘 예약 목록의 끝 경계(다음날 이 시각 직전까지). 새벽 예약도 "오늘"로 보이게 넉넉히 둔다. */
     private static final int DAILY_WINDOW_END_HOUR = 5;
@@ -136,7 +126,10 @@ public class CallReservationService {
                     reservationId, relationship.getId());
             return;
         }
-        if (callRepository.existsByRelationshipIdAndStatusIn(relationship.getId(), ACTIVE_CALL_STATUSES)) {
+
+        // 확인~생성이 임계 구역이다(dial과 같은 이유). 락 순서는 예약 → 관계로 고정한다.
+        relationshipRepository.findByIdForUpdate(relationship.getId());
+        if (callRepository.existsByRelationshipIdAndStatusIn(relationship.getId(), CallStatus.ACTIVE)) {
             reservation.cancel();
             log.info("예약 발신 취소(이미 진행 중인 통화 있음). reservationId={}, relationshipId={}",
                     reservationId, relationship.getId());
