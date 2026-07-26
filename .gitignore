@@ -34,3 +34,6 @@ bin/
 
 ### Env ###
 .env
+
+### CLAUDE ###
+CLAUDE.local.md
