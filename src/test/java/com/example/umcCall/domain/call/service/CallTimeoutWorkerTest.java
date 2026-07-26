@@ -28,6 +28,7 @@ class CallTimeoutWorkerTest {
     private static final long RING_TIMEOUT_SECONDS = 30;
     private static final long PENDING_TIMEOUT_SECONDS = 60;
     private static final long DIAL_TIMEOUT_SECONDS = 90;
+    private static final long MAX_CALL_MINUTES = 60;
 
     @Mock private CallRepository callRepository;
     @Mock private CallService callService;
@@ -36,8 +37,8 @@ class CallTimeoutWorkerTest {
 
     @BeforeEach
     void setUp() {
-        worker = new CallTimeoutWorker(callRepository, callService,
-                RING_TIMEOUT_SECONDS, PENDING_TIMEOUT_SECONDS, DIAL_TIMEOUT_SECONDS);
+        worker = new CallTimeoutWorker(callRepository, callService, RING_TIMEOUT_SECONDS,
+                PENDING_TIMEOUT_SECONDS, DIAL_TIMEOUT_SECONDS, MAX_CALL_MINUTES);
     }
 
     private void givenTimedOut(List<Long> ringingIds, List<Long> pendingIds) {
@@ -45,12 +46,37 @@ class CallTimeoutWorkerTest {
     }
 
     private void givenTimedOut(List<Long> ringingIds, List<Long> pendingIds, List<Long> dialingIds) {
+        givenTimedOut(ringingIds, pendingIds, dialingIds, List.of());
+    }
+
+    private void givenTimedOut(List<Long> ringingIds, List<Long> pendingIds,
+                               List<Long> dialingIds, List<Long> overrunIds) {
+        when(callRepository.findOverrunIds(eq(CallStatus.IN_PROGRESS), any(), any(Pageable.class)))
+                .thenReturn(overrunIds);
         when(callRepository.findTimedOutIds(eq(CallStatus.RINGING), any(), any(Pageable.class)))
                 .thenReturn(ringingIds);
         when(callRepository.findStalePendingIds(eq(CallStatus.PENDING), any(), any(Pageable.class)))
                 .thenReturn(pendingIds);
         when(callRepository.findTimedOutIds(eq(CallStatus.DIALING), any(), any(Pageable.class)))
                 .thenReturn(dialingIds);
+    }
+
+    /** 시간 상한은 startedAt(통화 시작) 기준 — 대기 시간이 아니라 실제 통화 길이를 잰다. */
+    @Test
+    void 시간_상한을_넘긴_통화는_startedAt_기준으로_마감한다() {
+        givenTimedOut(List.of(), List.of(), List.of(), List.of(42L));
+        LocalDateTime before = LocalDateTime.now();
+
+        worker.closeTimedOutCalls();
+
+        LocalDateTime after = LocalDateTime.now();
+        verify(callService).closeOverrunCall(42L);
+
+        ArgumentCaptor<LocalDateTime> threshold = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(callRepository).findOverrunIds(
+                eq(CallStatus.IN_PROGRESS), threshold.capture(), any(Pageable.class));
+        assertThat(threshold.getValue()).isBetween(
+                before.minusMinutes(MAX_CALL_MINUTES), after.minusMinutes(MAX_CALL_MINUTES));
     }
 
     @Test
