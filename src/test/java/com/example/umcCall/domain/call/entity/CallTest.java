@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 
 /** AI 발신 통화의 수락·거절·부재중 전이 검증. API로 직접 호출되는 전이라 엔티티가 상태를 스스로 막는다. */
@@ -24,6 +25,26 @@ class CallTest {
         assertThat(call.getStatus()).isEqualTo(CallStatus.PENDING);
         // 아직 오디오가 흐르지 않으므로 통화 시작 시각을 찍지 않는다.
         assertThat(call.getStartedAt()).isNull();
+    }
+
+    @Test
+    void accept는_받은_시각을_남긴다() {
+        Call call = ringingCall();
+        LocalDateTime before = LocalDateTime.now();
+
+        call.accept();
+
+        // 미접속 스위퍼가 이 시각을 원점으로 유예를 잰다.
+        assertThat(call.getAcceptedAt()).isBetween(before, LocalDateTime.now());
+    }
+
+    @Test
+    void 받지_않고_끝난_통화는_받은_시각이_없다() {
+        Call call = ringingCall();
+
+        call.markMissed();
+
+        assertThat(call.getAcceptedAt()).isNull();
     }
 
     @Test

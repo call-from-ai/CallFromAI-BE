@@ -13,10 +13,12 @@ import org.springframework.stereotype.Service;
 
 /**
  * 연결되지 못한 통화를 걷어내는 스위퍼. {@code RINGING} → {@code MISSED}(부재중),
- * {@code PENDING} → {@code CANCELED}(받았지만 미접속 — 서버/네트워크 사유라 부재중이 아니다).
+ * {@code PENDING} → {@code CANCELED}(받았지만 미접속), {@code DIALING} → {@code CANCELED}(발신했으나 미접속).
+ * 미접속 둘이 부재중이 아닌 이유는 사용자 부재가 아니라 서버/네트워크 사유이기 때문이다.
  *
- * <p>⚠ 두 상태는 소켓이 없어 {@code finish()} 트리거가 오지 않는다. 걷지 않으면 영구히 "진행 중"으로 남고,
- * 발신 중복 방어가 그 상태를 보므로 <b>그 관계의 이후 모든 예약이 막힌다</b>.
+ * <p>⚠ 세 상태는 <b>소켓이 없어 {@code finish()} 트리거가 오지 않는다</b>. 걷지 않으면 영구히 "진행 중"으로
+ * 남고, 그 관계의 이후 예약이 fire될 때마다 <b>취소(연기가 아니다)</b>되며 proactive 발신도 영구 차단된다.
+ * 게다가 진행 중 상태는 통화 목록에서 빠져 사용자 눈에도 안 보인다.
  *
  * <p>{@link CallReservationWorker}와 같은 구조 — 루프는 트랜잭션 밖, 마감은 건당 서비스 트랜잭션.
  */
@@ -31,15 +33,18 @@ public class CallTimeoutWorker {
     private final CallService callService;
     private final long ringTimeoutSeconds;
     private final long pendingTimeoutSeconds;
+    private final long dialTimeoutSeconds;
 
     public CallTimeoutWorker(CallRepository callRepository,
                              CallService callService,
                              @Value("${call.timeout.ring-seconds:30}") long ringTimeoutSeconds,
-                             @Value("${call.timeout.pending-seconds:60}") long pendingTimeoutSeconds) {
+                             @Value("${call.timeout.pending-seconds:60}") long pendingTimeoutSeconds,
+                             @Value("${call.timeout.dial-seconds:60}") long dialTimeoutSeconds) {
         this.callRepository = callRepository;
         this.callService = callService;
         this.ringTimeoutSeconds = ringTimeoutSeconds;
         this.pendingTimeoutSeconds = pendingTimeoutSeconds;
+        this.dialTimeoutSeconds = dialTimeoutSeconds;
     }
 
     /**
@@ -50,15 +55,22 @@ public class CallTimeoutWorker {
     public void closeTimedOutCalls() {
         LocalDateTime now = LocalDateTime.now();
 
-        sweep(CallStatus.RINGING, now.minusSeconds(ringTimeoutSeconds), "부재중", callService::markMissed);
-        sweep(CallStatus.PENDING, now.minusSeconds(pendingTimeoutSeconds), "미접속 취소",
-                callService::cancelStalePending);
+        // ⚠ 기준 시각의 원점이 상태마다 다르다: 벨·발신은 createdAt, 미접속은 acceptedAt(받은 시각).
+        // 미접속이 원점을 공유하면 늦게 받은 사용자의 유예가 0으로 수렴한다.
+        LocalDateTime ringThreshold = now.minusSeconds(ringTimeoutSeconds);
+        LocalDateTime pendingThreshold = now.minusSeconds(pendingTimeoutSeconds);
+        LocalDateTime dialThreshold = now.minusSeconds(dialTimeoutSeconds);
+        PageRequest batch = PageRequest.of(0, BATCH_SIZE);
+
+        sweep(callRepository.findTimedOutIds(CallStatus.RINGING, ringThreshold, batch),
+                ringThreshold, "부재중", callService::markMissed);
+        sweep(callRepository.findStalePendingIds(CallStatus.PENDING, pendingThreshold, batch),
+                pendingThreshold, "미접속 취소", callService::cancelStalePending);
+        sweep(callRepository.findTimedOutIds(CallStatus.DIALING, dialThreshold, batch),
+                dialThreshold, "발신 미접속 취소", callService::cancelStaleDialing);
     }
 
-    private void sweep(CallStatus status, LocalDateTime threshold, String action, Consumer<Long> close) {
-        List<Long> timedOutIds = callRepository.findTimedOutIds(
-                status, threshold, PageRequest.of(0, BATCH_SIZE));
-
+    private void sweep(List<Long> timedOutIds, LocalDateTime threshold, String action, Consumer<Long> close) {
         for (Long callId : timedOutIds) {
             try {
                 close.accept(callId);

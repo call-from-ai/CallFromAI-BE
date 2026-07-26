@@ -59,7 +59,7 @@ public interface CallRepository extends JpaRepository<Call, Long> {
                                                  Pageable pageable);
 
     /**
-     * 특정 상태로 너무 오래 머문 통화 id를 오래된 것부터 조회한다(스위퍼용).
+     * 벨만 울리다 만 통화 id를 오래된 것부터 조회한다(스위퍼용).
      * <p>기준 시각은 {@code createdAt} — AI 발신은 "Call 생성 = 벨 울림"이다.
      * ⚠ FCM 푸시가 붙으면 전달 시각과 어긋날 수 있어 재검토 대상.
      */
@@ -72,6 +72,26 @@ public interface CallRepository extends JpaRepository<Call, Long> {
     List<Long> findTimedOutIds(@Param("status") CallStatus status,
                                @Param("threshold") LocalDateTime threshold,
                                Pageable pageable);
+
+    /**
+     * 받았지만 끝내 접속하지 않은 통화 id를 오래된 것부터 조회한다(스위퍼용).
+     *
+     * <p>⚠ 기준 시각이 {@code createdAt}이 아니라 <b>{@code acceptedAt}</b>인 것이 핵심이다. 벨
+     * 타임아웃과 원점을 공유하면 유예가 "받기까지 걸린 시간"만큼 깎여, 벨이 끝나갈 무렵 받은 사용자는
+     * 받자마자 CANCELED된다. 위 {@code findTimedOutIds}와 합치지 말 것.
+     *
+     * <p>{@code coalesce}는 {@code acceptedAt} 도입 이전 행(null) 폴백 — 빼면 그 행들이 영구히 안 걷혀
+     * 해당 관계의 이후 예약이 전부 막힌다. {@code status}는 PENDING 고정이나 이 저장소 관례대로 바인딩한다.
+     */
+    @Query("""
+            select c.id from Call c
+            where c.status = :status
+              and coalesce(c.acceptedAt, c.createdAt) < :threshold
+            order by coalesce(c.acceptedAt, c.createdAt), c.id
+            """)
+    List<Long> findStalePendingIds(@Param("status") CallStatus status,
+                                   @Param("threshold") LocalDateTime threshold,
+                                   Pageable pageable);
 
     /**
      * 상태 전이 대상 통화를 비관적 락으로 집는다. 스위퍼 마감과 사용자 accept/connect가 겹칠 때

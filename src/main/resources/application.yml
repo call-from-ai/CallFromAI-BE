@@ -53,7 +53,10 @@ call:
     # 이 초만큼 벨이 울렸는데 안 받으면 부재중(MISSED). 기준 시각은 Call.createdAt(= 벨 울린 시각).
     ring-seconds: 60
     # 받았지만(PENDING) 이 초 안에 WebSocket을 열지 않으면 CANCELED. wsTicket TTL(30초) + 여유.
+    # 기준 시각은 Call.acceptedAt(= 받은 시각) — ring-seconds와 원점이 달라 서로 독립이다.
     pending-seconds: 60
+    # 발신했지만(DIALING) 이 초 안에 WebSocket을 열지 않으면 CANCELED. 기준 시각은 Call.createdAt.
+    dial-seconds: 60
 
 kakao:
   base-url: https://kapi.kakao.com

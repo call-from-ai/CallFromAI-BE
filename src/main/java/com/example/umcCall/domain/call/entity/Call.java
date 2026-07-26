@@ -38,6 +38,13 @@ public class Call extends BaseTimeEntity {
     @Column(name="call_time")
     private Integer callTime;
 
+    /**
+     * 사용자가 착신을 받은 시각(AI 발신). 미접속 스위퍼(PENDING → CANCELED)의 기준 시계다.
+     * <p>⚠ {@code createdAt}을 겸용하면 벨이 끝나갈 무렵 받은 사용자가 받자마자 취소된다.
+     */
+    @Column(name="accepted_at")
+    private LocalDateTime acceptedAt;
+
     @Column(name="started_at")
     private LocalDateTime startedAt;
 
@@ -75,6 +82,7 @@ public class Call extends BaseTimeEntity {
             throw new IllegalStateException("착신 대기 중인 통화만 받을 수 있습니다. 현재 상태=" + status);
         }
         this.status = CallStatus.PENDING;
+        this.acceptedAt = LocalDateTime.now();
     }
 
     /**

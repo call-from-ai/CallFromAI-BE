@@ -166,6 +166,15 @@ public class CallService {
         transitionIfStatusIs(callId, CallStatus.PENDING, Call::cancel);
     }
 
+    /**
+     * 발신했지만 끝내 소켓을 열지 않은 통화를 마감한다(스위퍼). DIALING → CANCELED.
+     * <p>{@code dial()}은 Call과 wsTicket만 만들고 끝나므로 앱이 WS를 안 열면 {@code finish()}
+     * 트리거가 영영 오지 않는다. wsTicket TTL이 지나면 소켓이 붙을 방법 자체가 없어 확실히 죽은 행이다.
+     */
+    public void cancelStaleDialing(Long callId) {
+        transitionIfStatusIs(callId, CallStatus.DIALING, Call::cancel);
+    }
+
     /** 스위퍼 전이의 공통 골격 — 락 → 상태 재확인 → 전이. 상태가 바뀌었으면 no-op. */
     private void transitionIfStatusIs(Long callId, CallStatus expected, Consumer<Call> transition) {
         Call call = callRepository.findByIdForUpdate(callId).orElse(null);
