@@ -14,6 +14,7 @@ import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketStore;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
+import java.util.List;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,7 +37,7 @@ public class CallService {
 
     /**
      * 사용자 발신. characterId의 관계를 확인해 Call을 만들고 단명 wsTicket을 발급한다.
-     * <p>검증은 존재 → 소유 → main 순서다 — 남의 캐릭터엔 main 여부를 노출하지 않으려 소유를 먼저 본다.
+     * <p>검증은 존재 → 소유 → main → 중복 순서다 — 남의 캐릭터엔 main 여부를 노출하지 않으려 소유를 먼저 본다.
      * 메인(활성) 캐릭터에게만 통화할 수 있다.
      */
     public CallTicketResponse dial(Long memberId, Long characterId) {
@@ -51,6 +52,10 @@ public class CallService {
             throw new CallException(CallErrorCode.CALL_TARGET_NOT_MAIN);
         }
 
+        // 확인~생성이 임계 구역이다 — 락이 없으면 예약 발신(fire)과 겹칠 때 같은 관계에 통화가 둘 생긴다.
+        relationshipRepository.findByIdForUpdate(relationship.getId());
+        clearSlotForDial(relationship.getId());
+
         Call call = callRepository.save(
                 Call.builder()
                         .relationship(relationship)
@@ -61,6 +66,27 @@ public class CallService {
                 new WsTicket(call.getId(), relationship.getId(), characterId));
 
         return new CallTicketResponse(call.getId(), call.getStatus(), wsTicket);
+    }
+
+    /**
+     * 발신 전 같은 관계의 활성 통화를 정리한다. 관계 락과 활성 통화 락을 잡은 뒤에 부를 것.
+     *
+     * <p>자기 발신이 아직 소켓을 못 연 것(DIALING)은 <b>재시도로 보고 취소한 뒤 새로 만든다</b> —
+     * wsTicket이 1회용이라 기존 Call을 물려줄 수 없고, 막으면 스위퍼가 걷을 때까지 다시 걸지 못한다.
+     *
+     * <p>그 외(RINGING·PENDING·IN_PROGRESS)는 409다. 특히 RINGING은 <b>AI가 거는 중이라 서버가 임의로
+     * 끊지 않는다</b> — 동시에 서로 거는 상황에서 사용자는 걸 게 아니라 오는 전화를 받으면 된다.
+     */
+    private void clearSlotForDial(Long relationshipId) {
+        List<Call> activeCalls =
+                callRepository.findActiveByRelationshipIdForUpdate(relationshipId, CallStatus.ACTIVE);
+
+        boolean blocked = activeCalls.stream()
+                .anyMatch(call -> call.getStatus() != CallStatus.DIALING);
+        if (blocked) {
+            throw new CallException(CallErrorCode.CALL_ALREADY_ACTIVE);
+        }
+        activeCalls.forEach(Call::cancel);
     }
 
     /**
@@ -173,6 +199,21 @@ public class CallService {
      */
     public void cancelStaleDialing(Long callId) {
         transitionIfStatusIs(callId, CallStatus.DIALING, Call::cancel);
+    }
+
+    /**
+     * 시간 상한을 넘긴 통화를 마감한다(스위퍼). IN_PROGRESS → COMPLETED.
+     * <p>다른 스위퍼 마감과 달리 <b>{@link CallEndedEvent}를 발행한다</b> — 이 상태는 소켓이 살아 있을 수
+     * 있어, 상태만 바꾸면 오디오가 계속 CLOVA로 흘러 STT 비용이 발생한다.
+     * <p>{@code callTime}은 상한값에 가깝게 기록된다 — 클라이언트가 언제 죽었는지 서버는 알 수 없다.
+     */
+    public void closeOverrunCall(Long callId) {
+        Call call = callRepository.findByIdForUpdate(callId).orElse(null);
+        if (call == null || call.getStatus() != CallStatus.IN_PROGRESS) {
+            return;
+        }
+        call.complete();
+        eventPublisher.publishEvent(new CallEndedEvent(callId));
     }
 
     /** 스위퍼 전이의 공통 골격 — 락 → 상태 재확인 → 전이. 상태가 바뀌었으면 no-op. */

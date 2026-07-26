@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -126,6 +127,30 @@ class CallServiceTest {
     }
 
     @Test
+    void closeOverrunCall은_진행_중인_통화를_COMPLETED로_마감하고_세션_정리를_알린다() {
+        Call call = dialingCall();
+        call.connect(); // IN_PROGRESS
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        callService.closeOverrunCall(CALL_ID);
+
+        assertThat(call.getStatus()).isEqualTo(CallStatus.COMPLETED);
+        // 상태만 바꾸면 소켓이 살아남아 오디오가 계속 CLOVA로 흐른다.
+        verify(eventPublisher).publishEvent(new CallEndedEvent(CALL_ID));
+    }
+
+    @Test
+    void closeOverrunCall은_진행_중이_아니면_아무것도_하지_않는다() {
+        Call call = dialingCall(); // DIALING — 연결 대기 스위퍼의 몫이다
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+
+        callService.closeOverrunCall(CALL_ID);
+
+        assertThat(call.getStatus()).isEqualTo(CallStatus.DIALING);
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
     void getIncomingCall은_RINGING_통화를_단건으로_준다() {
         CallIncomingResponse incoming = new CallIncomingResponse(
                 CALL_ID, CHARACTER_ID, "지호", "https://cdn.example.com/jiho.png", LocalDateTime.now());
@@ -154,6 +179,81 @@ class CallServiceTest {
                 .thenReturn(List.of(latest, older));
 
         assertThat(callService.getIncomingCall(MEMBER_ID)).isEqualTo(latest);
+    }
+
+    /** 발신 가능한 관계(살아 있는 메인 캐릭터)를 세운다. */
+    private Relationship givenDialableRelationship() {
+        Relationship relationship = relationshipOf(MEMBER_ID);
+        Character character = characterOf(CHARACTER_ID); // when() 인자 안에서 스터빙하지 않는다
+        lenient().when(relationship.isMain()).thenReturn(true);
+        lenient().when(relationship.getCharacter()).thenReturn(character);
+        when(relationshipRepository.findByCharacterIdAndCharacterDeletedAtIsNull(CHARACTER_ID))
+                .thenReturn(Optional.of(relationship));
+        return relationship;
+    }
+
+    private void givenActiveCalls(List<Call> activeCalls) {
+        when(callRepository.findActiveByRelationshipIdForUpdate(RELATIONSHIP_ID, CallStatus.ACTIVE))
+                .thenReturn(activeCalls);
+    }
+
+    @Test
+    void dial은_관계_락을_잡고_통화와_티켓을_만든다() {
+        givenDialableRelationship();
+        givenActiveCalls(List.of());
+        when(callRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(wsTicketStore.issue(any())).thenReturn(TICKET);
+
+        CallTicketResponse response = callService.dial(MEMBER_ID, CHARACTER_ID);
+
+        assertThat(response.callStatus()).isEqualTo(CallStatus.DIALING);
+        assertThat(response.wsTicket()).isEqualTo(TICKET);
+        // 락이 없으면 예약 발신(fire)과 겹칠 때 같은 관계에 통화가 둘 생긴다.
+        verify(relationshipRepository).findByIdForUpdate(RELATIONSHIP_ID);
+    }
+
+    @Test
+    void dial은_소켓을_못_연_자기_발신을_취소하고_새로_만든다() {
+        givenDialableRelationship();
+        Call stale = dialingCall(); // 이전 시도 — 티켓이 1회용이라 물려줄 수 없다
+        givenActiveCalls(List.of(stale));
+        when(callRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(wsTicketStore.issue(any())).thenReturn(TICKET);
+
+        CallTicketResponse response = callService.dial(MEMBER_ID, CHARACTER_ID);
+
+        assertThat(stale.getStatus()).isEqualTo(CallStatus.CANCELED);
+        assertThat(response.callStatus()).isEqualTo(CallStatus.DIALING);
+    }
+
+    @Test
+    void dial은_AI가_거는_중이면_CALL_ALREADY_ACTIVE를_던진다() {
+        Relationship relationship = givenDialableRelationship();
+        Call incoming = ringingCall(relationship);
+        givenActiveCalls(List.of(incoming));
+
+        assertThatThrownBy(() -> callService.dial(MEMBER_ID, CHARACTER_ID))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_ALREADY_ACTIVE);
+
+        // 서버가 상대 통화를 임의로 끊지 않는다 — 사용자는 걸 게 아니라 받으면 된다.
+        assertThat(incoming.getStatus()).isEqualTo(CallStatus.RINGING);
+        verify(callRepository, never()).save(any());
+    }
+
+    @Test
+    void dial은_이미_통화_중이면_CALL_ALREADY_ACTIVE를_던진다() {
+        Relationship relationship = givenDialableRelationship();
+        Call ongoing = ringingCall(relationship);
+        ongoing.accept();
+        ongoing.connect(); // IN_PROGRESS
+        givenActiveCalls(List.of(ongoing));
+
+        assertThatThrownBy(() -> callService.dial(MEMBER_ID, CHARACTER_ID))
+                .isInstanceOf(CallException.class)
+                .extracting(e -> ((CallException) e).getErrorCode())
+                .isEqualTo(CallErrorCode.CALL_ALREADY_ACTIVE);
     }
 
     @Test

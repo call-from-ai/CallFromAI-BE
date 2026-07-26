@@ -94,6 +94,21 @@ public interface CallRepository extends JpaRepository<Call, Long> {
                                    Pageable pageable);
 
     /**
+     * 시간 상한을 넘겨 진행 중인 통화 id를 오래된 것부터 조회한다(스위퍼용).
+     * <p>기준 시각은 {@code startedAt} — 상한은 "통화가 얼마나 오래 이어졌는가"라서 벨 대기 시간은 뺀다.
+     * {@code IN_PROGRESS}는 {@code connect()}가 만든 상태라 {@code startedAt}이 항상 있다.
+     */
+    @Query("""
+            select c.id from Call c
+            where c.status = :status
+              and c.startedAt < :threshold
+            order by c.startedAt, c.id
+            """)
+    List<Long> findOverrunIds(@Param("status") CallStatus status,
+                              @Param("threshold") LocalDateTime threshold,
+                              Pageable pageable);
+
+    /**
      * 상태 전이 대상 통화를 비관적 락으로 집는다. 스위퍼 마감과 사용자 accept/connect가 겹칠 때
      * 한쪽만 이기게 한다 — 호출부는 락 뒤 상태를 다시 확인해야 한다.
      */
@@ -102,6 +117,26 @@ public interface CallRepository extends JpaRepository<Call, Long> {
     Optional<Call> findByIdForUpdate(@Param("id") Long id);
 
     boolean existsByRelationshipIdAndStatusIn(Long relationshipId, Collection<CallStatus> statuses);
+
+    /**
+     * 관계의 활성 통화를 <b>비관적 락으로</b> 가져온다(발신 중복 방어용).
+     * <p>{@code exists}가 아닌 이유: 발신 정책이 상태마다 달라서다 — 사용자 재시도로 남은 DIALING은
+     * 취소하고 진행하지만, 그 외(RINGING·PENDING·IN_PROGRESS)는 거절한다.
+     *
+     * <p>락이 필요한 이유: 호출부가 읽은 통화를 {@code cancel()}로 갱신하는데 {@code Call}엔
+     * {@code @Version}이 없어 조건 없는 UPDATE가 나간다. 락이 없으면 그 사이 {@code connect()}가 커밋한
+     * IN_PROGRESS를 덮어써 <b>오디오는 흐르는데 DB는 CANCELED</b>인 통화가 된다.
+     * <p>관계 락과 역할이 다르다 — 관계 락은 새 통화 INSERT(dial↔fire), 이 락은 기존 통화의 상태
+     * 갱신(dial↔connect)을 막는다. {@code connect()}는 관계를 잠그지 않는다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select c from Call c
+            where c.relationship.id = :relationshipId
+              and c.status in :statuses
+            """)
+    List<Call> findActiveByRelationshipIdForUpdate(@Param("relationshipId") Long relationshipId,
+                                                   @Param("statuses") Collection<CallStatus> statuses);
 
     long countByRelationshipIdAndSenderAndStatusInAndCreatedAtAfter(
             Long relationshipId,
