@@ -38,6 +38,13 @@ public class Call extends BaseTimeEntity {
     @Column(name="call_time")
     private Integer callTime;
 
+    /**
+     * 사용자가 착신을 받은 시각(AI 발신). 미접속 스위퍼(PENDING → CANCELED)의 기준 시계다.
+     * <p>⚠ {@code createdAt}을 겸용하면 벨이 끝나갈 무렵 받은 사용자가 받자마자 취소된다.
+     */
+    @Column(name="accepted_at")
+    private LocalDateTime acceptedAt;
+
     @Column(name="started_at")
     private LocalDateTime startedAt;
 
@@ -48,20 +55,42 @@ public class Call extends BaseTimeEntity {
     @JoinColumn(name="relationship_id",nullable = false)
     private Relationship relationship;
 
-    @Column(name="call_reservation_id")
-    private Long callReservationId;
+    /**
+     * 이 통화를 울린 예약. 사용자 발신은 null이다.
+     * <p>예약 하나는 한 번만 울리므로 1:1이고, 소유 측 {@code @OneToOne}이라 unique 제약이 그 불변식을 지킨다.
+     */
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name="call_reservation_id")
+    private CallReservation callReservation;
 
     @Builder
-    private Call(Relationship relationship, CallSender sender) {
+    private Call(Relationship relationship, CallSender sender, CallReservation callReservation) {
         this.relationship = relationship;
         this.sender = sender;
+        this.callReservation = callReservation;
         this.status = (sender == CallSender.USER) ?
                 CallStatus.DIALING : CallStatus.RINGING;
     }
 
-    /** 통화 연결됨. 연결 대기 중(DIALING 또는 RINGING)에서만 IN_PROGRESS로 전이한다. */
+    /**
+     * 사용자가 착신을 받음(AI 발신). RINGING → PENDING.
+     * <p>IN_PROGRESS로 바로 가지 않는다 — 오디오는 WS가 열린 뒤 흐르고, PENDING이 "받았지만 연결 전"인
+     * 통화를 부재중 판정에서 제외해 준다.
+     */
+    public void accept() {
+        if (status != CallStatus.RINGING) {
+            throw new IllegalStateException("착신 대기 중인 통화만 받을 수 있습니다. 현재 상태=" + status);
+        }
+        this.status = CallStatus.PENDING;
+        this.acceptedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 통화 연결됨. 연결 대기 중(DIALING 또는 PENDING)에서만 IN_PROGRESS로 전이한다.
+     * <p>RINGING은 제외 — wsTicket은 accept에서만 나오므로 accept 없이는 소켓을 열 수 없다.
+     */
     public void connect() {
-        if (status != CallStatus.DIALING && status != CallStatus.RINGING) {
+        if (status != CallStatus.DIALING && status != CallStatus.PENDING) {
             throw new IllegalStateException("연결 대기 중인 통화만 연결할 수 있습니다. 현재 상태=" + status);
         }
         this.status = CallStatus.IN_PROGRESS;
@@ -81,9 +110,29 @@ public class Call extends BaseTimeEntity {
     }
 
     /**
-     * 발신자가 연결 전에 끊음. DIALING → CANCELED.
+     * 연결되지 못한 채 서버/AI 측 사유로 취소됨(스트림 개설 실패 등). → CANCELED.
+     * <p>사용자 취소가 아니다 — 연결 전 사용자 취소는 취소 API가 없어 현재 도달 불가다.
      */
     public void cancel() {
         this.status = CallStatus.CANCELED;
+    }
+
+    /**
+     * 벨을 울렸으나 사용자가 받지 않음(부재중). RINGING → MISSED.
+     * <p>이미 받은 통화(PENDING)는 대상이 아니다 — 사용자 부재가 아니라 연결 실패다.
+     */
+    public void markMissed() {
+        if (status != CallStatus.RINGING) {
+            throw new IllegalStateException("착신 대기 중인 통화만 부재중 처리할 수 있습니다. 현재 상태=" + status);
+        }
+        this.status = CallStatus.MISSED;
+    }
+
+    /** 사용자가 착신을 거절함(AI 발신). RINGING → REJECTED. */
+    public void reject() {
+        if (status != CallStatus.RINGING) {
+            throw new IllegalStateException("착신 대기 중인 통화만 거절할 수 있습니다. 현재 상태=" + status);
+        }
+        this.status = CallStatus.REJECTED;
     }
 }

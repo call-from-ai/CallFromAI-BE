@@ -29,7 +29,6 @@ import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import java.time.LocalDateTime;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -93,7 +92,7 @@ public class ProactiveContactProcessor {
         }
         CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElse(null);
         boolean activeCall = callRepository.existsByRelationshipIdAndStatusIn(
-                relationship.getId(), EnumSet.of(CallStatus.DIALING, CallStatus.RINGING, CallStatus.IN_PROGRESS));
+                relationship.getId(), CallStatus.ACTIVE);
 
         ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
         RecentResponse recentResponse = schedule.getConsecutiveNoResponseCount() > 0

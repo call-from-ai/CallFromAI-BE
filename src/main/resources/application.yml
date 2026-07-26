@@ -41,6 +41,26 @@ clova:
     connect-timeout-ms: 2000
     read-timeout-ms: 10000
 
+call:
+  reservation:
+    # 예약 폴링 주기(ms). 예약 시각 대비 최대 이만큼 늦게 발신된다.
+    scheduler-delay-ms: 60000
+    # 예약 시각이 이 분보다 더 지났으면 발신하지 않고 CANCELED로 종결한다(재기동 시 몰림 발신 방지).
+    grace-minutes: 5
+  timeout:
+    # 연결되지 못한 통화를 걷는 주기(ms). 벨 타임아웃보다 촘촘해야 판정이 제시간에 떨어진다.
+    scheduler-delay-ms: 10000
+    # 이 초만큼 벨이 울렸는데 안 받으면 부재중(MISSED). 기준 시각은 Call.createdAt(= 벨 울린 시각).
+    ring-seconds: 60
+    # 받았지만(PENDING) 이 초 안에 WebSocket을 열지 않으면 CANCELED. wsTicket TTL(30초) + 여유.
+    # 기준 시각은 Call.acceptedAt(= 받은 시각) — ring-seconds와 원점이 달라 서로 독립이다.
+    pending-seconds: 60
+    # 발신했지만(DIALING) 이 초 안에 WebSocket을 열지 않으면 CANCELED. 기준 시각은 Call.createdAt.
+    dial-seconds: 60
+    # 이 분을 넘겨 진행 중인 통화는 COMPLETED로 마감하고 세션도 정리한다. 기준 시각은 Call.startedAt.
+    # 크래시·SIGKILL·half-open으로 남은 통화를 걷는 안전망이라 정상 통화를 자르지 않게 넉넉히 잡는다.
+    max-call-minutes: 60
+
 kakao:
   base-url: https://kapi.kakao.com
 
