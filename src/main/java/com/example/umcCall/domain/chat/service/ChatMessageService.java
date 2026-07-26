@@ -12,6 +12,8 @@ import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
 import com.example.umcCall.domain.chat.repository.ChatPhotoRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.global.infra.s3.S3Uploader;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -123,12 +125,39 @@ public class ChatMessageService {
         }
     }
 
-    /** 이미지 content-type이 허용 목록(JPEG/PNG)에 있는지 검증한다. */
+    /**
+     * 이미지가 진짜 JPEG/PNG인지 검증한다.
+     * content-type 헤더는 클라이언트가 위조할 수 있으므로, 파일 앞부분의 매직 바이트(실제 내용)까지 확인한다.
+     */
     private void validateImageType(MultipartFile image) {
         String contentType = image.getContentType();
         if (contentType == null || !ALLOWED_IMAGE_TYPES.contains(contentType)) {
             throw new ChatException(ChatErrorCode.INVALID_IMAGE_TYPE);
         }
+        if (!hasImageMagicBytes(image)) {
+            throw new ChatException(ChatErrorCode.INVALID_IMAGE_TYPE);
+        }
+    }
+
+    /** 파일 앞부분을 읽어 JPEG(FF D8 FF) 또는 PNG(89 50 4E 47) 시그니처인지 확인한다. */
+    private boolean hasImageMagicBytes(MultipartFile image) {
+        byte[] head = new byte[4];
+        try (InputStream in = image.getInputStream()) {
+            if (in.readNBytes(head, 0, 4) < 4) {
+                return false;   // 4바이트도 안 되면 정상 이미지가 아님
+            }
+        } catch (IOException e) {
+            throw new ChatException(ChatErrorCode.INVALID_IMAGE_TYPE);
+        }
+
+        boolean jpeg = (head[0] & 0xFF) == 0xFF
+                && (head[1] & 0xFF) == 0xD8
+                && (head[2] & 0xFF) == 0xFF;
+        boolean png = (head[0] & 0xFF) == 0x89
+                && (head[1] & 0xFF) == 0x50
+                && (head[2] & 0xFF) == 0x4E
+                && (head[3] & 0xFF) == 0x47;
+        return jpeg || png;
     }
 
     /**
