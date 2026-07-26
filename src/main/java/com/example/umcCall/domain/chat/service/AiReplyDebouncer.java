@@ -13,6 +13,7 @@ import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
 import com.example.umcCall.domain.chat.repository.ChatPhotoRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.global.infra.s3.S3DownloadedFile;
+import com.example.umcCall.global.infra.s3.S3ObjectNotFoundException;
 import com.example.umcCall.global.infra.s3.S3Uploader;
 import java.time.Duration;
 import java.time.Instant;
@@ -176,16 +177,20 @@ public class AiReplyDebouncer {
         Map<Long, String> photoUrls = loadPhotoUrls(batch);
         List<Chunk> chunks = splitIntoChunks(batch, photoUrls);
 
-        // 조각을 순서대로 처리한다. 한 조각이 실패해도(예: S3에서 사진이 사라짐) 다음 조각과 방 전체가
-        // 영영 막히지 않도록, 조각마다 감싸고 finally에서 워터마크를 무조건 전진시킨다.
-        // 대가: 일시적 오류(네트워크 순단 등)일 땐 그 답장 하나가 유실된다(재시도 안 함).
+        // 조각을 순서대로 처리한다. 실패는 두 종류로 나눠 다룬다.
+        //  - 영구 실패(S3에 사진이 없음): 재시도해도 안 되므로 워터마크를 전진시켜 건너뛴다(방이 막히지 않게).
+        //  - 일시 실패(AI 타임아웃/5xx/네트워크): 워터마크를 두고 루프를 멈춰, 다음 활동 때 이 조각부터 재시도한다.
+        //  - 성공/빈 답장: 전진.
         for (Chunk chunk : chunks) {
             try {
                 processChunk(room, chunk);
-            } catch (Exception e) {
-                log.error("AI 답장 조각 처리 실패. roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);
-            } finally {
                 answeredWatermark.put(roomId, chunk.lastId());
+            } catch (S3ObjectNotFoundException e) {
+                log.error("AI 답장 조각 스킵(사진 없음). roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);
+                answeredWatermark.put(roomId, chunk.lastId());   // 영구 실패 → 전진(스킵)
+            } catch (Exception e) {
+                log.error("AI 답장 조각 처리 실패(재시도 예정). roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);
+                break;   // 일시 실패 → 전진 안 함, 다음 활동 때 이 조각부터 다시
             }
         }
     }
@@ -293,8 +298,18 @@ public class AiReplyDebouncer {
                 roomId, null, beforeMessageId, PageRequest.of(0, HISTORY_SIZE)));
         Collections.reverse(recent);   // 최신→과거로 뽑혔으니, 과거→최신으로 뒤집는다
         return recent.stream()
-                .map(m -> new AiChatHistoryItem(toRole(m.getSenderType()), m.getContent(), m.getCreatedAt()))
+                .map(m -> new AiChatHistoryItem(toRole(m.getSenderType()), toHistoryContent(m), m.getCreatedAt()))
                 .toList();
+    }
+
+    /**
+     * 히스토리 항목의 content를 만든다.
+     * 사진만 있는 메시지는 content가 null인데, AI 서버는 content가 null이면 거부하므로 "[사진]"으로 채운다.
+     * (과거 사진의 실제 이미지는 히스토리로 다시 보내지 않고, 텍스트 표시만 남긴다.)
+     */
+    private String toHistoryContent(ChatMessage message) {
+        String content = message.getContent();
+        return (content == null || content.isBlank()) ? "[사진]" : content;
     }
 
     /** 우리 쪽 발신자 값을 AI 서버가 쓰는 말로 바꾼다. 유저는 "user", 나머지는 "assistant". */

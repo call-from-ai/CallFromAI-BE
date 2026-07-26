@@ -11,6 +11,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 /**
@@ -67,9 +68,14 @@ public class S3Uploader {
      */
     public S3DownloadedFile download(String fileUrl) {
         String key = extractKey(fileUrl);
-        ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(
-                GetObjectRequest.builder().bucket(bucket).key(key).build());
-        return new S3DownloadedFile(object.asByteArray(), object.response().contentType());
+        try {
+            ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(
+                    GetObjectRequest.builder().bucket(bucket).key(key).build());
+            return new S3DownloadedFile(object.asByteArray(), object.response().contentType());
+        } catch (NoSuchKeyException e) {
+            // 객체가 없으면 재시도해도 안 되는 영구 실패 → 호출부가 구분할 수 있게 감싸 던진다.
+            throw new S3ObjectNotFoundException("S3에 객체가 없습니다: " + key, e);
+        }
     }
 
     /**

@@ -4,6 +4,7 @@ import com.example.umcCall.domain.chat.entity.ChatPhoto;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -19,6 +20,19 @@ public interface ChatPhotoRepository extends JpaRepository<ChatPhoto, Long> {
             where p.chatMessage.id in :messageIds
             """)
     List<MessagePhotoRow> findPhotoUrlsByMessageIds(@Param("messageIds") Collection<Long> messageIds);
+
+    /**
+     * 방의 모든 메시지에 딸린 사진을 일괄 삭제한다
+     * chat_photo는 chat_room을 직접 참조하지 않으므로 메시지 서브쿼리로 지운다.
+     */
+    @Modifying
+    @Query("""
+            delete from ChatPhoto p
+            where p.chatMessage.id in (
+                select m.id from ChatMessage m where m.chatRoom.id = :roomId
+            )
+            """)
+    void deleteByChatRoomId(@Param("roomId") Long roomId);
 
     /** 메시지 id → 사진 URL 프로젝션. */
     interface MessagePhotoRow {
