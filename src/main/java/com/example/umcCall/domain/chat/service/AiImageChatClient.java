@@ -73,7 +73,13 @@ public class AiImageChatClient {
                     .body(body)
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, (req, res) -> {
-                        throw new RuntimeException("AI 이미지 요청 실패. status=" + res.getStatusCode());
+                        HttpStatusCode status = res.getStatusCode();
+                        // 4xx: 잘못된 요청 → 다시 보내도 안 됨 → 재시도 불가 예외(디바운서가 스킵)
+                        // 5xx: 서버 일시 오류 → 재시도 대상(일반 RuntimeException)
+                        if (status.is4xxClientError()) {
+                            throw new AiImageRequestRejectedException("AI 이미지 요청 거부(4xx). status=" + status);
+                        }
+                        throw new RuntimeException("AI 이미지 요청 실패. status=" + status);
                     })
                     .body(AiChatResponse.class);
             if (response == null) {

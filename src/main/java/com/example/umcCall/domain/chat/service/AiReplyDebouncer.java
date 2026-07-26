@@ -178,15 +178,15 @@ public class AiReplyDebouncer {
         List<Chunk> chunks = splitIntoChunks(batch, photoUrls);
 
         // 조각을 순서대로 처리한다. 실패는 두 종류로 나눠 다룬다.
-        //  - 영구 실패(S3에 사진이 없음): 재시도해도 안 되므로 워터마크를 전진시켜 건너뛴다(방이 막히지 않게).
+        //  - 영구 실패(S3에 사진 없음 / AI 4xx 거부): 재시도해도 안 되므로 워터마크를 전진시켜 건너뛴다(방이 막히지 않게).
         //  - 일시 실패(AI 타임아웃/5xx/네트워크): 워터마크를 두고 루프를 멈춰, 다음 활동 때 이 조각부터 재시도한다.
         //  - 성공/빈 답장: 전진.
         for (Chunk chunk : chunks) {
             try {
                 processChunk(room, chunk);
                 answeredWatermark.put(roomId, chunk.lastId());
-            } catch (S3ObjectNotFoundException e) {
-                log.error("AI 답장 조각 스킵(사진 없음). roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);
+            } catch (S3ObjectNotFoundException | AiImageRequestRejectedException e) {
+                log.error("AI 답장 조각 스킵(영구 실패). roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);
                 answeredWatermark.put(roomId, chunk.lastId());   // 영구 실패 → 전진(스킵)
             } catch (Exception e) {
                 log.error("AI 답장 조각 처리 실패(재시도 예정). roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);

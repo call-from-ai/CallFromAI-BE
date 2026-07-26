@@ -19,12 +19,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -101,7 +103,24 @@ public class ChatMessageService {
         }
 
         // 원자적 DB 쓰기(메시지+사진+시각+이벤트)는 별도 빈의 트랜잭션에서 처리한다.
-        return chatMessageWriter.saveUserMessage(chatRoomId, memberId, content, photoUrl);
+        // DB 저장이 실패하면 방금 올린 S3 객체가 고아로 남으므로, 보상 삭제 후 예외를 다시 던진다.
+        try {
+            return chatMessageWriter.saveUserMessage(chatRoomId, memberId, content, photoUrl);
+        } catch (RuntimeException e) {
+            if (photoUrl != null) {
+                deleteQuietly(photoUrl);   // 업로드했던 사진 되돌리기(삭제 실패는 삼켜 원래 예외를 우선 전달)
+            }
+            throw e;
+        }
+    }
+
+    /** 보상 삭제. 삭제가 실패해도 원래 예외를 덮지 않도록 로깅만 하고 넘어간다. */
+    private void deleteQuietly(String photoUrl) {
+        try {
+            s3Uploader.delete(photoUrl);
+        } catch (Exception e) {
+            log.warn("업로드 롤백용 S3 삭제 실패(고아 객체가 남을 수 있음). url={}", photoUrl, e);
+        }
     }
 
     /** 이미지 content-type이 허용 목록(JPEG/PNG)에 있는지 검증한다. */

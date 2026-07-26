@@ -34,6 +34,10 @@ public interface ChatPhotoRepository extends JpaRepository<ChatPhoto, Long> {
             """)
     void deleteByChatRoomId(@Param("roomId") Long roomId);
 
+    /** 방의 모든 사진 URL을 조회한다(캐릭터 삭제 시 S3 객체 정리용). */
+    @Query("select p.photoUrl from ChatPhoto p where p.chatMessage.chatRoom.id = :roomId")
+    List<String> findPhotoUrlsByChatRoomId(@Param("roomId") Long roomId);
+
     /** 메시지 id → 사진 URL 프로젝션. */
     interface MessagePhotoRow {
         Long getMessageId();

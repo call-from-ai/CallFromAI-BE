@@ -4,8 +4,8 @@ import com.example.umcCall.domain.character.repository.CharacterAiProfileReposit
 import com.example.umcCall.domain.character.repository.CharacterRepository;
 import com.example.umcCall.domain.character.repository.CharacterTraitRepository;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
-import com.example.umcCall.domain.chat.repository.ChatPhotoRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
+import com.example.umcCall.domain.chat.service.ChatPhotoCleaner;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import com.example.umcCall.domain.proactive.repository.ProactiveContactScheduleRepository;
@@ -25,7 +25,7 @@ public class CharacterHardDeleteService {
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
-    private final ChatPhotoRepository chatPhotoRepository;
+    private final ChatPhotoCleaner chatPhotoCleaner;
     private final ProactiveContactScheduleRepository proactiveContactScheduleRepository;
 
     @Transactional
@@ -33,7 +33,7 @@ public class CharacterHardDeleteService {
         relationshipRepository.findByCharacterId(characterId).ifPresent(relationship -> {
             proactiveContactScheduleRepository.deleteByRelationshipId(relationship.getId());
             chatRoomRepository.findByRelationshipId(relationship.getId()).ifPresent(chatRoom -> {
-                chatPhotoRepository.deleteByChatRoomId(chatRoom.getId());
+                chatPhotoCleaner.purgeRoomPhotos(chatRoom.getId());
                 chatMessageRepository.deleteByChatRoomId(chatRoom.getId());
                 chatRoomRepository.delete(chatRoom);
             });
