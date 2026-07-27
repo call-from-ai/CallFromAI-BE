@@ -1,5 +1,7 @@
 package com.example.umcCall.global.config;
 
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.servers.Server;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
@@ -7,7 +9,12 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-//http://localhost:8080/swagger-ui/index.html
+@OpenAPIDefinition(
+        servers = {
+                @Server(url = "/")
+        }
+)
+
 @Configuration
 public class SwaggerConfig {
 
