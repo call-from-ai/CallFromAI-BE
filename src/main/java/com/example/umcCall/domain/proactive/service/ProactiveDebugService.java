@@ -9,6 +9,7 @@ import com.example.umcCall.domain.proactive.repository.ProactiveContactScheduleR
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,15 +25,28 @@ public class ProactiveDebugService {
     private final ProactiveContactProcessor processor;
 
     @Transactional
+    public List<ProactiveScheduleResponse> getStatuses(Long memberId) {
+        return relationshipRepository.findByMemberIdAndCharacterDeletedAtIsNull(memberId).stream()
+                .map(relationship -> {
+                    coordinator.create(relationship);
+                    ProactiveContactSchedule schedule =
+                            scheduleRepository.findByRelationshipId(relationship.getId())
+                                    .orElseThrow(() -> new IllegalStateException(
+                                            "Proactive schedule not found. relationshipId="
+                                                    + relationship.getId()));
+                    Double attachment = profileRepository.findById(relationship.getCharacter().getId())
+                            .map(profile -> profile.getAttachment())
+                            .orElse(null);
+                    return ProactiveScheduleResponse.of(schedule, attachment);
+                })
+                .toList();
+    }
+
+    @Transactional
     public ProactiveScheduleResponse getStatus(Long memberId) {
         Relationship relationship = currentRelationship(memberId);
         coordinator.create(relationship);
-        ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
-                .orElseThrow(() -> new IllegalStateException("Proactive schedule not found"));
-        Double attachment = profileRepository.findById(relationship.getCharacter().getId())
-                .map(profile -> profile.getAttachment())
-                .orElse(null);
-        return ProactiveScheduleResponse.of(schedule, attachment);
+        return responseOf(relationship);
     }
 
     @Transactional
@@ -102,5 +116,14 @@ public class ProactiveDebugService {
         return relationshipRepository.findByMemberIdAndMainTrueAndCharacterDeletedAtIsNull(memberId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Active relationship not found for memberId=" + memberId));
+    }
+
+    private ProactiveScheduleResponse responseOf(Relationship relationship) {
+        ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
+                .orElseThrow(() -> new IllegalStateException("Proactive schedule not found"));
+        Double attachment = profileRepository.findById(relationship.getCharacter().getId())
+                .map(profile -> profile.getAttachment())
+                .orElse(null);
+        return ProactiveScheduleResponse.of(schedule, attachment);
     }
 }
