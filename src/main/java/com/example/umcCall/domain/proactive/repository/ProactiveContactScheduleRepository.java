@@ -20,7 +20,6 @@ public interface ProactiveContactScheduleRepository extends JpaRepository<Proact
     @Query("""
             select s.id from ProactiveContactSchedule s
             where s.enabled = true
-              and s.relationship.main = true
               and s.relationship.character.deletedAt is null
               and ((s.nextCheckAt is not null and s.nextCheckAt <= :now)
                 or (s.pendingRequestId is not null and s.pendingRetryAt <= :now))

@@ -64,6 +64,9 @@ public class ProactiveContactSchedule extends BaseTimeEntity {
     @Column(name = "daily_count_date")
     private LocalDate dailyCountDate;
 
+    @Column(name = "daily_call_count", nullable = false)
+    private int dailyCallCount;
+
     @Column(name = "paused_until")
     private LocalDateTime pausedUntil;
 
@@ -95,6 +98,7 @@ public class ProactiveContactSchedule extends BaseTimeEntity {
         this.nextCheckAt = nextCheckAt;
         this.consecutiveNoResponseCount = 0;
         this.dailyContactCount = 0;
+        this.dailyCallCount = 0;
         this.pendingAttempts = 0;
     }
 
@@ -133,6 +137,21 @@ public class ProactiveContactSchedule extends BaseTimeEntity {
         this.dailyContactCount++;
         this.lastProactiveContactAt = sentAt;
         this.awaitingUserResponse = true;
+        clearPending();
+        this.nextCheckAt = enabled ? nextCheckAt : null;
+    }
+
+    public void completeCall(LocalDateTime calledAt, LocalDateTime nextCheckAt) {
+        resetDailyCountIfNeeded(calledAt.toLocalDate());
+        this.dailyContactCount++;
+        this.dailyCallCount++;
+        this.lastProactiveContactAt = calledAt;
+        this.awaitingUserResponse = false;
+        clearPending();
+        this.nextCheckAt = enabled ? nextCheckAt : null;
+    }
+
+    public void releaseClaim(LocalDateTime nextCheckAt) {
         clearPending();
         this.nextCheckAt = enabled ? nextCheckAt : null;
     }
@@ -186,10 +205,15 @@ public class ProactiveContactSchedule extends BaseTimeEntity {
         return date.equals(dailyCountDate) ? dailyContactCount : 0;
     }
 
+    public int dailyCallCountOn(LocalDate date) {
+        return date.equals(dailyCountDate) ? dailyCallCount : 0;
+    }
+
     private void resetDailyCountIfNeeded(LocalDate date) {
         if (!date.equals(dailyCountDate)) {
             dailyCountDate = date;
             dailyContactCount = 0;
+            dailyCallCount = 0;
         }
     }
 

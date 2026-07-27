@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.proactive.service;
 
 import com.example.umcCall.domain.proactive.repository.ProactiveContactScheduleRepository;
+import com.example.umcCall.domain.proactive.enums.ProactiveAction;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,10 @@ public class ProactiveContactWorker {
             ProactiveContactProcessor.Claim claim = processor.claim(scheduleId, now);
             if (claim == null) return;
             try {
+                if (claim.action() == ProactiveAction.CALL) {
+                    processor.completeCall(claim, LocalDateTime.now());
+                    return;
+                }
                 String reply = processor.generate(claim);
                 if (reply != null) {
                     processor.complete(claim, reply, LocalDateTime.now());

@@ -35,7 +35,7 @@ public class ProactiveScheduleCoordinator {
     public void reschedule(Relationship relationship) {
         ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
                 .orElseGet(() -> ProactiveContactSchedule.create(relationship, null));
-        schedule.reschedule(relationship.isMain() ? nextCandidate(relationship, LocalDateTime.now()) : null);
+        schedule.reschedule(nextCandidate(relationship, LocalDateTime.now()));
         scheduleRepository.save(schedule);
     }
 
