@@ -184,7 +184,7 @@ public class ProactiveContactProcessor {
                 claim.requestId(),
                 relationship.getCharacter().getId(),
                 PROACTIVE_SEED,
-                schedule.getPendingContactReason(),
+                aiContactReason(schedule.getPendingContactReason()),
                 state.name(),
                 response.name(),
                 characterSnapshotMapper.toSnapshot(relationship.getCharacter(), profile, relationship),
@@ -193,6 +193,14 @@ public class ProactiveContactProcessor {
 
         AiChatResponse aiResponse = aiServerClient.proactive(request);
         return aiResponse.reply();
+    }
+
+    /**
+     * 메인 서버의 세부 스케줄 사유를 AI 서버가 지원하는 공개 계약으로 축약한다.
+     * 관계 상태별 표현은 relationshipState가 별도로 전달하므로 일반 채팅은 NORMAL_CHECK_IN이면 충분하다.
+     */
+    private String aiContactReason(String internalReason) {
+        return "CALL_OFFER".equals(internalReason) ? "CALL_OFFER" : "NORMAL_CHECK_IN";
     }
 
     @Transactional
