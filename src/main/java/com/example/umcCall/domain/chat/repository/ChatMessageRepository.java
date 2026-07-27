@@ -15,6 +15,10 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     void deleteByChatRoomId(Long chatRoomId);
 
+    /** 방에 속한 특정 메시지를 조회한다(개별 삭제 시 소유·소속 검증용). */
+    @Query("select m from ChatMessage m where m.id = :messageId and m.chatRoom.id = :roomId")
+    Optional<ChatMessage> findByIdAndChatRoomId(@Param("messageId") Long messageId, @Param("roomId") Long roomId);
+
     boolean existsByProactiveRequestId(String proactiveRequestId);
 
     Optional<ChatMessage> findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(Long chatRoomId);

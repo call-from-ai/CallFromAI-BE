@@ -205,6 +205,7 @@ public class ProactiveContactProcessor {
                     .proactiveRequestId(claim.requestId())
                     .build());
             room.updateLastMessageAt(now);
+            room.reveal();
         }
 
         CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElseThrow();
