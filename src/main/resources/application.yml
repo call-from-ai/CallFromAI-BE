@@ -61,6 +61,10 @@ call:
     # 크래시·SIGKILL·half-open으로 남은 통화를 걷는 안전망이라 정상 통화를 자르지 않게 넉넉히 잡는다.
     max-call-minutes: 60
 
+proactive:
+  # 선제 연락은 시간 단위 간격이라 10분 단위 폴링이면 충분하다.
+  scheduler-delay-ms: 600000
+
 kakao:
   base-url: https://kapi.kakao.com
 

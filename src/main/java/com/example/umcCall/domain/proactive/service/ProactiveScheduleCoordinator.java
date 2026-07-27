@@ -85,8 +85,7 @@ public class ProactiveScheduleCoordinator {
         Double attachment = profile == null ? null : profile.getAttachment();
         ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
         LocalDateTime candidate = policy.nextCandidate(anchor, attachment, state);
-        PreferredContactTimePolicy.Result preferred =
-                preferredTimePolicy.evaluate(relationship.getCharacter().getPreferTime(), candidate);
-        return preferred.preferred() ? candidate : preferred.nextPreferredTime();
+        return preferredTimePolicy.adjustCandidate(
+                relationship.getCharacter().getPreferTime(), candidate);
     }
 }

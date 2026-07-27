@@ -52,11 +52,6 @@ public class ProactiveContactPolicy {
             return Decision.blocked("THREE_NO_RESPONSES");
         }
 
-        PreferredContactTimePolicy.Result preferred =
-                preferredTimePolicy.evaluate(context.preferTime(), context.now());
-        if (!preferred.preferred()) {
-            return Decision.defer("NOT_PREFERRED_TIME", preferred.nextPreferredTime());
-        }
         if (context.consecutiveNoResponseCount() == 2) {
             return Decision.defer("TWO_NO_RESPONSES",
                     preferredTimePolicy.nextPreferredTime(context.preferTime(), context.now()));

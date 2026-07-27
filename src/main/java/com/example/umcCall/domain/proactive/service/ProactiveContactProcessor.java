@@ -226,9 +226,8 @@ public class ProactiveContactProcessor {
         CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElseThrow();
         ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
         LocalDateTime next = policy.nextCandidate(now, profile.getAttachment(), state);
-        PreferredContactTimePolicy.Result preferred =
-                preferredTimePolicy.evaluate(relationship.getCharacter().getPreferTime(), next);
-        schedule.complete(now, preferred.preferred() ? next : preferred.nextPreferredTime());
+        schedule.complete(now, preferredTimePolicy.adjustCandidate(
+                relationship.getCharacter().getPreferTime(), next));
     }
 
     @Transactional
@@ -248,9 +247,8 @@ public class ProactiveContactProcessor {
         CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElseThrow();
         ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
         LocalDateTime next = policy.nextCandidate(now, profile.getAttachment(), state);
-        PreferredContactTimePolicy.Result preferred =
-                preferredTimePolicy.evaluate(relationship.getCharacter().getPreferTime(), next);
-        schedule.completeCall(now, preferred.preferred() ? next : preferred.nextPreferredTime());
+        schedule.completeCall(now, preferredTimePolicy.adjustCandidate(
+                relationship.getCharacter().getPreferTime(), next));
         return true;
     }
 

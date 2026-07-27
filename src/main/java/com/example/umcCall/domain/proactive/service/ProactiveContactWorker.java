@@ -17,7 +17,7 @@ public class ProactiveContactWorker {
     private final ProactiveContactScheduleRepository scheduleRepository;
     private final ProactiveContactProcessor processor;
 
-    @Scheduled(fixedDelayString = "${proactive.scheduler-delay-ms:60000}")
+    @Scheduled(fixedDelayString = "${proactive.scheduler-delay-ms:600000}")
     public void processDueContacts() {
         LocalDateTime now = LocalDateTime.now();
         scheduleRepository.findDueIds(now, PageRequest.of(0, 50)).forEach(scheduleId -> {
