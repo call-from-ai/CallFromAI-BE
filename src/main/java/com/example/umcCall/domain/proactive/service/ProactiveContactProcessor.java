@@ -224,17 +224,17 @@ public class ProactiveContactProcessor {
     }
 
     @Transactional
-    public void completeCall(Claim claim, LocalDateTime now) {
+    public boolean completeCall(Claim claim, LocalDateTime now) {
         ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(claim.scheduleId()).orElseThrow();
         if (!claim.requestId().equals(schedule.getPendingRequestId())
                 || schedule.getPendingAction() != ProactiveAction.CALL) {
-            return;
+            return false;
         }
 
         Relationship relationship = schedule.getRelationship();
         if (!immediateAiCallService.ring(relationship.getId())) {
             schedule.releaseClaim(now.plusMinutes(10));
-            return;
+            return false;
         }
 
         CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElseThrow();
@@ -243,6 +243,7 @@ public class ProactiveContactProcessor {
         PreferredContactTimePolicy.Result preferred =
                 preferredTimePolicy.evaluate(relationship.getCharacter().getPreferTime(), next);
         schedule.completeCall(now, preferred.preferred() ? next : preferred.nextPreferredTime());
+        return true;
     }
 
     @Transactional

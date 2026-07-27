@@ -4,6 +4,7 @@ import com.example.umcCall.domain.character.repository.CharacterAiProfileReposit
 import com.example.umcCall.domain.proactive.dto.ProactiveProcessResponse;
 import com.example.umcCall.domain.proactive.dto.ProactiveScheduleResponse;
 import com.example.umcCall.domain.proactive.entity.ProactiveContactSchedule;
+import com.example.umcCall.domain.proactive.enums.ProactiveAction;
 import com.example.umcCall.domain.proactive.repository.ProactiveContactScheduleRepository;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
@@ -80,6 +81,11 @@ public class ProactiveDebugService {
 
     private ProactiveProcessResponse executeClaim(ProactiveContactProcessor.Claim claim) {
         try {
+            if (claim.action() == ProactiveAction.CALL) {
+                return processor.completeCall(claim, LocalDateTime.now())
+                        ? ProactiveProcessResponse.callRinging(claim.requestId())
+                        : ProactiveProcessResponse.skipped("CALL_NOT_CREATED");
+            }
             String reply = processor.generate(claim);
             if (reply == null) {
                 return ProactiveProcessResponse.skipped("CLAIM_CANCELED");
