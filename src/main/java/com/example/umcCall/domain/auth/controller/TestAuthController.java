@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "테스트 로그인", description = "로컬 개발 및 Swagger 테스트를 위한 임시 인증 API")
 @RestController
-@Profile("local")
 @RequiredArgsConstructor
 public class TestAuthController {
 
