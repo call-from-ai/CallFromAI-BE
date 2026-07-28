@@ -48,8 +48,11 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 /**
  * 통화 오디오 양방향 채널 핸들러. 통화마다 분리해 처리한다.
  * 업스트림은 바이너리 프레임(raw PCM 16kHz/모노/16-bit)을 CLOVA STT로 중계하고,
- * 다운스트림은 STT final을 AI(chat)로 넘겨 응답 대사를 TTS로 합성해 wav를 그대로 내려보낸다. 제어 신호는 텍스트(JSON) 프레임.
- * <p>final은 AI로, partial은 클라이언트 자막 전용(AI로 보내지 않는다).
+ * 다운스트림은 STT final을 AI(chat)로 넘겨 응답 대사를 TTS로 합성해 wav를 그대로 내려보낸다.
+ * <p>제어 신호는 텍스트(JSON) 프레임이고 봉투는 {@code {"type":..., "data":{...}}} 하나로 통일한다
+ * ({@link MessageType} 참고 — 이름을 바꾸면 클라이언트가 깨진다).
+ * <p>AI로 넘어가는 건 <b>final뿐</b>이다. partial은 <b>클라이언트로도 보내지 않고</b> 서버 로그로만 남긴다
+ * (실시간 자막을 붙일 때 다운스트림을 배선한다).
  */
 @Slf4j
 @Component
