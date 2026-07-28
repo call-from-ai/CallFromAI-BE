@@ -203,7 +203,7 @@ public enum ChatErrorCode implements BaseErrorCode {
 | 관계 | 현경 | relationship, relationship_status, emotion_log, chat_summary | 관계 상태, 감정, 호감도, 메인 연인, AI 대화 요약 |
 | 실시간/발신 | 현경 | live_status, outbound_schedule | AI 능동 발신 판단, 실시간 상태 |
 | 채팅 | 석민 | chat_room, chat_message, chat_photo | 채팅방·메시지·사진, SSE |
-| 통화 | 준우 | call, call_reservation, call_history | 통화(WebSocket), 예약, 기록 |
+| 통화 | 준우 | call, call_history | 통화(WebSocket), 기록 (AI 발신은 proactive 스케줄링이 트리거) |
 | 알림/푸시 | 석민 | push_token | FCM 토큰, 발송 판정 |
 | 알림 조회 | 용환 | activity_notification, system_notification, notification_setting | 인앱 알림 목록, 알림 설정 |
 
