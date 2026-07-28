@@ -38,7 +38,7 @@ class ImmediateAiCallServiceTest {
     private ImmediateAiCallService immediateAiCallService;
 
     @Test
-    void ring은_예약_없이_AI_RINGING_통화를_즉시_생성한다() {
+    void ring은_AI_RINGING_통화를_즉시_생성한다() {
         Relationship relationship = callableRelationship();
         when(relationshipRepository.findByIdForUpdate(RELATIONSHIP_ID))
                 .thenReturn(Optional.of(relationship));
@@ -53,7 +53,6 @@ class ImmediateAiCallServiceTest {
         verify(callRepository).save(captor.capture());
         assertThat(captor.getValue().getSender()).isEqualTo(CallSender.AI);
         assertThat(captor.getValue().getStatus()).isEqualTo(CallStatus.RINGING);
-        assertThat(captor.getValue().getCallReservation()).isNull();
     }
 
     @Test

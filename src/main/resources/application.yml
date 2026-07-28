@@ -42,11 +42,6 @@ clova:
     read-timeout-ms: 10000
 
 call:
-  reservation:
-    # 예약 폴링 주기(ms). 예약 시각 대비 최대 이만큼 늦게 발신된다.
-    scheduler-delay-ms: 60000
-    # 예약 시각이 이 분보다 더 지났으면 발신하지 않고 CANCELED로 종결한다(재기동 시 몰림 발신 방지).
-    grace-minutes: 5
   timeout:
     # 연결되지 못한 통화를 걷는 주기(ms). 벨 타임아웃보다 촘촘해야 판정이 제시간에 떨어진다.
     scheduler-delay-ms: 10000
