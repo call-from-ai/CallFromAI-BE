@@ -1,5 +1,6 @@
 package com.example.umcCall.global.security;
 
+import com.example.umcCall.domain.auth.exception.AuthErrorCode;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import com.example.umcCall.global.apiPayload.code.BaseErrorCode;
 import com.example.umcCall.global.exception.BaseException;
@@ -32,7 +33,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String authorization = request.getHeader("Authorization");
         if (authorization != null && !authorization.startsWith("Bearer ")) {
-            writeErrorResponse(response, GeneralErrorCode.INVALID_TOKEN);
+            writeErrorResponse(response, AuthErrorCode.INVALID_TOKEN);
             return;
         }
         String token = resolveToken(request);

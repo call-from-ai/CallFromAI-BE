@@ -1,5 +1,6 @@
 package com.example.umcCall.global.security;
 
+import com.example.umcCall.domain.auth.exception.AuthErrorCode;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,7 +22,7 @@ public class ApiAccessDeniedHandler implements AccessDeniedHandler {
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response,
                        AccessDeniedException accessDeniedException) throws IOException {
-        GeneralErrorCode errorCode = GeneralErrorCode.ACCESS_DENIED;
+        AuthErrorCode errorCode = AuthErrorCode.ACCESS_DENIED;
         response.setStatus(errorCode.getStatus().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
