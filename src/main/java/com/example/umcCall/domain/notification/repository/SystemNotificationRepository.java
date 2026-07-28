@@ -18,4 +18,7 @@ public interface SystemNotificationRepository extends JpaRepository<SystemNotifi
 
     boolean existsByMemberIdAndRelationshipIdAndTypeAndContent(
             Long memberId, Long relationshipId, NotificationType type, String content);
+
+    List<SystemNotification> findByTypeAndOccurredAtBetween(
+            NotificationType type, LocalDateTime start, LocalDateTime end);
 }

@@ -16,8 +16,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -50,9 +52,25 @@ public class NotificationService {
     @Scheduled(cron = "0 0 0 * * *")
     @Transactional
     public void createAnniversaryNotifications() {
-        List<Relationship> relationships = relationshipRepository.findByCharacterDeletedAtIsNull();
+        List<Relationship> relationships = relationshipRepository.findAllWithCharacterByCharacterDeletedAtIsNull();
+
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime todayEnd = todayStart.plusDays(1);
+
+        // 오늘 이미 생성된 기념일 알림의 relationshipId를 한 번에 조회
+        Set<Long> alreadyNotifiedRelationshipIds = notificationRepository
+                .findByTypeAndOccurredAtBetween(NotificationType.ANNIVERSARY, todayStart, todayEnd)
+                .stream()
+                .map(SystemNotification::getRelationshipId)
+                .collect(Collectors.toSet());
+
+        List<SystemNotification> newNotifications = new ArrayList<>();
 
         for (Relationship relationship : relationships) {
+            if (alreadyNotifiedRelationshipIds.contains(relationship.getId())) {
+                continue;
+            }
+
             long daysTogether = ChronoUnit.DAYS.between(relationship.getStartedAt(), LocalDate.now()) + 1;
 
             if (MILESTONE_DAYS.contains((int) daysTogether)) {
@@ -61,12 +79,7 @@ public class NotificationService {
                         relationship.getCharacter().getFirstName(), daysTogether
                 );
 
-                boolean alreadyExists = notificationRepository.existsByMemberIdAndRelationshipIdAndTypeAndContent(
-                        relationship.getMemberId(), relationship.getId(), NotificationType.ANNIVERSARY, content
-                );
-                if (alreadyExists) continue;
-
-                notificationRepository.save(
+                newNotifications.add(
                         SystemNotification.builder()
                                 .memberId(relationship.getMemberId())
                                 .relationshipId(relationship.getId())
@@ -78,5 +91,7 @@ public class NotificationService {
                 );
             }
         }
+
+        notificationRepository.saveAll(newNotifications);
     }
 }
