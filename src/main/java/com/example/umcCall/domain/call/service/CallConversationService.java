@@ -3,6 +3,7 @@ package com.example.umcCall.domain.call.service;
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
+import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
 import com.example.umcCall.domain.ai.service.AiConversationService;
@@ -70,6 +71,7 @@ public class CallConversationService {
         AiChatRequest request = new AiChatRequest(
                 UUID.randomUUID().toString(), // 멱등성 키. 턴마다 고유값(같은 값 재전송 시 409).
                 characterId,
+                AiConversationChannel.CALL,
                 message,
                 characterSnapshotMapper.toSnapshot(character, profile, relationship),
                 relationshipSnapshotMapper.toSnapshot(relationship, status),
