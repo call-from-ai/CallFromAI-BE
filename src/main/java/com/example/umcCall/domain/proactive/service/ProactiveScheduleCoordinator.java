@@ -35,7 +35,11 @@ public class ProactiveScheduleCoordinator {
     public void reschedule(Relationship relationship) {
         ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
                 .orElseGet(() -> ProactiveContactSchedule.create(relationship, null));
-        schedule.reschedule(relationship.isMain() ? nextCandidate(relationship, LocalDateTime.now()) : null);
+        // 살아 있는 캐릭터는 메인 여부와 관계없이 항상 선제 연락 스케줄을 유지한다.
+        // 과거 정책에서 비메인 전환 시 disabled 된 기존 행도 여기서 복구한다.
+        LocalDateTime nextCheckAt = nextCandidate(relationship, LocalDateTime.now());
+        schedule.reschedule(nextCheckAt);
+        schedule.enable(nextCheckAt);
         scheduleRepository.save(schedule);
     }
 
@@ -81,8 +85,7 @@ public class ProactiveScheduleCoordinator {
         Double attachment = profile == null ? null : profile.getAttachment();
         ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
         LocalDateTime candidate = policy.nextCandidate(anchor, attachment, state);
-        PreferredContactTimePolicy.Result preferred =
-                preferredTimePolicy.evaluate(relationship.getCharacter().getPreferTime(), candidate);
-        return preferred.preferred() ? candidate : preferred.nextPreferredTime();
+        return preferredTimePolicy.adjustCandidate(
+                relationship.getCharacter().getPreferTime(), candidate);
     }
 }

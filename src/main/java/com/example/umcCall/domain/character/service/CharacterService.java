@@ -226,7 +226,8 @@ public class CharacterService {
                         throw new BaseException(CharacterErrorCode.ACTIVE_CHARACTER_CHANGE_TOO_SOON);
                     }
                     current.deactivate();
-                    proactiveScheduleCoordinator.deactivate(current);
+                    // 메인에서 내려와도 선제 채팅 스케줄은 계속 유지한다.
+                    proactiveScheduleCoordinator.reschedule(current);
                 });
 
         target.activate();

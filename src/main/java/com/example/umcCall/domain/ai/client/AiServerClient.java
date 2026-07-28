@@ -47,6 +47,10 @@ public class AiServerClient {
                     .body(request)
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        String responseBody = StreamUtils.copyToString(
+                                httpResponse.getBody(), StandardCharsets.UTF_8);
+                        log.error("AI 채팅 API 오류. status={}, body={}",
+                                httpResponse.getStatusCode(), responseBody);
                         throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
                     })
                     .body(AiChatResponse.class);
@@ -72,6 +76,10 @@ public class AiServerClient {
                                 throw new AiServerException(AiErrorCode.DUPLICATE_REQUEST);
                             })
                     .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        String responseBody = StreamUtils.copyToString(
+                                httpResponse.getBody(), StandardCharsets.UTF_8);
+                        log.error("AI 선제 연락 API 오류. status={}, body={}",
+                                httpResponse.getStatusCode(), responseBody);
                         throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
                     })
                     .body(AiChatResponse.class);

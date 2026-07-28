@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS proactive_contact_schedule (
     consecutive_no_response_count INT NOT NULL DEFAULT 0,
     awaiting_user_response BIT NOT NULL DEFAULT 0,
     daily_contact_count INT NOT NULL DEFAULT 0,
+    daily_call_count INT NOT NULL DEFAULT 0,
     daily_count_date DATE NULL,
     paused_until DATETIME(6) NULL,
     pending_request_id VARCHAR(80) NULL,
@@ -52,6 +53,7 @@ INSERT INTO proactive_contact_schedule (
     consecutive_no_response_count,
     awaiting_user_response,
     daily_contact_count,
+    daily_call_count,
     pending_attempts,
     version,
     created_at,
@@ -59,11 +61,12 @@ INSERT INTO proactive_contact_schedule (
 )
 SELECT
     r.relationship_id,
-    CASE WHEN r.is_main = 1 AND c.deleted_at IS NULL THEN 1 ELSE 0 END,
+    CASE WHEN c.deleted_at IS NULL THEN 1 ELSE 0 END,
     CASE
-        WHEN r.is_main = 1 AND c.deleted_at IS NULL THEN DATE_ADD(NOW(6), INTERVAL 2 HOUR)
+        WHEN c.deleted_at IS NULL THEN DATE_ADD(NOW(6), INTERVAL 2 HOUR)
         ELSE NULL
     END,
+    0,
     0,
     0,
     0,
