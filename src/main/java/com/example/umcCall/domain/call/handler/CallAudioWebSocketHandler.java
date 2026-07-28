@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -340,10 +341,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     /**
-     * REST 종료({@code PATCH /calls/{callId}/end}) 후 남은 소켓·STT 스트림·워커를 닫는다. 세션이 없으면 no-op.
+     * 서비스가 마감한 통화(사용자 REST 종료 / 시간 상한 스위퍼)의 남은 소켓·STT 스트림·워커를 닫는다.
+     * 세션이 없으면 no-op이다 — 스위퍼 마감은 소켓이 이미 죽어 있는 경우가 대부분이다.
      * <p>맵이 sessionId 키라 callId는 순회로 찾는다 — 역색인 맵은 동기화 문제가 생기고, 종료는 드문 이벤트다.
-     * <p>정상 종료라 {@link CloseStatus#NORMAL}로 닫아 에러 통지를 보내지 않는다. 상태가 이미 COMPLETED라
-     * {@code terminateCall} 안의 마감 호출은 no-op으로 지나간다.
+     * <p>정상 종료라 {@link CloseStatus#NORMAL}로 닫고, 에러 대신 {@code CALL_ENDED}로 사유를 통지한다.
+     * 상태가 이미 종결이라 {@code terminateCall} 안의 마감 호출은 no-op으로 지나간다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCallEnded(CallEndedEvent event) {
@@ -352,9 +354,9 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                 .filter(call -> call.ticket().callId().equals(callId))
                 .findFirst()
                 .ifPresent(call -> {
-                    log.info("[Call] 사용자 종료 요청으로 세션 정리. callId={}, session={}",
-                            callId, call.session().getId());
-                    terminateCall(call.session(), CloseStatus.NORMAL);
+                    log.info("[Call] 통화 마감({})으로 세션 정리. callId={}, session={}",
+                            event.reason(), callId, call.session().getId());
+                    terminateCall(call.session(), CloseStatus.NORMAL, event);
                 });
     }
 
@@ -367,8 +369,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * (2026-07-26 실측)
      *
      * <p>NORMAL로 닫는다: 통화는 실제로 성립했으므로 {@code COMPLETED}가 맞고 {@code callTime}도 남는다.
+     * {@code CALL_ENDED}는 보내지 않는다 — 마감을 여기서 하므로 {@code callTime}을 알 수 없고, 곧 서버가
+     * 죽어 클라이언트가 그 통지로 할 수 있는 일도 없다.
      *
-     * <p>⚠ 크래시·SIGKILL·half-open은 이 경로로 못 덮는다 — {@code IN_PROGRESS} 상한 스위퍼가 필요하다(미구현).
+     * <p>크래시·SIGKILL·half-open은 이 경로로 못 덮는다 — {@code call.timeout.max-call-minutes} 상한
+     * 스위퍼({@code CallService#closeOverrunCall})가 그 몫을 맡는다.
      */
     @PreDestroy
     void closeActiveCallsOnShutdown() {
@@ -407,12 +412,21 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
+    /** 통지 없이 끝낸다 — 비정상 종료(원인은 {@code ERROR}로 나간다)와 앱 종료가 쓴다. */
+    private void terminateCall(WebSocketSession session, CloseStatus status) {
+        terminateCall(session, status, null);
+    }
+
     /**
      * <b>서버가 먼저</b> 통화를 끝낸다 — {@link #completeCall}과 달리 소켓이 살아 있어 우리가 닫고,
      * CLOVA엔 half-close 없이 스트림을 버린다. 원인/로그는 호출부에서 남긴다.
      * 재개설(투명 복원)은 범위 밖 — 닫아서 클라이언트가 재연결하게 둔다.
+     *
+     * @param endNotice 정상 종료 통지({@code CALL_ENDED}) 내용. {@code null}이면 통지하지 않는다 —
+     *                  앱 종료 경로가 그렇다(마감을 여기서 하므로 {@code callTime}을 알 방법이 없고,
+     *                  그 직후 서버가 죽어 클라이언트가 할 수 있는 일도 없다).
      */
-    private void terminateCall(WebSocketSession session, CloseStatus status) {
+    private void terminateCall(WebSocketSession session, CloseStatus status, CallEndedEvent endNotice) {
         ActiveCall call = activeCalls.remove(session.getId());
         if (call != null) {
             // 워커 스레드 자신이 부를 수도 있다(AI 턴 TTS 송신 실패 경로). shutdownNow는 기다리지 않으므로
@@ -429,8 +443,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             finishCall(ticket.callId());
         }
         if (session.isOpen()) {
-            // 비정상 종료(SERVER_ERROR)는 close 전에 원인을 통지한다 — 정상 완료(NORMAL)엔 통지 없음.
-            if (status.getCode() != CloseStatus.NORMAL.getCode()) {
+            // close 전에 이유를 통지한다 — 정상 종료는 CALL_ENDED, 비정상(SERVER_ERROR)은 ERROR.
+            // 소켓 close 프레임만으론 프론트가 "서버가 끝냈다"와 "네트워크가 끊겼다"를 구별할 수 없다.
+            if (endNotice != null) {
+                notifyCallEnded(session, endNotice);
+            } else if (status.getCode() != CloseStatus.NORMAL.getCode()) {
                 notifyServerError(session);
             }
             try {
@@ -444,6 +461,21 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /** 서버 주도 종료 직전 통지. 뒤이어 소켓이 닫힌다. */
     private void notifyServerError(WebSocketSession session) {
         sendControl(session, MessageType.ERROR, Map.of("reason", "SERVER_ERROR"));
+    }
+
+    /**
+     * 정상 종료 직전 통지. 프론트는 {@code reason}으로 종료 화면 문구를 고르고 {@code callTime}으로 통화
+     * 시간을 표시한다 — 서버 계산값이라 프론트 자체 측정과 어긋나지 않는다.
+     */
+    private void notifyCallEnded(WebSocketSession session, CallEndedEvent notice) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("callId", notice.callId());
+        data.put("reason", notice.reason().name());
+        // callTime은 연결됐던 통화에만 있다. null이면 키를 뺀다 — 0초 통화로 오해되지 않게.
+        if (notice.callTime() != null) {
+            data.put("callTime", notice.callTime());
+        }
+        sendControl(session, MessageType.CALL_ENDED, data);
     }
 
     /**
@@ -473,6 +505,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private enum MessageType {
         /** 서버 준비 완료. 프론트는 이 신호 이후에 오디오를 보낸다(그전 프레임은 버려진다). */
         CALL_READY,
+        /** 정상 종료 통지({@code callId}/{@code reason}/{@code callTime}). 뒤이어 소켓이 NORMAL로 닫힌다. */
+        CALL_ENDED,
         /** 서버 주도 종료 직전 통지. 뒤이어 소켓이 닫힌다. */
         ERROR
     }
