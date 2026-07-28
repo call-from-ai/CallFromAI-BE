@@ -40,7 +40,7 @@ public record ProactiveScheduleResponse(
                 schedule.getId(),
                 relationship.getId(),
                 character.getId(),
-                character.getName(),
+                character.getFullName(),
                 relationship.isMain(),
                 relationship.isMain() ? "CHAT_AND_CALL" : "CHAT_ONLY",
                 schedule.isEnabled(),

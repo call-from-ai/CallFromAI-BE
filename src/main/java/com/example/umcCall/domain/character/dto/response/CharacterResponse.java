@@ -37,7 +37,7 @@ public class CharacterResponse {
                                         List<CharacterTrait> characterTraits, String imageUrl) {
         return CharacterResponse.builder()
                 .characterId(character.getId())
-                .name(character.getName())
+                .name(character.getFullName())
                 .gender(character.getGender())
                 .age(character.getAge())
                 .job(character.getJob())

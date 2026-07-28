@@ -3,6 +3,7 @@ package com.example.umcCall.domain.character.service;
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
 import com.example.umcCall.domain.character.dto.request.CharacterUpdateRequest;
 import com.example.umcCall.domain.character.dto.request.TraitRequest;
+import com.example.umcCall.domain.character.dto.response.CharacterCreateResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
 import com.example.umcCall.domain.character.entity.Character;
@@ -66,7 +67,7 @@ public class CharacterService {
 
     // 캐릭터 생성 (관계, 관계 통계, 채팅방 함께 생성) — 응답 바디 없음
     @Transactional
-    public void createCharacter(Long memberId, CharacterCreateRequest request) {
+    public CharacterCreateResponse createCharacter(Long memberId, CharacterCreateRequest request) {
         // 동시 요청으로 인한 개수 초과/메인 중복 생성을 막기 위해 회원 행에 락을 건다
         Member member = lockMember(memberId);
 
@@ -134,6 +135,8 @@ public class CharacterService {
         chatRoomService.createRoom(memberId, relationship.getId(), RoomType.CHARACTER);
         proactiveScheduleCoordinator.create(relationship);
         member.markCharacterCreated();
+
+        return CharacterCreateResponse.from(character);
     }
 
     // 현재 메인 캐릭터 조회
@@ -158,7 +161,7 @@ public class CharacterService {
                     int daysTogether = (int) ChronoUnit.DAYS.between(relationship.getStartedAt(), LocalDate.now()) + 1;
                     return CharacterSummaryResponse.builder()
                             .characterId(character.getId())
-                            .name(character.getName())
+                            .name(character.getFullName())
                             .imageUrl(character.getImageUrl())
                             .main(relationship.isMain())
                             .createdAt(character.getCreatedAt())
