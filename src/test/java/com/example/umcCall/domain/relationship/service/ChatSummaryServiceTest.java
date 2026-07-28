@@ -161,4 +161,47 @@ class ChatSummaryServiceTest {
         verify(aiServerClient).summarize(any());
         verify(cached).update("새 요약", 30L, 2);
     }
+
+    @Test
+    void sendsNonBlankFallbackNamesWhenParticipantNamesAreMissing() {
+        Relationship relationship = org.mockito.Mockito.mock(Relationship.class);
+        ChatRoom room = org.mockito.Mockito.mock(ChatRoom.class);
+        ChatMessage lastMessage = org.mockito.Mockito.mock(ChatMessage.class);
+        ChatSummary cached = org.mockito.Mockito.mock(ChatSummary.class);
+        Member member = org.mockito.Mockito.mock(Member.class);
+        Character character = org.mockito.Mockito.mock(Character.class);
+
+        when(relationship.getId()).thenReturn(1L);
+        when(relationship.getCharacter()).thenReturn(character);
+        when(room.getId()).thenReturn(20L);
+        when(lastMessage.getId()).thenReturn(30L);
+        when(lastMessage.getContent()).thenReturn("안녕");
+        when(lastMessage.getSenderType()).thenReturn(SenderType.USER);
+        when(cached.getLastMessageId()).thenReturn(30L);
+        when(cached.getCacheVersion()).thenReturn(null);
+        when(cached.getSummary()).thenReturn("예전 요약");
+        when(member.getFirstName()).thenReturn(" ");
+        when(member.getLastName()).thenReturn("김");
+        when(character.getFirstName()).thenReturn(null);
+        when(character.getLastName()).thenReturn(null);
+        when(relationshipRepository
+                .findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(10L, 2L))
+                .thenReturn(Optional.of(relationship));
+        when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
+        when(chatMessageRepository.findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(20L))
+                .thenReturn(Optional.of(lastMessage));
+        when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.of(cached));
+        when(memberRepository.findById(2L)).thenReturn(Optional.of(member));
+        when(chatMessageRepository.findRecent(any(Long.class), any(Pageable.class)))
+                .thenReturn(List.of(lastMessage));
+        when(aiServerClient.summarize(any())).thenReturn(new AiSummaryResponse("새 요약"));
+
+        service.getSummary(2L, 10L);
+
+        ArgumentCaptor<AiSummaryRequest> requestCaptor =
+                ArgumentCaptor.forClass(AiSummaryRequest.class);
+        verify(aiServerClient).summarize(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().userName()).isEqualTo("김");
+        assertThat(requestCaptor.getValue().characterName()).isEqualTo("상대방");
+    }
 }

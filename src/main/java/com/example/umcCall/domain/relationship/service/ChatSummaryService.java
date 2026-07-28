@@ -87,8 +87,11 @@ public class ChatSummaryService {
         String previousSummary = cached == null ? null : cached.getSummary();
         String generated = aiServerClient.summarize(new AiSummaryRequest(
                 relationshipId,
-                member.getFirstName(),
-                relationship.getCharacter().getFirstName(),
+                resolveParticipantName(member.getFirstName(), member.getLastName(), "사용자"),
+                resolveParticipantName(
+                        relationship.getCharacter().getFirstName(),
+                        relationship.getCharacter().getLastName(),
+                        "상대방"),
                 previousSummary,
                 messages,
                 MAX_SUMMARY_CHARACTERS
@@ -108,6 +111,20 @@ public class ChatSummaryService {
 
     private String toRole(SenderType senderType) {
         return senderType == SenderType.USER ? "user" : "assistant";
+    }
+
+    /**
+     * AI 요약 API는 참여자 이름에 non-blank 계약을 적용한다.
+     * 표시 규약인 firstName을 우선하고 레거시/온보딩 미완료 데이터에는 안전한 대체값을 사용한다.
+     */
+    private String resolveParticipantName(String firstName, String lastName, String fallback) {
+        if (firstName != null && !firstName.isBlank()) {
+            return firstName.strip();
+        }
+        if (lastName != null && !lastName.isBlank()) {
+            return lastName.strip();
+        }
+        return fallback;
     }
 
     private String limitCodePoints(String text, int maxLength) {
