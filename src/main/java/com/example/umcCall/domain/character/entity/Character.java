@@ -97,10 +97,7 @@ public class Character extends BaseTimeEntity {
         this.deletedAt = LocalDateTime.now();
     }
 
-<<<<<<< HEAD
-=======
     public void updatePreferTime(PreferTime preferTime) {
         this.preferTime = preferTime;
     }
->>>>>>> 628b71259d5d058cbca979824f8cfaa2606da5a8
 }

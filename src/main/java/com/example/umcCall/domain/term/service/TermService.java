@@ -69,12 +69,7 @@ public class TermService {
     public boolean hasAgreedAllRequiredTerms(Long memberId) {
         List<Term> requiredTerms = termRepository.findByIsRequiredTrue();
 
-<<<<<<< HEAD
-        return requiredTerms.stream()
-                .allMatch(term -> memberTermRepository.findByMember_IdAndTerm_Id(memberId, term.getId())
-                        .map(MemberTerm::isAgreed)
-                        .orElse(false));
-=======
+
         Map<Long, Boolean> agreedMap = memberTermRepository.findByMember_Id(memberId).stream()
                 .collect(Collectors.toMap(
                         memberTerm -> memberTerm.getTerm().getId(),
@@ -83,6 +78,5 @@ public class TermService {
 
         return requiredTerms.stream()
                 .allMatch(term -> agreedMap.getOrDefault(term.getId(), false));
->>>>>>> 628b71259d5d058cbca979824f8cfaa2606da5a8
     }
 }

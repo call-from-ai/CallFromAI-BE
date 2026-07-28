@@ -85,6 +85,7 @@ public class ChatRoom extends BaseTimeEntity {
 
     public void touch(LocalDateTime messageAt) {
         this.lastMessageAt = messageAt;
+    }
 
     /** 음소거 여부를 요청받은 값으로 */
     public void updateMuted(boolean muted) {
