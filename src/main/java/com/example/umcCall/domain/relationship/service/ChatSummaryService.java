@@ -10,6 +10,9 @@ import com.example.umcCall.domain.chat.enums.SenderType;
 import com.example.umcCall.domain.chat.exception.ChatErrorCode;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
+import com.example.umcCall.domain.member.entity.Member;
+import com.example.umcCall.domain.member.repository.MemberRepository;
+import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.example.umcCall.domain.relationship.dto.response.ChatSummaryResponse;
 import com.example.umcCall.domain.relationship.entity.ChatSummary;
 import com.example.umcCall.domain.relationship.entity.Relationship;
@@ -30,12 +33,15 @@ public class ChatSummaryService {
 
     private static final int MAX_SUMMARY_CHARACTERS = 200;
     private static final int MAX_MESSAGES = 200;
+    // 요약 프롬프트/DTO의 의미가 바뀌면 증가시켜 기존 캐시를 자동 재생성한다.
+    private static final int SUMMARY_CACHE_VERSION = 2;
     private static final String EMPTY_CONVERSATION_SUMMARY = "아직 나눈 대화가 없어요.";
 
     private final RelationshipRepository relationshipRepository;
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ChatSummaryRepository chatSummaryRepository;
+    private final MemberRepository memberRepository;
     private final AiServerClient aiServerClient;
 
     @Transactional
@@ -58,9 +64,14 @@ public class ChatSummaryService {
 
         ChatSummary cached = chatSummaryRepository.findByRelationshipId(relationshipId)
                 .orElse(null);
-        if (cached != null && lastMessage.getId().equals(cached.getLastMessageId())) {
+        if (cached != null
+                && lastMessage.getId().equals(cached.getLastMessageId())
+                && Integer.valueOf(SUMMARY_CACHE_VERSION).equals(cached.getCacheVersion())) {
             return new ChatSummaryResponse(cached.getSummary());
         }
+
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BaseException(GeneralErrorCode.MEMBER_NOT_FOUND));
 
         List<ChatMessage> recent = new ArrayList<>(chatMessageRepository.findRecent(
                 room.getId(), PageRequest.of(0, MAX_MESSAGES)));
@@ -76,6 +87,8 @@ public class ChatSummaryService {
         String previousSummary = cached == null ? null : cached.getSummary();
         String generated = aiServerClient.summarize(new AiSummaryRequest(
                 relationshipId,
+                member.getFirstName(),
+                relationship.getCharacter().getFirstName(),
                 previousSummary,
                 messages,
                 MAX_SUMMARY_CHARACTERS
@@ -83,9 +96,10 @@ public class ChatSummaryService {
         String summary = limitCodePoints(generated, MAX_SUMMARY_CHARACTERS);
 
         if (cached == null) {
-            cached = ChatSummary.create(relationship, summary, lastMessage.getId());
+            cached = ChatSummary.create(
+                    relationship, summary, lastMessage.getId(), SUMMARY_CACHE_VERSION);
         } else {
-            cached.update(summary, lastMessage.getId());
+            cached.update(summary, lastMessage.getId(), SUMMARY_CACHE_VERSION);
         }
         chatSummaryRepository.save(cached);
 
