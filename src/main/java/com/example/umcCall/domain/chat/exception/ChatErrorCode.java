@@ -16,6 +16,7 @@ public enum ChatErrorCode implements BaseErrorCode {
     // 400
     CHATROOM_RELATIONSHIP_ID_REQUIRED(HttpStatus.BAD_REQUEST, "CHAT400_1", "CHARACTER 타입 채팅방은 관계 ID가 필요합니다."),
     EMPTY_MESSAGE(HttpStatus.BAD_REQUEST, "CHAT400_2", "내용이 없는 메시지는 보낼 수 없습니다."),
+    INVALID_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "CHAT400_3", "지원하지 않는 이미지 형식입니다. (JPEG, PNG만 가능)"),
 
     // 403
     CHATROOM_RELATIONSHIP_ACCESS_DENIED(HttpStatus.FORBIDDEN, "CHAT403_1", "본인의 관계에 대해서만 채팅방을 생성할 수 있습니다."),

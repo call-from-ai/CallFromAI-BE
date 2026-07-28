@@ -6,8 +6,12 @@ import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
+import com.example.umcCall.domain.call.enums.CallSpeaker;
+import com.example.umcCall.domain.call.port.ChatHistoryProvider;
 import com.example.umcCall.domain.call.service.CallConversationService;
+import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
+import com.example.umcCall.domain.call.event.CallEndedEvent;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -19,6 +23,7 @@ import com.nbp.cdncp.nest.grpc.proto.v1.NestRequest;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
 import com.nbp.cdncp.nest.grpc.proto.v1.RequestType;
 import io.grpc.stub.StreamObserver;
+import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
@@ -31,6 +36,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -50,10 +57,15 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /** AI 응답 화자. 캐릭터별 음성 매핑은 후순위 — 지금은 고정값(캐릭터 음성이 들어올 자리다). */
     private static final String AI_SPEAKER = "nara";
 
+    /** 통화 시작 시 채팅 최근 대화로 LLM 맥락을 시딩하기 위해 가져올 개수(채팅 HISTORY_SIZE와 동일). */
+    private static final int SEED_HISTORY_SIZE = 20;
+
     private final ClovaSpeechClient clovaSpeechClient;
     private final ClovaVoiceClient clovaVoiceClient;
     private final CallConversationService callConversationService;
     private final CallService callService;
+    private final CallHistoryService callHistoryService;
+    private final ChatHistoryProvider chatHistoryProvider;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -66,12 +78,16 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                                      ClovaVoiceClient clovaVoiceClient,
                                      CallConversationService callConversationService,
                                      CallService callService,
+                                     CallHistoryService callHistoryService,
+                                     ChatHistoryProvider chatHistoryProvider,
                                      ClovaSpeechProperties speechProperties,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
         this.callConversationService = callConversationService;
         this.callService = callService;
+        this.callHistoryService = callHistoryService;
+        this.chatHistoryProvider = chatHistoryProvider;
         this.objectMapper = objectMapper;
         this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
         log.info("[Clova] recognize CONFIG = {}", configJson);
@@ -119,10 +135,16 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             StreamObserver<NestRequest> requestObserver =
                     clovaSpeechClient.openRecognizeStream(new ClovaResponseObserver(session));
             SttStream stream = new SttStream(requestObserver);
+
             // 워커는 스트림 개설 성공 뒤에 만든다(실패하면 정리할 워커도 없도록).
-            // 등록은 CONFIG 전에 — onNext가 처음 뜰 땐 이미 맵에 있어야 한다.
-            activeCalls.put(sessionId,
-                    new ActiveCall(stream, Executors.newSingleThreadExecutor(), ticket, new ArrayList<>()));
+            // 등록(put)은 최대한 빨리 — 등록 전에 도착한 오디오 프레임은 버려진다.
+            List<AiChatHistoryItem> history = new ArrayList<>();
+            ExecutorService worker = Executors.newSingleThreadExecutor();
+            activeCalls.put(sessionId, new ActiveCall(session, stream, worker, ticket, history));
+
+            // LLM 맥락은 그 관계의 채팅 최근 대화로 시딩한다(전화가 채팅에서 이어지도록).
+            // 워커의 첫 작업이라 어떤 턴보다 먼저 끝나고, history를 워커만 만지는 원칙도 지켜진다.
+            worker.execute(() -> history.addAll(seedHistory(sessionId, ticket.relationshipId())));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
@@ -130,13 +152,20 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     .setConfig(NestConfig.newBuilder().setConfig(configJson).build())
                     .build());
 
-            // DIALING → IN_PROGRESS. 상태 persist 실패로 통화를 끊지는 않는다(로그만) — chat() 턴 폐기 정책과 결이 같다.
+            // DIALING/PENDING → IN_PROGRESS.
+            // ⚠ 실패하면 소켓을 닫는다 — 스위퍼가 먼저 MISSED/CANCELED로 마감한 통화일 수 있고,
+            // 그 경우 오디오는 흐르는데 startedAt이 없어 종료 시 complete()가 터진다(유령 통화).
             try {
                 callService.connect(ticket.callId());
             } catch (RuntimeException e) {
-                log.error("[Call] 통화 연결 상태 저장 실패(통화는 유지). session={}, callId={}",
+                log.error("[Call] 통화 연결 상태 전이 실패 → WebSocket 종료. session={}, callId={}",
                         sessionId, ticket.callId(), e);
+                terminateCall(session, CloseStatus.SERVER_ERROR);
+                return;
             }
+
+            // connect() 성공 뒤에만 보낸다 — 이 신호는 "서버 준비됨"이자 "이 통화는 IN_PROGRESS"다.
+            sendControl(session, MessageType.CALL_READY, Map.of("callId", ticket.callId()));
 
             log.info("[Call] WebSocket 연결 · CLOVA 스트림 개설. session={}, callId={}",
                     sessionId, ticket.callId());
@@ -209,6 +238,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // STT final 확정 → 사용자 발화를 먼저 남긴다. AI 응답 성공 여부와 무관한 사실이다.
                     // (respond가 실패해도 남는다 — 연속 user는 이 모델에서 정상.) role은 계약대로 소문자.
                     history.add(new AiChatHistoryItem("user", text, LocalDateTime.now()));
+                    persistHistory(sessionId, ticket.callId(), CallSpeaker.USER, text);
 
                     // respond는 로그의 마지막(방금 넣은 user)을 이번 message로, 그 앞을 이전 턴으로 파생한다.
                     AiChatResponse response = callConversationService.respond(
@@ -226,6 +256,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // TTS 송신 성공 시에만 AI 발화를 남긴다.
                     if (sendAudio(session, wav)) {
                         history.add(new AiChatHistoryItem("assistant", reply, LocalDateTime.now()));
+                        persistHistory(sessionId, ticket.callId(), CallSpeaker.AI, reply);
                     }
                 } catch (Exception e) {
                     // stale/AI/TTS 오류 등: 이번 assistant 턴만 버린다(user 로그는 남는다). 통화는 유지.
@@ -235,6 +266,36 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         } catch (RejectedExecutionException e) {
             // 통화 종료와 겹쳐 워커가 이미 내려간 경우. 정상 경로다.
             log.debug("[Call] 워커 종료됨 → 발화를 버림. session={}", sessionId);
+        }
+    }
+
+    /**
+     * 전사 한 줄을 DB에 남긴다. 워커 스레드에서 발화가 실제로 일어난 순간(USER final · AI TTS 송신 성공)마다 호출된다.
+     * <p>저장 실패로 통화·턴을 끊지 않는다 — 로그만 남긴다(connect/finish 상태저장 실패 정책과 동일).
+     * {@code chat()}의 느린 REST는 이 저장 트랜잭션 밖에서 이미 끝났다.
+     */
+    private void persistHistory(String sessionId, Long callId, CallSpeaker speaker, String content) {
+        try {
+            callHistoryService.appendHistory(callId, speaker, content);
+        } catch (RuntimeException e) {
+            log.error("[Call] 전사 저장 실패(통화는 유지). session={}, callId={}, speaker={}",
+                    sessionId, callId, speaker, e);
+        }
+    }
+
+    /**
+     * 통화 LLM 맥락 버퍼의 초기값을 만든다 = 그 관계의 채팅 최근 대화(과거→최신).
+     * <p>⚠ 반드시 <b>가변 리스트</b>다 — 이후 통화 턴이 여기에 append된다.
+     * ⚠ 이 시드는 {@code submitChat}(전사 저장 경로)을 거치지 않으므로 <b>전사(call_history)에 저장되지 않는다</b>
+     * (채팅에 이미 있는 대화라 통화 전사가 아니다). 조회 실패는 로그만 남기고 빈 맥락으로 시작한다(통화 유지).
+     */
+    private List<AiChatHistoryItem> seedHistory(String sessionId, Long relationshipId) {
+        try {
+            return new ArrayList<>(chatHistoryProvider.recentHistory(relationshipId, SEED_HISTORY_SIZE));
+        } catch (RuntimeException e) {
+            log.error("[Call] 채팅 맥락 시딩 실패 → 빈 맥락으로 시작(통화 유지). session={}, relationshipId={}",
+                    sessionId, relationshipId, e);
+            return new ArrayList<>();
         }
     }
 
@@ -276,6 +337,47 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         log.error("[Call] 전송 오류. session={}", session.getId(), exception);
         completeCall(session.getId());
+    }
+
+    /**
+     * REST 종료({@code PATCH /calls/{callId}/end}) 후 남은 소켓·STT 스트림·워커를 닫는다. 세션이 없으면 no-op.
+     * <p>맵이 sessionId 키라 callId는 순회로 찾는다 — 역색인 맵은 동기화 문제가 생기고, 종료는 드문 이벤트다.
+     * <p>정상 종료라 {@link CloseStatus#NORMAL}로 닫아 에러 통지를 보내지 않는다. 상태가 이미 COMPLETED라
+     * {@code terminateCall} 안의 마감 호출은 no-op으로 지나간다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onCallEnded(CallEndedEvent event) {
+        Long callId = event.callId();
+        activeCalls.values().stream()
+                .filter(call -> call.ticket().callId().equals(callId))
+                .findFirst()
+                .ifPresent(call -> {
+                    log.info("[Call] 사용자 종료 요청으로 세션 정리. callId={}, session={}",
+                            callId, call.session().getId());
+                    terminateCall(call.session(), CloseStatus.NORMAL);
+                });
+    }
+
+    /**
+     * 앱 종료 시 남은 통화를 마감한다(IN_PROGRESS → COMPLETED + 소켓·스트림 정리).
+     *
+     * <p>종료 순서가 <b>{@code @PreDestroy} → 빈 파괴 → 웹서버 정지</b>라, 컨테이너가 소켓을 닫아 부르는
+     * {@code afterConnectionClosed}는 DataSource가 이미 닫힌 뒤에 도착한다 → {@code finish()}가 실패하고
+     * 통화가 {@code IN_PROGRESS}로 남는다. 이 시점엔 세션과 DB가 모두 살아 있어 정상 마감이 가능하다.
+     * (2026-07-26 실측)
+     *
+     * <p>NORMAL로 닫는다: 통화는 실제로 성립했으므로 {@code COMPLETED}가 맞고 {@code callTime}도 남는다.
+     *
+     * <p>⚠ 크래시·SIGKILL·half-open은 이 경로로 못 덮는다 — {@code IN_PROGRESS} 상한 스위퍼가 필요하다(미구현).
+     */
+    @PreDestroy
+    void closeActiveCallsOnShutdown() {
+        List<ActiveCall> remaining = new ArrayList<>(activeCalls.values());
+        if (remaining.isEmpty()) {
+            return;
+        }
+        log.info("[Call] 앱 종료 — 진행 중인 통화 {}건 마감.", remaining.size());
+        remaining.forEach(call -> terminateCall(call.session(), CloseStatus.NORMAL));
     }
 
     /** 소켓이 <b>이미 닫힌 뒤</b>의 뒷정리. CLOVA에 half-close를 보낸다. (짝: {@link #terminateCall}) */
@@ -339,32 +441,53 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    /**
-     * 서버 주도 종료 직전, 클라이언트가 원인을 감지하도록 JSON 제어 메시지를 보낸다.
-     * best-effort — 통지 실패가 정리·종료를 막지 않는다. 원인별 reason 세분화는 후순위.
-     */
+    /** 서버 주도 종료 직전 통지. 뒤이어 소켓이 닫힌다. */
     private void notifyServerError(WebSocketSession session) {
+        sendControl(session, MessageType.ERROR, Map.of("reason", "SERVER_ERROR"));
+    }
+
+    /**
+     * 서버 → 클라이언트 제어 메시지를 보낸다. 봉투는 {@code {"type":..., "data":{...}}}로 통일한다 —
+     * 프론트가 {@code type}으로 분기하고 {@code data}만 파싱하면 되도록.
+     * <p>best-effort다: 제어 메시지 실패로 통화를 끊지 않는다(오디오 송신 실패와 다르다).
+     */
+    private void sendControl(WebSocketSession session, MessageType type, Map<String, Object> data) {
+        if (!session.isOpen()) {
+            return;
+        }
         try {
             String payload = objectMapper.writeValueAsString(
-                    Map.of("type", "error", "reason", "server_error"));
+                    Map.of("type", type.name(), "data", data));
             synchronized (session) { // WebSocketSession은 스레드 안전이 아니다 — 세션별 직렬화
                 session.sendMessage(new TextMessage(payload));
             }
         } catch (IOException | RuntimeException e) {
-            log.warn("[Call] 종료 통지 전송 실패(무시). session={}", session.getId(), e);
+            log.warn("[Call] 제어 메시지 전송 실패(무시). session={}, type={}", session.getId(), type, e);
         }
+    }
+
+    /**
+     * 서버 → 클라이언트 제어 메시지 종류. <b>프론트와의 계약</b>이라 이름을 바꾸면 클라이언트가 깨진다.
+     * <p>⚠ 미구현: {@code CALL_ENDED}(AI 주도 종료·통화 시간 상한이 생길 때 추가).
+     */
+    private enum MessageType {
+        /** 서버 준비 완료. 프론트는 이 신호 이후에 오디오를 보낸다(그전 프레임은 버려진다). */
+        CALL_READY,
+        /** 서버 주도 종료 직전 통지. 뒤이어 소켓이 닫힌다. */
+        ERROR
     }
 
     /**
      * 진행 중인 통화 하나가 들고 있는 것 전부. 수명이 같아 한 홀더로 묶었다 — 정리를 한 번에 하기 위함.
      * 통화 스코프 상태(전사 버퍼·LLM 컨텍스트 등)가 늘면 평행 맵을 만들지 말고 여기 필드로 붙인다.
      *
+     * @param session 이 통화의 WebSocket 세션. REST 종료가 callId로 소켓을 찾아 닫아야 해서 들고 있는다.
      * @param worker  통화당 단일 스레드 — 제출 순서 = 실행 순서(AI 응답 순서 보장).
      * @param ticket  핸드셰이크에서 검증된 신원(callId/relationshipId/characterId). AI 배선·전사 저장의 기준.
      * @param history 세션 스코프 대화 이력. <b>워커 스레드만</b> 읽고 쓴다(스레드 confine → 동기화 불필요).
      */
-    private record ActiveCall(SttStream stream, ExecutorService worker, WsTicket ticket,
-                              List<AiChatHistoryItem> history) {
+    private record ActiveCall(WebSocketSession session, SttStream stream, ExecutorService worker,
+                              WsTicket ticket, List<AiChatHistoryItem> history) {
     }
 
     /**

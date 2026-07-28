@@ -6,20 +6,29 @@ import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
 import com.example.umcCall.domain.chat.enums.MessageType;
 import com.example.umcCall.domain.chat.enums.SenderType;
-import com.example.umcCall.domain.chat.event.UserMessageSentEvent;
 import com.example.umcCall.domain.chat.exception.ChatErrorCode;
 import com.example.umcCall.domain.chat.exception.ChatException;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
+import com.example.umcCall.domain.chat.repository.ChatPhotoRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
+import com.example.umcCall.global.infra.s3.S3Uploader;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -28,10 +37,17 @@ public class ChatMessageService {
     private static final int DEFAULT_SIZE = 30;
     private static final int MAX_SIZE = 50;
 
+    /** 허용 이미지 형식. AI 서버가 받는 것과 통일한다. */
+    private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of("image/jpeg", "image/png");
+    /** S3 내 채팅 사진 접두어. 프리셋 등 다른 객체와 섞이지 않게 분리한다. */
+    private static final String CHAT_PHOTO_DIR = "chat-photos";
+
     private final ChatRoomFinder chatRoomFinder;
     private final ChatMessageRepository chatMessageRepository;
     private final ChatRoomRepository chatRoomRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final ChatPhotoRepository chatPhotoRepository;
+    private final ChatMessageWriter chatMessageWriter;
+    private final S3Uploader s3Uploader;
 
     /**
      * 채팅방 메시지 커서 조회.
@@ -52,50 +68,96 @@ public class ChatMessageService {
         // 다음 커서 = 이번 페이지에서 가장 오래된(마지막) 메시지 id (더 없으면 null)
         Long nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
 
+        // 이 페이지 메시지들의 사진 URL을 한 번에 조회해 map으로 준비(없으면 빈 map)
+        Map<Long, String> photoUrlByMessageId = loadPhotoUrls(page);
+
         // 과거순으로 뒤집어 응답 -> 위에서 아래, 순차적으로 전송하기 위해
         Collections.reverse(page);
         List<ChatMessageResponse> content = page.stream()
-                .map(ChatMessageResponse::from)
+                .map(m -> ChatMessageResponse.from(m, photoUrlByMessageId.get(m.getId())))
                 .toList();
 
         return ChatMessageCursorResponse.of(content, nextCursor, hasNext);
     }
 
     /**
-     * 채팅 메시지 전송(텍스트).
-     * 방 소유 검증 후 유저 메시지를 저장하고, 저장된 메시지만 반환한다.
-     * AI 답장은 이 응답에 포함되지 않고 이후 SSE로 별도 전달한다.
-     * (사진 전송은 S3 연동 후 image 파라미터로 확장 예정)
+     * 채팅 메시지 전송(텍스트/사진).
+     * content·image 중 최소 하나가 있어야 하며, message_type은 조합으로 서버가 계산한다.
+     *  S3 업로드는 트랜잭션 밖에서 하고,
+     * 원자성이 필요한 DB 쓰기만 ChatMessageWriter의 트랜잭션에 맡긴다(업로드 동안 DB 커넥션을 쥐지 않도록).
      */
-    @Transactional
-    public ChatMessageResponse sendMessage(Long memberId, Long chatRoomId, String content) {
-        ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ChatMessageResponse sendMessage(Long memberId, Long chatRoomId, String content, MultipartFile image) {
+        // 업로드 전에 방 소유부터 검증한다
+        chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
 
-        // 내용이 없으면 전송 불가 (이미지 붙으면 "content 또는 image 최소 하나"로 완화)
-        if (content == null || content.isBlank()) {
+        boolean hasText = content != null && !content.isBlank();
+        boolean hasImage = image != null && !image.isEmpty();
+        if (!hasText && !hasImage) {
             throw new ChatException(ChatErrorCode.EMPTY_MESSAGE);
         }
 
-        ChatMessage message = chatMessageRepository.save(
-                ChatMessage.builder()
-                        .senderType(SenderType.USER)
-                        .content(content)
-                        .messageType(MessageType.TEXT)
-                        .read(true)      // 내가 보낸 메시지는 읽음 처리
-                        .deleted(false)
-                        .chatRoom(room)
-                        .build()
-        );
-
-        // 목록 정렬용 마지막 메시지 시각 갱신
-        room.updateLastMessageAt(message.getCreatedAt());
-
-        // 커밋 후 AI 답장 생성을 트리거한다(캐릭터방만). 전송 응답은 기다리지 않는다.
-        if (room.getRelationshipId() != null) {
-            eventPublisher.publishEvent(new UserMessageSentEvent(chatRoomId));
+        // 이미지가 있으면 형식 검증 후 S3에 올린다
+        String photoUrl = null;
+        if (hasImage) {
+            validateImageType(image);
+            photoUrl = s3Uploader.upload(image, CHAT_PHOTO_DIR + "/" + chatRoomId);
         }
 
-        return ChatMessageResponse.from(message);
+        // 원자적 DB 쓰기(메시지+사진+시각+이벤트)는 별도 빈의 트랜잭션에서 처리한다.
+        // DB 저장이 실패하면 방금 올린 S3 객체가 고아로 남으므로, 보상 삭제 후 예외를 다시 던진다.
+        try {
+            return chatMessageWriter.saveUserMessage(chatRoomId, memberId, content, photoUrl);
+        } catch (RuntimeException e) {
+            if (photoUrl != null) {
+                deleteQuietly(photoUrl);   // 업로드했던 사진 되돌리기(삭제 실패는 삼켜 원래 예외를 우선 전달)
+            }
+            throw e;
+        }
+    }
+
+    /** 보상 삭제. 삭제가 실패해도 원래 예외를 덮지 않도록 로깅만 하고 넘어간다. */
+    private void deleteQuietly(String photoUrl) {
+        try {
+            s3Uploader.delete(photoUrl);
+        } catch (Exception e) {
+            log.warn("업로드 롤백용 S3 삭제 실패(고아 객체가 남을 수 있음). url={}", photoUrl, e);
+        }
+    }
+
+    /**
+     * 이미지가 진짜 JPEG/PNG인지 검증한다.
+     * content-type 헤더는 클라이언트가 위조할 수 있으므로, 파일 앞부분의 매직 바이트(실제 내용)까지 확인한다.
+     */
+    private void validateImageType(MultipartFile image) {
+        String contentType = image.getContentType();
+        if (contentType == null || !ALLOWED_IMAGE_TYPES.contains(contentType)) {
+            throw new ChatException(ChatErrorCode.INVALID_IMAGE_TYPE);
+        }
+        if (!hasImageMagicBytes(image)) {
+            throw new ChatException(ChatErrorCode.INVALID_IMAGE_TYPE);
+        }
+    }
+
+    /** 파일 앞부분을 읽어 JPEG(FF D8 FF) 또는 PNG(89 50 4E 47) 시그니처인지 확인한다. */
+    private boolean hasImageMagicBytes(MultipartFile image) {
+        byte[] head = new byte[4];
+        try (InputStream in = image.getInputStream()) {
+            if (in.readNBytes(head, 0, 4) < 4) {
+                return false;   // 4바이트도 안 되면 정상 이미지가 아님
+            }
+        } catch (IOException e) {
+            throw new ChatException(ChatErrorCode.INVALID_IMAGE_TYPE);
+        }
+
+        boolean jpeg = (head[0] & 0xFF) == 0xFF
+                && (head[1] & 0xFF) == 0xD8
+                && (head[2] & 0xFF) == 0xFF;
+        boolean png = (head[0] & 0xFF) == 0x89
+                && (head[1] & 0xFF) == 0x50
+                && (head[2] & 0xFF) == 0x4E
+                && (head[3] & 0xFF) == 0x47;
+        return jpeg || png;
     }
 
     /**
@@ -117,6 +179,25 @@ public class ChatMessageService {
         );
         room.updateLastMessageAt(message.getCreatedAt());
         return message;
+    }
+
+    /**
+     * 페이지 메시지들 중 사진이 있는 것(IMAGE/TEXT_IMAGE)의 URL을 배치 조회해 messageId→URL map으로 만든다.
+     * 사진 있는 메시지가 없으면 빈 map을 반환해 불필요한 쿼리를 피한다.
+     */
+    private Map<Long, String> loadPhotoUrls(List<ChatMessage> messages) {
+        List<Long> imageMessageIds = messages.stream()
+                .filter(m -> m.getMessageType() == MessageType.IMAGE
+                        || m.getMessageType() == MessageType.TEXT_IMAGE)
+                .map(ChatMessage::getId)
+                .toList();
+        if (imageMessageIds.isEmpty()) {
+            return Map.of();
+        }
+        return chatPhotoRepository.findPhotoUrlsByMessageIds(imageMessageIds).stream()
+                .collect(Collectors.toMap(
+                        ChatPhotoRepository.MessagePhotoRow::getMessageId,
+                        ChatPhotoRepository.MessagePhotoRow::getPhotoUrl));
     }
 
     /** size 미지정/비정상은 기본값, 상한 초과는 상한으로 */

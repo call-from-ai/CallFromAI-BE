@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @Tag(name = "채팅 메시지", description = "채팅 메시지 조회/전송 API")
 @RestController
@@ -40,17 +42,19 @@ public class ChatMessageController {
                 chatMessageService.getMessages(memberId, chatRoomId, cursor, size));
     }
 
-    /** 채팅 메시지 전송(텍스트). 저장된 유저 메시지만 반환(AI 답장은 이후 SSE). */
+    /** 채팅 메시지 전송(텍스트/사진). 저장된 유저 메시지만 반환(AI 답장은 이후 SSE). */
     @Operation(summary = "채팅 메시지 전송",
-            description = "채팅 메시지를 전송하고 저장된 메시지를 반환한다. AI 답장은 이후 SSE로 별도 전달된다.")
-    @PostMapping
+            description = "텍스트/사진 메시지를 전송하고 저장된 메시지를 반환한다. content·image 중 최소 하나가 필요하며,"
+                    + " 이미지는 JPEG/PNG만 허용한다. AI 답장은 이후 SSE로 별도 전달된다.")
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<ChatMessageResponse> sendMessage(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long chatRoomId,
-            @RequestParam(required = false) String content) {
+            @RequestParam(required = false) String content,
+            @RequestParam(required = false) MultipartFile image) {
         return ApiResponse.onSuccess(
                 GeneralSuccessCode.CREATED,
-                chatMessageService.sendMessage(memberId, chatRoomId, content));
+                chatMessageService.sendMessage(memberId, chatRoomId, content, image));
     }
 }
