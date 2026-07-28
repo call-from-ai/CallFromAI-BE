@@ -3,6 +3,7 @@ package com.example.umcCall.domain.relationship.service;
 import com.example.umcCall.domain.ai.client.AiServerClient;
 import com.example.umcCall.domain.ai.dto.AiSummaryMessage;
 import com.example.umcCall.domain.ai.dto.AiSummaryRequest;
+import com.example.umcCall.domain.character.exception.CharacterErrorCode;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
 import com.example.umcCall.domain.chat.enums.SenderType;
@@ -12,7 +13,6 @@ import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.domain.relationship.dto.response.ChatSummaryResponse;
 import com.example.umcCall.domain.relationship.entity.ChatSummary;
 import com.example.umcCall.domain.relationship.entity.Relationship;
-import com.example.umcCall.domain.relationship.exception.RelationshipErrorCode;
 import com.example.umcCall.domain.relationship.repository.ChatSummaryRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.global.exception.BaseException;
@@ -39,11 +39,12 @@ public class ChatSummaryService {
     private final AiServerClient aiServerClient;
 
     @Transactional
-    public ChatSummaryResponse getSummary(Long memberId, Long relationshipId) {
+    public ChatSummaryResponse getSummary(Long memberId, Long characterId) {
         Relationship relationship = relationshipRepository
-                .findByIdAndMemberIdAndCharacterDeletedAtIsNull(relationshipId, memberId)
+                .findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(characterId, memberId)
                 .orElseThrow(() -> new BaseException(
-                        RelationshipErrorCode.RELATIONSHIP_NOT_FOUND));
+                        CharacterErrorCode.CHARACTER_NOT_FOUND));
+        Long relationshipId = relationship.getId();
 
         ChatRoom room = chatRoomRepository.findByRelationshipId(relationshipId)
                 .orElseThrow(() -> new BaseException(ChatErrorCode.CHATROOM_NOT_FOUND));

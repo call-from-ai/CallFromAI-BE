@@ -56,18 +56,20 @@ class ChatSummaryServiceTest {
         ChatMessage lastMessage = org.mockito.Mockito.mock(ChatMessage.class);
         ChatSummary cached = org.mockito.Mockito.mock(ChatSummary.class);
 
+        when(relationship.getId()).thenReturn(1L);
         when(room.getId()).thenReturn(20L);
         when(lastMessage.getId()).thenReturn(30L);
         when(cached.getLastMessageId()).thenReturn(30L);
         when(cached.getSummary()).thenReturn("저장된 요약");
-        when(relationshipRepository.findByIdAndMemberIdAndCharacterDeletedAtIsNull(1L, 2L))
+        when(relationshipRepository
+                .findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(10L, 2L))
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
         when(chatMessageRepository.findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(20L))
                 .thenReturn(Optional.of(lastMessage));
         when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.of(cached));
 
-        assertThat(service.getSummary(2L, 1L).summary()).isEqualTo("저장된 요약");
+        assertThat(service.getSummary(2L, 10L).summary()).isEqualTo("저장된 요약");
         verify(aiServerClient, never()).summarize(any());
     }
 
@@ -78,13 +80,15 @@ class ChatSummaryServiceTest {
         ChatMessage userMessage = org.mockito.Mockito.mock(ChatMessage.class);
         ChatMessage lastMessage = org.mockito.Mockito.mock(ChatMessage.class);
 
+        when(relationship.getId()).thenReturn(1L);
         when(room.getId()).thenReturn(20L);
         when(userMessage.getContent()).thenReturn("아이스티가 좋아");
         when(userMessage.getSenderType()).thenReturn(SenderType.USER);
         when(lastMessage.getId()).thenReturn(31L);
         when(lastMessage.getContent()).thenReturn("나도 좋아해");
         when(lastMessage.getSenderType()).thenReturn(SenderType.AI);
-        when(relationshipRepository.findByIdAndMemberIdAndCharacterDeletedAtIsNull(1L, 2L))
+        when(relationshipRepository
+                .findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(10L, 2L))
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
         when(chatMessageRepository.findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(20L))
@@ -96,7 +100,7 @@ class ChatSummaryServiceTest {
         when(aiServerClient.summarize(any()))
                 .thenReturn(new AiSummaryResponse(" 아이스티를 좋아해요. "));
 
-        assertThat(service.getSummary(2L, 1L).summary()).isEqualTo("아이스티를 좋아해요.");
+        assertThat(service.getSummary(2L, 10L).summary()).isEqualTo("아이스티를 좋아해요.");
 
         ArgumentCaptor<AiSummaryRequest> requestCaptor =
                 ArgumentCaptor.forClass(AiSummaryRequest.class);
