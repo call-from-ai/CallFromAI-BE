@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import java.util.List;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,13 +27,13 @@ public class ProactiveDebugController {
 
     @Operation(
             summary = "현재 스케줄 상태 조회",
-            description = "회원의 활성 캐릭터에 연결된 스케줄, 선호 시간, Attachment, 미응답 및 재시도 상태를 조회한다."
+            description = "회원의 삭제되지 않은 모든 캐릭터 스케줄과 메인 여부, 연락 모드, 선호 시간, Attachment, 미응답 및 재시도 상태를 조회한다."
     )
     @GetMapping("/{memberId}")
-    public ApiResponse<ProactiveScheduleResponse> getStatus(
+    public ApiResponse<List<ProactiveScheduleResponse>> getStatus(
             @Parameter(description = "테스트할 회원 ID", example = "1")
             @PathVariable Long memberId) {
-        return ApiResponse.onSuccess(debugService.getStatus(memberId));
+        return ApiResponse.onSuccess(debugService.getStatuses(memberId));
     }
 
     @Operation(

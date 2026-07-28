@@ -44,6 +44,25 @@ class ProactiveContactPolicyTest {
     }
 
     @Test
+    void 메인_캐릭터도_기본은_채팅이고_일부만_통화한다() {
+        var chat = policy.decide(callableContext(0), 0.5, 0.5);
+        var call = policy.decide(callableContext(0), 0.5, 0.1);
+
+        assertThat(chat.action()).isEqualTo(ProactiveAction.CHAT);
+        assertThat(call.action()).isEqualTo(ProactiveAction.CALL);
+    }
+
+    @Test
+    void 비메인과_하루_통화_3회_도달은_항상_채팅한다() {
+        var nonMain = policy.decide(context(now.minusHours(3), AttachmentLevel.NORMAL,
+                ProactiveRelationshipState.NORMAL, RecentResponse.POSITIVE, 0), 0.5, 0.1);
+        var limitReached = policy.decide(callableContext(3), 0.5, 0.1);
+
+        assertThat(nonMain.action()).isEqualTo(ProactiveAction.CHAT);
+        assertThat(limitReached.action()).isEqualTo(ProactiveAction.CHAT);
+    }
+
+    @Test
     void 미응답_2회는_다음_선호_시간으로_연기하고_3회는_중단한다() {
         var twice = policy.decide(context(now.minusHours(10), AttachmentLevel.HIGH,
                 ProactiveRelationshipState.NORMAL, RecentResponse.NO_RESPONSE, 2), 0.5);
@@ -73,7 +92,15 @@ class ProactiveContactPolicyTest {
     ) {
         return new ProactiveContactPolicy.Context(
                 now, lastContactAt, null, true, false, false, false,
-                0, 3, PreferTime.ANYTIME, attachment, state, response,
+                0, 10, 0, 3, PreferTime.ANYTIME, attachment, state, response,
                 noResponseCount, false, false, false, false, null);
+    }
+
+    private ProactiveContactPolicy.Context callableContext(int dailyCallCount) {
+        return new ProactiveContactPolicy.Context(
+                now, now.minusHours(3), null, true, false, false, false,
+                0, 10, dailyCallCount, 3, PreferTime.ANYTIME, AttachmentLevel.NORMAL,
+                ProactiveRelationshipState.NORMAL, RecentResponse.POSITIVE,
+                0, false, false, true, false, null);
     }
 }

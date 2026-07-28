@@ -10,6 +10,7 @@ import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.repository.CallRepository;
+import com.example.umcCall.domain.call.service.ImmediateAiCallService;
 import com.example.umcCall.domain.character.entity.CharacterAiProfile;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
@@ -40,7 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ProactiveContactProcessor {
 
-    private static final int DAILY_LIMIT = 3;
+    private static final int DAILY_CONTACT_LIMIT = 10;
+    private static final int DAILY_CALL_LIMIT = 3;
     private static final String PROACTIVE_SEED =
             "The user has not sent a new message. Send one short proactive check-in.";
 
@@ -50,6 +52,7 @@ public class ProactiveContactProcessor {
     private final ChatMessageRepository messageRepository;
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final CallRepository callRepository;
+    private final ImmediateAiCallService immediateAiCallService;
     private final ProactiveContactPolicy policy;
     private final PreferredContactTimePolicy preferredTimePolicy;
     private final RelationshipStateResolver stateResolver;
@@ -64,14 +67,17 @@ public class ProactiveContactProcessor {
 
         if (schedule.getPendingRequestId() != null) {
             if (schedule.getPendingRetryAt() != null && !schedule.getPendingRetryAt().isAfter(now)) {
-                return new Claim(schedule.getId(), schedule.getPendingRequestId());
+                return new Claim(
+                        schedule.getId(),
+                        schedule.getPendingRequestId(),
+                        schedule.getPendingAction());
             }
             return null;
         }
         if (schedule.getNextCheckAt() == null || schedule.getNextCheckAt().isAfter(now)) return null;
 
         Relationship relationship = schedule.getRelationship();
-        if (!relationship.isMain() || relationship.getCharacter().getDeletedAt() != null) {
+        if (relationship.getCharacter().getDeletedAt() != null) {
             schedule.disable();
             return null;
         }
@@ -107,7 +113,9 @@ public class ProactiveContactProcessor {
                 false,
                 activeCall,
                 schedule.dailyCountOn(now.toLocalDate()),
-                DAILY_LIMIT,
+                DAILY_CONTACT_LIMIT,
+                schedule.dailyCallCountOn(now.toLocalDate()),
+                DAILY_CALL_LIMIT,
                 relationship.getCharacter().getPreferTime(),
                 AttachmentLevel.from(profile == null ? null : profile.getAttachment()),
                 state,
@@ -115,7 +123,7 @@ public class ProactiveContactProcessor {
                 schedule.getConsecutiveNoResponseCount(),
                 false,
                 false,
-                false,
+                relationship.isMain(),
                 false,
                 null);
         ProactiveContactPolicy.Decision decision = policy.decide(context);
@@ -129,9 +137,8 @@ public class ProactiveContactProcessor {
         }
 
         String requestId = "proactive-" + UUID.randomUUID();
-        // 전화 실행기가 완성되기 전에는 CALL 후보도 통화 제안 채팅으로 보낸다.
-        schedule.claim(requestId, ProactiveAction.CHAT, decision.contactReason());
-        return new Claim(schedule.getId(), requestId);
+        schedule.claim(requestId, decision.action(), decision.contactReason());
+        return new Claim(schedule.getId(), requestId, decision.action());
     }
 
     /**
@@ -143,14 +150,15 @@ public class ProactiveContactProcessor {
         if (schedule == null || !schedule.isEnabled()) return null;
         if (schedule.getPendingRequestId() != null) return null;
         Relationship relationship = schedule.getRelationship();
-        if (!relationship.isMain() || relationship.getCharacter().getDeletedAt() != null) return null;
+        if (relationship.getCharacter().getDeletedAt() != null) return null;
         String requestId = "proactive-debug-" + UUID.randomUUID();
         schedule.claim(requestId, ProactiveAction.CHAT, "DEBUG_FORCE_SEND");
-        return new Claim(schedule.getId(), requestId);
+        return new Claim(schedule.getId(), requestId, ProactiveAction.CHAT);
     }
 
     @Transactional(readOnly = true)
     public String generate(Claim claim) {
+        if (claim.action() != ProactiveAction.CHAT) return null;
         ProactiveContactSchedule schedule = scheduleRepository.findById(claim.scheduleId()).orElseThrow();
         if (!claim.requestId().equals(schedule.getPendingRequestId())) return null;
 
@@ -176,7 +184,7 @@ public class ProactiveContactProcessor {
                 claim.requestId(),
                 relationship.getCharacter().getId(),
                 PROACTIVE_SEED,
-                schedule.getPendingContactReason(),
+                aiContactReason(schedule.getPendingContactReason()),
                 state.name(),
                 response.name(),
                 characterSnapshotMapper.toSnapshot(relationship.getCharacter(), profile, relationship),
@@ -185,6 +193,14 @@ public class ProactiveContactProcessor {
 
         AiChatResponse aiResponse = aiServerClient.proactive(request);
         return aiResponse.reply();
+    }
+
+    /**
+     * 메인 서버의 세부 스케줄 사유를 AI 서버가 지원하는 공개 계약으로 축약한다.
+     * 관계 상태별 표현은 relationshipState가 별도로 전달하므로 일반 채팅은 NORMAL_CHECK_IN이면 충분하다.
+     */
+    private String aiContactReason(String internalReason) {
+        return "CALL_OFFER".equals(internalReason) ? "CALL_OFFER" : "NORMAL_CHECK_IN";
     }
 
     @Transactional
@@ -211,9 +227,30 @@ public class ProactiveContactProcessor {
         CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElseThrow();
         ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
         LocalDateTime next = policy.nextCandidate(now, profile.getAttachment(), state);
-        PreferredContactTimePolicy.Result preferred =
-                preferredTimePolicy.evaluate(relationship.getCharacter().getPreferTime(), next);
-        schedule.complete(now, preferred.preferred() ? next : preferred.nextPreferredTime());
+        schedule.complete(now, preferredTimePolicy.adjustCandidate(
+                relationship.getCharacter().getPreferTime(), next));
+    }
+
+    @Transactional
+    public boolean completeCall(Claim claim, LocalDateTime now) {
+        ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(claim.scheduleId()).orElseThrow();
+        if (!claim.requestId().equals(schedule.getPendingRequestId())
+                || schedule.getPendingAction() != ProactiveAction.CALL) {
+            return false;
+        }
+
+        Relationship relationship = schedule.getRelationship();
+        if (!immediateAiCallService.ring(relationship.getId())) {
+            schedule.releaseClaim(now.plusMinutes(10));
+            return false;
+        }
+
+        CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElseThrow();
+        ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
+        LocalDateTime next = policy.nextCandidate(now, profile.getAttachment(), state);
+        schedule.completeCall(now, preferredTimePolicy.adjustCandidate(
+                relationship.getCharacter().getPreferTime(), next));
+        return true;
     }
 
     @Transactional
@@ -229,6 +266,6 @@ public class ProactiveContactProcessor {
         }
     }
 
-    public record Claim(Long scheduleId, String requestId) {
+    public record Claim(Long scheduleId, String requestId, ProactiveAction action) {
     }
 }

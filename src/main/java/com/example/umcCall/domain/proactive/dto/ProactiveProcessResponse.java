@@ -13,4 +13,8 @@ public record ProactiveProcessResponse(
     public static ProactiveProcessResponse completed(String requestId) {
         return new ProactiveProcessResponse(true, true, requestId, "AI_MESSAGE_SAVED");
     }
+
+    public static ProactiveProcessResponse callRinging(String requestId) {
+        return new ProactiveProcessResponse(true, false, requestId, "AI_CALL_RINGING");
+    }
 }

@@ -36,4 +36,20 @@ class PreferredContactTimePolicyTest {
         assertThat(policy.evaluate(PreferTime.ANYTIME, now))
                 .isEqualTo(new PreferredContactTimePolicy.Result(true, now));
     }
+
+    @Test
+    void 비선호_후보는_70퍼센트에서_다음_선호시간으로_옮긴다() {
+        var candidate = LocalDateTime.of(2026, 7, 23, 20, 0);
+
+        assertThat(policy.adjustCandidate(PreferTime.MORNING, candidate, 0.69))
+                .isEqualTo(LocalDateTime.of(2026, 7, 24, 6, 0));
+    }
+
+    @Test
+    void 비선호_후보는_30퍼센트에서_원래_시간을_유지한다() {
+        var candidate = LocalDateTime.of(2026, 7, 23, 20, 0);
+
+        assertThat(policy.adjustCandidate(PreferTime.MORNING, candidate, 0.70))
+                .isEqualTo(candidate);
+    }
 }

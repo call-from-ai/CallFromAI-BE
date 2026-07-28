@@ -3,6 +3,7 @@ package com.example.umcCall.domain.proactive.service;
 import com.example.umcCall.domain.character.enums.PreferTime;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -11,6 +12,7 @@ public class PreferredContactTimePolicy {
     static final LocalTime MORNING_START = LocalTime.of(6, 0);
     static final LocalTime DAY_START = LocalTime.NOON;
     static final LocalTime LATE_EVENING_START = LocalTime.of(18, 0);
+    private static final double PREFERRED_TIME_PROBABILITY = 0.70;
 
     public Result evaluate(PreferTime preferTime, LocalDateTime now) {
         PreferTime effective = preferTime == null ? PreferTime.ANYTIME : preferTime;
@@ -40,6 +42,22 @@ public class PreferredContactTimePolicy {
         PreferTime effective = preferTime == null ? PreferTime.ANYTIME : preferTime;
         if (effective == PreferTime.ANYTIME) return after.plusDays(1);
         return after.toLocalDate().plusDays(1).atTime(startOf(effective));
+    }
+
+    /**
+     * 다음 연락 후보가 선호 시간 밖이면 70%는 다음 선호 구간으로 옮기고,
+     * 30%는 원래 후보를 유지해 가끔 비선호 시간에도 연락할 수 있게 한다.
+     */
+    public LocalDateTime adjustCandidate(PreferTime preferTime, LocalDateTime candidate) {
+        return adjustCandidate(preferTime, candidate, ThreadLocalRandom.current().nextDouble());
+    }
+
+    LocalDateTime adjustCandidate(PreferTime preferTime, LocalDateTime candidate, double randomValue) {
+        Result result = evaluate(preferTime, candidate);
+        if (result.preferred() || randomValue >= PREFERRED_TIME_PROBABILITY) {
+            return candidate;
+        }
+        return result.nextPreferredTime();
     }
 
     private LocalTime startOf(PreferTime preferTime) {
