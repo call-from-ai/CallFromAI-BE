@@ -1,0 +1,25 @@
+package com.example.umcCall.domain.notification.dto.response;
+
+import com.example.umcCall.domain.notification.entity.SystemNotification;
+
+import java.time.LocalDateTime;
+
+public record NotificationResponse(
+        Long notificationId,
+        String type,
+        String title,
+        String content,
+        boolean read,
+        LocalDateTime occurredAt
+) {
+    public static NotificationResponse from(SystemNotification notification) {
+        return new NotificationResponse(
+                notification.getId(),
+                notification.getType().name(),
+                notification.getTitle(),
+                notification.getContent(),
+                notification.isRead(),
+                notification.getOccurredAt()
+        );
+    }
+}

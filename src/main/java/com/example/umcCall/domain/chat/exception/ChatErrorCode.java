@@ -24,7 +24,8 @@ public enum ChatErrorCode implements BaseErrorCode {
 
     // 404
     CHATROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT404_1", "채팅방을 찾을 수 없습니다."),
-    CHATROOM_HIDDEN(HttpStatus.NOT_FOUND, "CHAT404_2", "이미 목록에서 숨긴 채팅방입니다.");
+    CHATROOM_HIDDEN(HttpStatus.NOT_FOUND, "CHAT404_2", "이미 목록에서 숨긴 채팅방입니다."),
+    MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT404_3", "해당 채팅방에서 메시지를 찾을 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;

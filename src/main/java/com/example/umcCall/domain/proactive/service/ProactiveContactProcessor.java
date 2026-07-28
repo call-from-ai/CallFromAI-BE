@@ -13,12 +13,14 @@ import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.service.ImmediateAiCallService;
 import com.example.umcCall.domain.character.entity.CharacterAiProfile;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
+import com.example.umcCall.domain.chat.dto.response.ChatMessageResponse;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
 import com.example.umcCall.domain.chat.enums.MessageType;
 import com.example.umcCall.domain.chat.enums.SenderType;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
+import com.example.umcCall.domain.chat.service.ChatSseService;
 import com.example.umcCall.domain.proactive.entity.ProactiveContactSchedule;
 import com.example.umcCall.domain.proactive.enums.AttachmentLevel;
 import com.example.umcCall.domain.proactive.enums.ProactiveAction;
@@ -36,6 +38,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -59,6 +63,7 @@ public class ProactiveContactProcessor {
     private final AiCharacterSnapshotMapper characterSnapshotMapper;
     private final AiRelationshipSnapshotMapper relationshipSnapshotMapper;
     private final AiServerClient aiServerClient;
+    private final ChatSseService chatSseService;
 
     @Transactional
     public Claim claim(Long scheduleId, LocalDateTime now) {
@@ -211,7 +216,7 @@ public class ProactiveContactProcessor {
         Relationship relationship = schedule.getRelationship();
         ChatRoom room = chatRoomRepository.findByRelationshipId(relationship.getId()).orElseThrow();
         if (!messageRepository.existsByProactiveRequestId(claim.requestId())) {
-            messageRepository.save(ChatMessage.builder()
+            ChatMessage saved = messageRepository.save(ChatMessage.builder()
                     .senderType(SenderType.AI)
                     .content(reply)
                     .messageType(MessageType.TEXT)
@@ -221,6 +226,8 @@ public class ProactiveContactProcessor {
                     .proactiveRequestId(claim.requestId())
                     .build());
             room.updateLastMessageAt(now);
+            room.reveal();
+            pushToClient(room.getMemberId(), saved);
         }
 
         CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElseThrow();
@@ -228,6 +235,21 @@ public class ProactiveContactProcessor {
         LocalDateTime next = policy.nextCandidate(now, profile.getAttachment(), state);
         schedule.complete(now, preferredTimePolicy.adjustCandidate(
                 relationship.getCharacter().getPreferTime(), next));
+    }
+
+    /**
+     * 저장된 선제 메시지를 커밋이 확정된 뒤에 SSE로 접속 중인 유저에게 실시간 배달한다.
+     * 트랜잭션 안에서 바로 쏘면 이후 롤백 시 DB엔 없는 유령 메시지를 클라가 받게 되므로 afterCommit으로 미룬다.
+     * payload는 영속성 컨텍스트가 살아있는 지금 만들어 둔다(afterCommit 시점엔 지연로딩이 불가능하므로).
+     */
+    private void pushToClient(Long memberId, ChatMessage message) {
+        ChatMessageResponse payload = ChatMessageResponse.from(message);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                chatSseService.sendToMember(memberId, "message", payload);
+            }
+        });
     }
 
     @Transactional

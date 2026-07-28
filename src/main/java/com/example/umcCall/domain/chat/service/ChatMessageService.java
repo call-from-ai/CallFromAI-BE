@@ -14,6 +14,7 @@ import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.global.infra.s3.S3Uploader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -46,6 +47,7 @@ public class ChatMessageService {
     private final ChatMessageRepository chatMessageRepository;
     private final ChatRoomRepository chatRoomRepository;
     private final ChatPhotoRepository chatPhotoRepository;
+    private final ChatPhotoCleaner chatPhotoCleaner;
     private final ChatMessageWriter chatMessageWriter;
     private final S3Uploader s3Uploader;
 
@@ -161,6 +163,29 @@ public class ChatMessageService {
     }
 
     /**
+     * 개별 메시지 삭제(물리 삭제). 유저·AI 메시지 모두 삭제 가능하며, TEXT_IMAGE는 텍스트+사진이 통째로 지워진다.
+     * 사진이 있으면 chat_photo를 먼저(FK) 지우고 커밋 후 S3 객체까지 삭제한다.
+     * 마지막 메시지를 지운 경우 목록 정렬이 어긋나지 않도록 last_message_at을 남은 최신 메시지 시각으로 갱신한다.
+     */
+    @Transactional
+    public void deleteMessage(Long memberId, Long chatRoomId, Long messageId) {
+        ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
+        ChatMessage message = chatMessageRepository.findByIdAndChatRoomId(messageId, chatRoomId)
+                .orElseThrow(() -> new ChatException(ChatErrorCode.MESSAGE_NOT_FOUND));
+
+        // 사진(자식)을 먼저 정리: chat_photo 삭제 + 커밋 후 S3 삭제. 그래야 메시지 물리 삭제 시 FK가 안 걸린다.
+        chatPhotoCleaner.purgeMessagePhoto(messageId);
+        chatMessageRepository.delete(message);
+
+        // 남은 최신 메시지 기준으로 마지막 메시지 시각 재계산(없으면 null).
+        LocalDateTime lastMessageAt = chatMessageRepository
+                .findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(chatRoomId)
+                .map(ChatMessage::getCreatedAt)
+                .orElse(null);
+        room.updateLastMessageAt(lastMessageAt);
+    }
+
+    /**
      * AI 답장 메시지를 저장하고 방의 마지막 메시지 시각을 갱신한다(AI 답장 처리에서 호출).
      */
     @Transactional
@@ -178,6 +203,7 @@ public class ChatMessageService {
                         .build()
         );
         room.updateLastMessageAt(message.getCreatedAt());
+        room.reveal();   // 숨긴 방이었으면 AI 답장으로 목록에 다시 노출한다.
         return message;
     }
 

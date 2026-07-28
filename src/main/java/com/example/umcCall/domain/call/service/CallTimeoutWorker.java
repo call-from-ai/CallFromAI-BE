@@ -16,15 +16,15 @@ import org.springframework.stereotype.Service;
  * {@code PENDING}·{@code DIALING} → {@code CANCELED}(미접속), {@code IN_PROGRESS} → {@code COMPLETED}(시간 상한).
  * 미접속이 부재중이 아닌 이유는 사용자 부재가 아니라 서버/네트워크 사유이기 때문이다.
  *
- * <p>걷지 않으면 영구히 "진행 중"으로 남아 그 관계의 발신이 409로 막히고, 예약은 fire될 때마다
- * <b>취소(연기가 아니다)</b>되며 proactive 발신도 차단된다. 게다가 진행 중 상태는 통화 목록에서 빠져
- * 사용자 눈에도 안 보인다.
+ * <p>걷지 않으면 영구히 "진행 중"으로 남아 그 관계의 발신이 409로 막히고 proactive AI 발신도 영구 차단된다.
+ * 게다가 진행 중 상태는 통화 목록에서 빠져 사용자 눈에도 안 보인다.
  *
  * <p>연결 대기 셋({@code RINGING}·{@code PENDING}·{@code DIALING})은 소켓이 없어 {@code finish()} 트리거가
  * 오지 않는 상태다. {@code IN_PROGRESS}는 반대로 <b>소켓이 살아 있을 수 있어</b> 마감 시 세션 정리가 따라야 한다
  * ({@code closeOverrunCall}이 이벤트를 발행한다).
  *
- * <p>{@link CallReservationWorker}와 같은 구조 — 루프는 트랜잭션 밖, 마감은 건당 서비스 트랜잭션.
+ * <p>루프는 트랜잭션 밖, 마감은 건당 서비스 트랜잭션이다 — 하나가 실패해도 나머지가 처리되고
+ * 배치가 하나의 긴 트랜잭션·락으로 묶이지 않는다.
  */
 @Service
 @Slf4j

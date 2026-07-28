@@ -1,4 +1,61 @@
 package com.example.umcCall.domain.notification.entity;
 
-public class SystemNotification {
+import com.example.umcCall.domain.notification.enums.NotificationType;
+import com.example.umcCall.global.entity.BaseTimeEntity;
+import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Getter
+@Table(name = "system_notification")
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class SystemNotification extends BaseTimeEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "notification_id")
+    private Long id;
+
+    @Column(name = "member_id", nullable = false)
+    private Long memberId;
+
+    @Column(name = "relationship_id")
+    private Long relationshipId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false)
+    private NotificationType type;
+
+    @Column(name = "title", nullable = false, length = 100)
+    private String title;
+
+    @Column(name = "content", nullable = false, length = 500)
+    private String content;
+
+    @Column(name = "is_read", nullable = false)
+    private boolean read;
+
+    @Column(name = "occurred_at", nullable = false)
+    private LocalDateTime occurredAt;
+
+    @Builder
+    public SystemNotification(Long memberId, Long relationshipId, NotificationType type,
+                              String title, String content, LocalDateTime occurredAt) {
+        this.memberId = memberId;
+        this.relationshipId = relationshipId;
+        this.type = type;
+        this.title = title;
+        this.content = content;
+        this.read = false;
+        this.occurredAt = occurredAt;
+    }
+
+    public void markAsRead() {
+        this.read = true;
+    }
 }
