@@ -4,7 +4,6 @@ import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.service.AiConversationService;
-import com.example.umcCall.domain.chat.dto.response.ChatMessageResponse;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
 import com.example.umcCall.domain.chat.enums.MessageType;
@@ -65,7 +64,7 @@ public class AiReplyDebouncer {
     private final AiImageChatClient aiImageChatClient;
     private final S3Uploader s3Uploader;
     private final ChatMessageService chatMessageService;
-    private final ChatSseService chatSseService;
+    private final ChatMessageNotifier chatMessageNotifier;
 
     /** 방마다 "곧 처리할 예약 타이머"를 담아둔다. 새 메시지가 오면 이 타이머를 미룬다. */
     private final Map<Long, ScheduledFuture<?>> pending = new ConcurrentHashMap<>();
@@ -86,7 +85,7 @@ public class AiReplyDebouncer {
             AiImageChatClient aiImageChatClient,
             S3Uploader s3Uploader,
             ChatMessageService chatMessageService,
-            ChatSseService chatSseService) {
+            ChatMessageNotifier chatMessageNotifier) {
         this.timer = timer;
         this.worker = worker;
         this.chatRoomRepository = chatRoomRepository;
@@ -97,7 +96,7 @@ public class AiReplyDebouncer {
         this.aiImageChatClient = aiImageChatClient;
         this.s3Uploader = s3Uploader;
         this.chatMessageService = chatMessageService;
-        this.chatSseService = chatSseService;
+        this.chatMessageNotifier = chatMessageNotifier;
     }
 
     /**
@@ -228,7 +227,7 @@ public class AiReplyDebouncer {
         }
 
         ChatMessage aiMessage = chatMessageService.saveAiMessage(room.getId(), reply);
-        chatSseService.sendToMember(room.getMemberId(), "message", ChatMessageResponse.from(aiMessage));
+        chatMessageNotifier.notify(room, aiMessage);
     }
 
     /** 배치를 이미지 지점마다 끊어 조각 목록으로 만든다. 이미지 있는 메시지가 그 조각을 닫는다. */
