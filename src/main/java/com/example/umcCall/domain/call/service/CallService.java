@@ -4,6 +4,7 @@ import com.example.umcCall.domain.call.dto.response.CallEndResponse;
 import com.example.umcCall.domain.call.dto.response.CallIncomingResponse;
 import com.example.umcCall.domain.call.dto.response.CallTicketResponse;
 import com.example.umcCall.domain.call.entity.Call;
+import com.example.umcCall.domain.call.enums.CallEndReason;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
@@ -130,6 +131,8 @@ public class CallService {
      * 연결 전(DIALING/PENDING) 취소는 이 API가 다루지 않는다.
      * <p>⚠ 상태만 바꾸면 소켓이 살아남아 오디오가 계속 CLOVA로 흘러 <b>STT 비용이 발생</b>한다. 세션 정리는
      * {@link CallEndedEvent}를 받는 WS 핸들러가 한다 — 핸들러를 직접 주입하면 순환 참조로 앱이 기동하지 않는다.
+     * <p>이 경로는 프론트가 REST 응답으로 이미 결과를 알지만, 이벤트에도 {@code USER_ENDED}를 실어 보낸다 —
+     * "정상 종료 앞엔 항상 {@code CALL_ENDED}가 있다"는 소켓 계약을 사유별로 갈라 놓지 않기 위해서다.
      */
     public CallEndResponse end(Long memberId, Long callId) {
         Call call = callRepository.findByIdForUpdate(callId)
@@ -142,7 +145,7 @@ public class CallService {
             throw new CallException(CallErrorCode.CALL_NOT_IN_PROGRESS);
         }
         call.complete();
-        eventPublisher.publishEvent(new CallEndedEvent(callId));
+        eventPublisher.publishEvent(new CallEndedEvent(callId, CallEndReason.USER_ENDED, call.getCallTime()));
 
         return CallEndResponse.of(call);
     }
@@ -213,7 +216,7 @@ public class CallService {
             return;
         }
         call.complete();
-        eventPublisher.publishEvent(new CallEndedEvent(callId));
+        eventPublisher.publishEvent(new CallEndedEvent(callId, CallEndReason.TIMEOUT, call.getCallTime()));
     }
 
     /** 스위퍼 전이의 공통 골격 — 락 → 상태 재확인 → 전이. 상태가 바뀌었으면 no-op. */
