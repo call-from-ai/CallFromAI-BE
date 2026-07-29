@@ -1,6 +1,6 @@
 package com.example.umcCall.global.security;
 
-import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
+import com.example.umcCall.domain.auth.exception.AuthErrorCode;
 import com.example.umcCall.global.exception.BaseException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -70,7 +70,7 @@ public class JwtProvider {
         String actualType = claims.get(TOKEN_TYPE_CLAIM, String.class);
 
         if (!expectedType.equals(actualType)) {
-            throw new BaseException(GeneralErrorCode.INVALID_TOKEN, "잘못된 토큰 타입입니다.");
+            throw new BaseException(AuthErrorCode.INVALID_TOKEN);
         }
     }
 
@@ -82,9 +82,9 @@ public class JwtProvider {
                     .parseSignedClaims(token)
                     .getPayload();
         } catch (ExpiredJwtException e) {
-            throw new BaseException(GeneralErrorCode.EXPIRED_TOKEN);
+            throw new BaseException(AuthErrorCode.EXPIRED_TOKEN);
         } catch (JwtException | IllegalArgumentException e) {
-            throw new BaseException(GeneralErrorCode.INVALID_TOKEN);
+            throw new BaseException(AuthErrorCode.INVALID_TOKEN);
         }
     }
 }

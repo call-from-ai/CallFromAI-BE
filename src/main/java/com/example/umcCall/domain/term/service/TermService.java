@@ -1,11 +1,13 @@
 package com.example.umcCall.domain.term.service;
 
 import com.example.umcCall.domain.member.entity.Member;
+import com.example.umcCall.domain.member.exception.MemberErrorCode;
 import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.domain.term.dto.response.TermResponse;
 import com.example.umcCall.domain.term.dto.request.TermsAgreementRequest;
 import com.example.umcCall.domain.term.entity.MemberTerm;
 import com.example.umcCall.domain.term.entity.Term;
+import com.example.umcCall.domain.term.exception.TermErrorCode;
 import com.example.umcCall.domain.term.repository.MemberTermRepository;
 import com.example.umcCall.domain.term.repository.TermRepository;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
@@ -35,7 +37,7 @@ public class TermService {
     @Transactional
     public void agreeTerms(Long memberId, List<TermsAgreementRequest.Agreement> agreements) {
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new BaseException(GeneralErrorCode.MEMBER_NOT_FOUND));
+                .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
 
         Map<Long, Boolean> agreementMap = agreements.stream()
                 .collect(Collectors.toMap(
@@ -49,7 +51,7 @@ public class TermService {
             boolean isAgreed = agreementMap.getOrDefault(term.getId(), false);
 
             if (term.isRequired() && !isAgreed) {
-                throw new BaseException(GeneralErrorCode.REQUIRED_TERM_NOT_AGREED);
+                throw new BaseException(TermErrorCode.REQUIRED_TERM_NOT_AGREED);
             }
         }
 
@@ -66,6 +68,7 @@ public class TermService {
 
     public boolean hasAgreedAllRequiredTerms(Long memberId) {
         List<Term> requiredTerms = termRepository.findByIsRequiredTrue();
+
 
         Map<Long, Boolean> agreedMap = memberTermRepository.findByMember_Id(memberId).stream()
                 .collect(Collectors.toMap(

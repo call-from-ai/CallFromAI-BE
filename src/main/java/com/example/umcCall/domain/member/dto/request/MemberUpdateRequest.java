@@ -9,7 +9,7 @@ import java.time.LocalDate;
 public record MemberUpdateRequest(
         String lastName,
         String firstName,
-        String profilePhotoUrl,
+        String imageUrl,
         Gender gender,
         LocalDate birth,
         Mbti mbti,
