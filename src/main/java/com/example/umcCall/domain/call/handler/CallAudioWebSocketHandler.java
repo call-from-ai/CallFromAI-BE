@@ -503,7 +503,6 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
     /**
      * 서버 → 클라이언트 제어 메시지 종류. <b>프론트와의 계약</b>이라 이름을 바꾸면 클라이언트가 깨진다.
-     * <p>⚠ 미구현: {@code CALL_ENDED}(AI 주도 종료·통화 시간 상한이 생길 때 추가).
      */
     private enum MessageType {
         /** 서버 준비 완료. 프론트는 이 신호 이후에 오디오를 보낸다(그전 프레임은 버려진다). */

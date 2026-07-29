@@ -2,8 +2,10 @@ package com.example.umcCall.domain.call.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -33,6 +35,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.socket.BinaryMessage;
@@ -103,6 +106,14 @@ class CallAudioWebSocketHandlerTest {
         return objectMapper.readTree(sent.get(sent.size() - 1).getPayload());
     }
 
+    /**
+     * 해당 {@code type}의 제어 프레임 매처. 순서 검증에서 앞서 나간 CALL_READY와 구별하려고 쓴다.
+     */
+    private static TextMessage controlOfType(String type) {
+        return argThat(message ->
+                message != null && message.getPayload().contains("\"type\":\"" + type + "\""));
+    }
+
     /** CALL_READY까지 끝난 통화 하나를 세워 둔다. */
     private WebSocketSession givenConnectedCall() {
         WebSocketSession session = openSession();
@@ -138,7 +149,10 @@ class CallAudioWebSocketHandlerTest {
 
         JsonNode message = captureControlMessage(session);
         assertThat(message.get("type").asText()).isEqualTo("ERROR");
-        verify(session).close(CloseStatus.SERVER_ERROR);
+        // 통지가 close보다 먼저여야 한다 — 뒤집히면 isOpen 가드에 걸려 사유 없이 닫힌다.
+        InOrder inOrder = inOrder(session);
+        inOrder.verify(session).sendMessage(controlOfType("ERROR"));
+        inOrder.verify(session).close(CloseStatus.SERVER_ERROR);
     }
 
     @Test
@@ -153,6 +167,9 @@ class CallAudioWebSocketHandlerTest {
         JsonNode message = captureControlMessage(session);
         assertThat(message.get("type").asText()).isEqualTo("ERROR");
         assertThat(message.get("data").get("reason").asText()).isEqualTo("SERVER_ERROR");
+        InOrder inOrder = inOrder(session);
+        inOrder.verify(session).sendMessage(controlOfType("ERROR"));
+        inOrder.verify(session).close(CloseStatus.SERVER_ERROR);
     }
 
     @Test
@@ -168,7 +185,10 @@ class CallAudioWebSocketHandlerTest {
         // 서버 계산값이라 프론트 자체 측정과 어긋나지 않는다(REST CallEndResponse.callTime과 같은 값).
         assertThat(message.get("data").get("callTime").asInt()).isEqualTo(42);
         // 정상 종료다 — ERROR로 닫으면 프론트가 사고로 표시한다.
-        verify(session).close(CloseStatus.NORMAL);
+        // 순서까지 본다: close가 먼저 가면 sendControl의 isOpen 가드에 걸려 통지가 통째로 사라진다.
+        InOrder inOrder = inOrder(session);
+        inOrder.verify(session).sendMessage(controlOfType("CALL_ENDED"));
+        inOrder.verify(session).close(CloseStatus.NORMAL);
     }
 
     @Test
