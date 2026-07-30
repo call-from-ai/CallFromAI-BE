@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.proactive.service;
 
 import com.example.umcCall.domain.proactive.repository.ProactiveContactScheduleRepository;
+import com.example.umcCall.domain.proactive.enums.ProactiveAction;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,13 +17,17 @@ public class ProactiveContactWorker {
     private final ProactiveContactScheduleRepository scheduleRepository;
     private final ProactiveContactProcessor processor;
 
-    @Scheduled(fixedDelayString = "${proactive.scheduler-delay-ms:60000}")
+    @Scheduled(fixedDelayString = "${proactive.scheduler-delay-ms:600000}")
     public void processDueContacts() {
         LocalDateTime now = LocalDateTime.now();
         scheduleRepository.findDueIds(now, PageRequest.of(0, 50)).forEach(scheduleId -> {
             ProactiveContactProcessor.Claim claim = processor.claim(scheduleId, now);
             if (claim == null) return;
             try {
+                if (claim.action() == ProactiveAction.CALL) {
+                    processor.completeCall(claim, LocalDateTime.now());
+                    return;
+                }
                 String reply = processor.generate(claim);
                 if (reply != null) {
                     processor.complete(claim, reply, LocalDateTime.now());

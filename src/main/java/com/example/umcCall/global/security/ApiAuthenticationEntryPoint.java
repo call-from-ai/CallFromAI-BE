@@ -1,5 +1,6 @@
 package com.example.umcCall.global.security;
 
+import com.example.umcCall.domain.auth.exception.AuthErrorCode;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,7 +22,7 @@ public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
-        GeneralErrorCode errorCode = GeneralErrorCode.TOKEN_NOT_FOUND;
+        AuthErrorCode errorCode = AuthErrorCode.TOKEN_NOT_FOUND;
         response.setStatus(errorCode.getStatus().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");

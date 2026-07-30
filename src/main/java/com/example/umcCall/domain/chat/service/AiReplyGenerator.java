@@ -4,6 +4,7 @@ import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
 import com.example.umcCall.domain.ai.dto.AiCharacterSnapshot;
 import com.example.umcCall.domain.ai.dto.AiRelationshipSnapshot;
+import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
 import com.example.umcCall.domain.character.entity.Character;
@@ -53,6 +54,7 @@ public class AiReplyGenerator {
 
         return new AiChatRequest(
                 UUID.randomUUID().toString(),   // 멱등성 키. 논리 요청마다 고유값(같은 값 재전송 시 AI 서버가 409)
-                character.getId(), userMessage, characterSnapshot, relationshipSnapshot, history);
+                character.getId(), AiConversationChannel.CHAT, userMessage,
+                characterSnapshot, relationshipSnapshot, history);
     }
 }

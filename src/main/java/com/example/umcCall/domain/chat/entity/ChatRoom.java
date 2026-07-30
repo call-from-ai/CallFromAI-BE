@@ -82,6 +82,25 @@ public class ChatRoom extends BaseTimeEntity {
         this.deleted = true;
     }
 
+    /**
+     * 목록에서 숨긴다. 지금까지의 메시지는 cutoff 이하로 묻고(다시 안 보임),
+     * 이후 AI가 새 메시지를 보내면 cutoff 초과분만 노출되며 목록에 부활한다.
+     *
+     * @param cutoffMessageId 현재 방의 마지막 메시지 id(메시지가 없으면 null)
+     */
+    public void hide(Long cutoffMessageId) {
+        this.messageVisibleAfterId = cutoffMessageId;
+        this.deleted = true;
+    }
+
+    /**
+     * 숨김 상태였다면 목록에 다시 노출한다(AI가 새 메시지를 보낼 때 호출).
+     * cutoff(message_visible_after_id)는 그대로 두어, 숨김 이전 메시지는 계속 감춰지고 새 메시지만 보인다.
+     */
+    public void reveal() {
+        this.deleted = false;
+    }
+
     /** 음소거 여부를 요청받은 값으로 */
     public void updateMuted(boolean muted) {
         this.muted = muted;

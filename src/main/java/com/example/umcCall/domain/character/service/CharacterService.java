@@ -16,6 +16,7 @@ import com.example.umcCall.domain.chat.enums.RoomType;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.domain.chat.service.ChatRoomService;
 import com.example.umcCall.domain.image.repository.PresetImageRepository;
+import com.example.umcCall.domain.member.exception.MemberErrorCode;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
@@ -26,6 +27,7 @@ import com.example.umcCall.domain.ai.service.CharacterSyncTaskService;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.domain.proactive.service.ProactiveScheduleCoordinator;
+
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -203,7 +205,9 @@ public class CharacterService {
                                 .build()))
                 .toList();
         characterAiProfileService.calculateAndSave(character, savedTraits);
+
         proactiveScheduleCoordinator.reschedule(relationship);
+
     }
 
     // 활성 캐릭터 변경
@@ -226,7 +230,8 @@ public class CharacterService {
                         throw new BaseException(CharacterErrorCode.ACTIVE_CHARACTER_CHANGE_TOO_SOON);
                     }
                     current.deactivate();
-                    proactiveScheduleCoordinator.deactivate(current);
+                    // 메인에서 내려와도 선제 채팅 스케줄은 계속 유지한다.
+                    proactiveScheduleCoordinator.reschedule(current);
                 });
 
         target.activate();
@@ -243,9 +248,6 @@ public class CharacterService {
         }
 
         Character character = relationship.getCharacter();
-//        if (character.getCreatedAt().plusHours(MIN_DELETE_INTERVAL_HOURS).isAfter(LocalDateTime.now())) {
-//            throw new BaseException(CharacterErrorCode.CHARACTER_DELETE_TOO_SOON);
-//        }
 
         character.markDeleted();
         relationship.deactivate();
@@ -258,14 +260,12 @@ public class CharacterService {
     // 회원 행에 비관적 락을 걸어 캐릭터 개수/메인 지정 동시성 문제를 막는다.
     private Member lockMember(Long memberId) {
         return memberRepository.findByIdForUpdate(memberId)
-                .orElseThrow(() -> new BaseException(
-                        com.example.umcCall.global.apiPayload.code.GeneralErrorCode.MEMBER_NOT_FOUND));
+                .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
     }
 
     private void validateMemberExists(Long memberId) {
         if (!memberRepository.existsById(memberId)) {
-            throw new BaseException(
-                    com.example.umcCall.global.apiPayload.code.GeneralErrorCode.MEMBER_NOT_FOUND);
+            throw new BaseException(MemberErrorCode.MEMBER_NOT_FOUND);
         }
     }
 

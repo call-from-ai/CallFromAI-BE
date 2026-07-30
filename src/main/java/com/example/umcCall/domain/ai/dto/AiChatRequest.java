@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.ai.dto;
 
+import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import java.util.List;
 
 /**
@@ -9,12 +10,19 @@ import java.util.List;
 public record AiChatRequest(
         String requestId,
         Long characterId,
+        AiConversationChannel channel,
         String message,
         AiCharacterSnapshot character,
         AiRelationshipSnapshot relationship,
         List<AiChatHistoryItem> history
 ) {
     public AiChatRequest {
-        history = history == null ? List.of() : List.copyOf(history);
+        if (channel == null) {
+            throw new IllegalArgumentException("channel is required");
+        }
+
+        history = history == null
+                ? List.of()
+                : List.copyOf(history);
     }
 }

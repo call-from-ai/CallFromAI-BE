@@ -31,9 +31,20 @@ public interface RelationshipRepository extends JpaRepository<Relationship, Long
 
     Optional<Relationship> findByMemberIdAndMainTrue(Long memberId);
     Optional<Relationship> findByMemberIdAndMainTrueAndCharacterDeletedAtIsNull(Long memberId);
+    Optional<Relationship> findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(
+            Long characterId, Long memberId);
 
     List<Relationship> findByMemberId(Long memberId);
     List<Relationship> findByMemberIdAndCharacterDeletedAtIsNull(Long memberId);
+
+    List<Relationship> findByCharacterDeletedAtIsNull();
+
+    @Query("""
+            select r from Relationship r
+            join fetch r.character c
+            where c.deletedAt is null
+            """)
+    List<Relationship> findAllWithCharacterByCharacterDeletedAtIsNull();
 
     int countByMemberId(Long memberId);
     int countByMemberIdAndCharacterDeletedAtIsNull(Long memberId);

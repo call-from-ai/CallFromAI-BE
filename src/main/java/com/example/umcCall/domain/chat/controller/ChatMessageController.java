@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -56,5 +57,17 @@ public class ChatMessageController {
         return ApiResponse.onSuccess(
                 GeneralSuccessCode.CREATED,
                 chatMessageService.sendMessage(memberId, chatRoomId, content, image));
+    }
+
+    /** 채팅 메시지 삭제(물리). 사진 메시지면 S3 객체까지 삭제된다. */
+    @Operation(summary = "채팅 메시지 삭제",
+            description = "메시지를 삭제한다. 유저/AI 메시지 모두 가능하며, 사진(또는 텍스트+사진) 메시지는 통째로 삭제된다.")
+    @DeleteMapping("/{messageId}")
+    public ApiResponse<Void> deleteMessage(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long chatRoomId,
+            @PathVariable Long messageId) {
+        chatMessageService.deleteMessage(memberId, chatRoomId, messageId);
+        return ApiResponse.onSuccess();
     }
 }

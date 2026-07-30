@@ -2,6 +2,7 @@ package com.example.umcCall.domain.chat.repository;
 
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.enums.SenderType;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -15,9 +16,16 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     void deleteByChatRoomId(Long chatRoomId);
 
+    /** 방에 속한 특정 메시지를 조회한다(개별 삭제 시 소유·소속 검증용). */
+    @Query("select m from ChatMessage m where m.id = :messageId and m.chatRoom.id = :roomId")
+    Optional<ChatMessage> findByIdAndChatRoomId(@Param("messageId") Long messageId, @Param("roomId") Long roomId);
+
     boolean existsByProactiveRequestId(String proactiveRequestId);
 
     Optional<ChatMessage> findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(Long chatRoomId);
+
+    Optional<ChatMessage> findTopByChatRoomIdAndDeletedFalseAndCreatedAtBeforeOrderByIdDesc(
+            Long chatRoomId, LocalDateTime before);
 
     Optional<ChatMessage> findTopByChatRoomIdAndSenderTypeAndDeletedFalseOrderByIdDesc(
             Long chatRoomId, SenderType senderType);
@@ -28,6 +36,30 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             order by m.id desc
             """)
     List<ChatMessage> findRecent(@Param("roomId") Long roomId, Pageable pageable);
+
+    @Query("""
+            select m from ChatMessage m
+            where m.chatRoom.id = :roomId
+              and m.deleted = false
+              and m.createdAt < :before
+            order by m.id desc
+            """)
+    List<ChatMessage> findRecentBefore(@Param("roomId") Long roomId,
+                                       @Param("before") LocalDateTime before,
+                                       Pageable pageable);
+
+    @Query("""
+            select m from ChatMessage m
+            where m.chatRoom.id = :roomId
+              and m.deleted = false
+              and m.id > :afterId
+              and m.createdAt < :before
+            order by m.id desc
+            """)
+    List<ChatMessage> findRecentAfterAndBefore(@Param("roomId") Long roomId,
+                                               @Param("afterId") Long afterId,
+                                               @Param("before") LocalDateTime before,
+                                               Pageable pageable);
 
     /**
      * 방별 안 읽음 수 일괄 집계

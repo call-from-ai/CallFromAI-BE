@@ -26,7 +26,7 @@ public record MemberResponse(
                 member.getId(),
                 member.getLastName(),
                 member.getFirstName(),
-                member.getProfilePhotoUrl(),
+                member.getImageUrl(),
                 member.getGender(),
                 member.getBirth(),
                 member.getMbti(),

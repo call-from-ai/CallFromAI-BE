@@ -35,5 +35,8 @@ bin/
 ### Env ###
 .env
 
+### FCM ###
+/src/main/resources/firebase/service-account.json
+
 ### CLAUDE ###
 CLAUDE.local.md
