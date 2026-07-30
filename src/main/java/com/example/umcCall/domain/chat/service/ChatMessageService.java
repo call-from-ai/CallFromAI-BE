@@ -180,6 +180,8 @@ public class ChatMessageService {
         chatMessageRepository.delete(message);
         chatSummaryRepository.deleteByRelationshipId(room.getRelationshipId());
 
+        chatSummaryRepository.deleteByRelationshipId(room.getRelationshipId());
+
         // 남은 최신 메시지 기준으로 마지막 메시지 시각 재계산(없으면 null).
         LocalDateTime lastMessageAt = chatMessageRepository
                 .findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(chatRoomId)

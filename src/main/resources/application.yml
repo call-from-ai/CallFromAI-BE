@@ -69,3 +69,7 @@ aws:
     region: ${AWS_REGION}
     access-key: ${AWS_ACCESS_KEY_ID}
     secret-key: ${AWS_SECRET_ACCESS_KEY}
+
+# FCM 서비스계정 키
+fcm:
+  credentials-path: firebase/service-account.json

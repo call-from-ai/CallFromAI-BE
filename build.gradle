@@ -18,6 +18,7 @@ ext {
 	grpcVersion = '1.68.1'
 	protobufVersion = '3.25.5'
 	awsSdkVersion = '2.28.29'
+	firebaseAdminVersion = '9.4.3'
 }
 
 configurations {
@@ -53,6 +54,9 @@ dependencies {
 	// AWS S3 (채팅 사진 업로드)
 	implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
 	implementation 'software.amazon.awssdk:s3'
+
+	// FCM (푸시 알림 — 채팅/통화 공용)
+	implementation "com.google.firebase:firebase-admin:${firebaseAdminVersion}"
 
 	// Security / JWT
 	implementation 'org.springframework.boot:spring-boot-starter-security'
