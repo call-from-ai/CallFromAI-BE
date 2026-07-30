@@ -25,6 +25,8 @@ public class ChatMessageNotifier {
 
     private static final String PHOTO_PREVIEW = "[사진]";
     private static final String FALLBACK_TITLE = "새 메시지";
+    // 푸시 본문 미리보기 최대 길이. 배너 표시엔 충분하고 FCM 페이로드 한도(약 4KB)보다 한참 아래로 둔다.
+    private static final int PREVIEW_MAX_LENGTH = 100;
 
     private final ChatSseService chatSseService;
     private final PushNotificationService pushNotificationService;
@@ -53,9 +55,14 @@ public class ChatMessageNotifier {
         return summary != null ? summary.characterFirstName() : FALLBACK_TITLE;
     }
 
-    /** 푸시 본문. 텍스트가 있으면 그대로, 사진뿐이면 "[사진]". */
+    /** 푸시 본문 미리보기. 사진뿐이면 "[사진]", 텍스트가 길면 잘라서(전송 실패·배너 낭비 방지) 말줄임표를 붙인다. */
     private String preview(ChatMessage message) {
         String content = message.getContent();
-        return (content != null && !content.isBlank()) ? content : PHOTO_PREVIEW;
+        if (content == null || content.isBlank()) {
+            return PHOTO_PREVIEW;
+        }
+        return content.length() > PREVIEW_MAX_LENGTH
+                ? content.substring(0, PREVIEW_MAX_LENGTH) + "…"
+                : content;
     }
 }

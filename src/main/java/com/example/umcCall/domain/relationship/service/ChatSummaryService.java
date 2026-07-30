@@ -11,6 +11,7 @@ import com.example.umcCall.domain.chat.exception.ChatErrorCode;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.domain.member.entity.Member;
+import com.example.umcCall.domain.member.exception.MemberErrorCode;
 import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.example.umcCall.domain.relationship.dto.response.ChatSummaryResponse;
@@ -71,7 +72,7 @@ public class ChatSummaryService {
         }
 
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new BaseException(GeneralErrorCode.MEMBER_NOT_FOUND));
+                .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
 
         List<ChatMessage> recent = new ArrayList<>(chatMessageRepository.findRecent(
                 room.getId(), PageRequest.of(0, MAX_MESSAGES)));
