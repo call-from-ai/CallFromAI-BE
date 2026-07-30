@@ -11,6 +11,7 @@ import com.example.umcCall.domain.chat.exception.ChatException;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
 import com.example.umcCall.domain.chat.repository.ChatPhotoRepository;
 import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
+import com.example.umcCall.domain.relationship.repository.ChatSummaryRepository;
 import com.example.umcCall.global.infra.s3.S3Uploader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -49,6 +50,7 @@ public class ChatMessageService {
     private final ChatPhotoRepository chatPhotoRepository;
     private final ChatPhotoCleaner chatPhotoCleaner;
     private final ChatMessageWriter chatMessageWriter;
+    private final ChatSummaryRepository chatSummaryRepository;
     private final S3Uploader s3Uploader;
 
     /**
@@ -176,6 +178,7 @@ public class ChatMessageService {
         // 사진(자식)을 먼저 정리: chat_photo 삭제 + 커밋 후 S3 삭제. 그래야 메시지 물리 삭제 시 FK가 안 걸린다.
         chatPhotoCleaner.purgeMessagePhoto(messageId);
         chatMessageRepository.delete(message);
+        chatSummaryRepository.deleteByRelationshipId(room.getRelationshipId());
 
         // 남은 최신 메시지 기준으로 마지막 메시지 시각 재계산(없으면 null).
         LocalDateTime lastMessageAt = chatMessageRepository

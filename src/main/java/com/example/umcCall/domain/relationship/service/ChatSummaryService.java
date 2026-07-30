@@ -91,8 +91,16 @@ public class ChatSummaryService {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
 
-        List<ChatMessage> recent = new ArrayList<>(chatMessageRepository.findRecentBefore(
-                room.getId(), todayStartedAt, PageRequest.of(0, MAX_MESSAGES)));
+        boolean canIncrement = cached != null
+                && Integer.valueOf(SUMMARY_CACHE_VERSION).equals(cached.getCacheVersion());
+        List<ChatMessage> recent = new ArrayList<>(canIncrement
+                ? chatMessageRepository.findRecentAfterAndBefore(
+                        room.getId(),
+                        cached.getLastMessageId(),
+                        todayStartedAt,
+                        PageRequest.of(0, MAX_MESSAGES))
+                : chatMessageRepository.findRecentBefore(
+                        room.getId(), todayStartedAt, PageRequest.of(0, MAX_MESSAGES)));
         Collections.reverse(recent);
 
         List<AiSummaryMessage> messages = recent.stream()
@@ -102,7 +110,7 @@ public class ChatSummaryService {
                         toRole(message.getSenderType()), message.getContent()))
                 .toList();
 
-        String previousSummary = cached == null ? null : cached.getSummary();
+        String previousSummary = canIncrement ? cached.getSummary() : null;
         String generated = aiServerClient.summarize(new AiSummaryRequest(
                 relationshipId,
                 resolveParticipantName(member.getFirstName(), member.getLastName(), "사용자"),

@@ -48,6 +48,19 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
                                        @Param("before") LocalDateTime before,
                                        Pageable pageable);
 
+    @Query("""
+            select m from ChatMessage m
+            where m.chatRoom.id = :roomId
+              and m.deleted = false
+              and m.id > :afterId
+              and m.createdAt < :before
+            order by m.id desc
+            """)
+    List<ChatMessage> findRecentAfterAndBefore(@Param("roomId") Long roomId,
+                                               @Param("afterId") Long afterId,
+                                               @Param("before") LocalDateTime before,
+                                               Pageable pageable);
+
     /**
      * 방별 안 읽음 수 일괄 집계
      * 기준: 수신 메시지 + 미읽음 + 미삭제 + 이 방의 message_visible_after_id 초과

@@ -148,7 +148,6 @@ class ChatSummaryServiceTest {
         when(lastMessage.getSenderType()).thenReturn(SenderType.USER);
         when(cached.getLastMessageId()).thenReturn(30L);
         when(cached.getCacheVersion()).thenReturn(null);
-        when(cached.getSummary()).thenReturn("예전 요약");
         when(member.getFirstName()).thenReturn("현경");
         when(character.getFirstName()).thenReturn("민준");
         when(relationshipRepository
@@ -188,7 +187,6 @@ class ChatSummaryServiceTest {
         when(lastMessage.getSenderType()).thenReturn(SenderType.USER);
         when(cached.getLastMessageId()).thenReturn(30L);
         when(cached.getCacheVersion()).thenReturn(null);
-        when(cached.getSummary()).thenReturn("예전 요약");
         when(member.getFirstName()).thenReturn(" ");
         when(member.getLastName()).thenReturn("김");
         when(character.getFirstName()).thenReturn(null);
