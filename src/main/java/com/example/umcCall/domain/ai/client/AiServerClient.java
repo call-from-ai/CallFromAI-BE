@@ -5,6 +5,8 @@ import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.dto.AiHealthResponse;
 import com.example.umcCall.domain.ai.dto.AiCharacterSnapshot;
 import com.example.umcCall.domain.ai.dto.AiProactiveRequest;
+import com.example.umcCall.domain.ai.dto.AiSummaryRequest;
+import com.example.umcCall.domain.ai.dto.AiSummaryResponse;
 import com.example.umcCall.domain.ai.exception.AiErrorCode;
 import com.example.umcCall.domain.ai.exception.AiServerException;
 import java.time.Duration;
@@ -104,6 +106,31 @@ public class AiServerClient {
                     })
                     .body(AiHealthResponse.class);
             if (response == null) {
+                throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
+            }
+            return response;
+        } catch (AiServerException exception) {
+            throw exception;
+        } catch (RestClientException exception) {
+            throw new AiServerException(AiErrorCode.AI_SERVER_UNAVAILABLE, exception);
+        }
+    }
+
+    public AiSummaryResponse summarize(AiSummaryRequest request) {
+        try {
+            AiSummaryResponse response = restClient.post()
+                    .uri("/internal/conversations/summary")
+                    .body(request)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        String responseBody = StreamUtils.copyToString(
+                                httpResponse.getBody(), StandardCharsets.UTF_8);
+                        log.error("AI 대화 요약 API 오류. status={}, body={}",
+                                httpResponse.getStatusCode(), responseBody);
+                        throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
+                    })
+                    .body(AiSummaryResponse.class);
+            if (response == null || response.summary() == null || response.summary().isBlank()) {
                 throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
             }
             return response;
