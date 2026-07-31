@@ -143,4 +143,6 @@ public interface CallRepository extends JpaRepository<Call, Long> {
             CallSender sender,
             Collection<CallStatus> statuses,
             LocalDateTime createdAt);
+
+    void deleteByRelationshipId(Long relationshipId);
 }
