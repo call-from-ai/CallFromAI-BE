@@ -15,7 +15,6 @@ import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketStore;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
-import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import java.util.List;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +33,6 @@ public class CallService {
 
     private final RelationshipRepository relationshipRepository;
     private final CallRepository callRepository;
-    private final RelationshipStatusRepository relationshipStatusRepository;
     private final WsTicketStore wsTicketStore;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -147,7 +145,6 @@ public class CallService {
             throw new CallException(CallErrorCode.CALL_NOT_IN_PROGRESS);
         }
         call.complete();
-        recordCompletedCall(call);
         eventPublisher.publishEvent(new CallEndedEvent(callId, CallEndReason.USER_ENDED, call.getCallTime()));
 
         return CallEndResponse.of(call);
@@ -219,7 +216,6 @@ public class CallService {
             return;
         }
         call.complete();
-        recordCompletedCall(call);
         eventPublisher.publishEvent(new CallEndedEvent(callId, CallEndReason.TIMEOUT, call.getCallTime()));
     }
 
@@ -242,19 +238,10 @@ public class CallService {
         Call call = callRepository.findByIdForUpdate(callId)
                 .orElseThrow(() -> new CallException(CallErrorCode.CALL_NOT_FOUND));
         switch (call.getStatus()) {
-            case IN_PROGRESS -> {
-                call.complete();
-                recordCompletedCall(call);
-            }
+            case IN_PROGRESS -> call.complete();
             case DIALING, PENDING -> call.cancel();
             default -> { /* 이미 종료 상태 등 — 전이 없음 */ }
         }
     }
 
-    private void recordCompletedCall(Call call) {
-        relationshipStatusRepository.findByRelationshipId(call.getRelationship().getId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "관계 통계를 찾을 수 없습니다. relationshipId=" + call.getRelationship().getId()))
-                .recordCompletedCall(call.getEndedAt());
-    }
 }

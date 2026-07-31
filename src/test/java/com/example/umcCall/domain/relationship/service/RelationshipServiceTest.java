@@ -14,9 +14,7 @@ import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.enums.SocialType;
 import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.domain.relationship.entity.Relationship;
-import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
-import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import com.example.umcCall.domain.proactive.service.ProactiveScheduleCoordinator;
 import java.util.Optional;
 import java.util.List;
@@ -33,9 +31,6 @@ class RelationshipServiceTest {
 
     @Mock
     private RelationshipRepository relationshipRepository;
-
-    @Mock
-    private RelationshipStatusRepository relationshipStatusRepository;
 
     @Mock
     private CallRepository callRepository;
@@ -67,16 +62,11 @@ class RelationshipServiceTest {
                 .main(true)
                 .build();
         ReflectionTestUtils.setField(relationship, "id", 20L);
-        RelationshipStatus status = RelationshipStatus.builder()
-                .relationship(relationship)
-                .build();
         Member member = Member.createBySocialLogin("social-id", SocialType.KAKAO);
         member.updateProfile(null, "사용자닉네임", null, null, null, null, null);
 
         when(relationshipRepository.findByMemberIdAndMainTrueAndCharacterDeletedAtIsNull(memberId))
                 .thenReturn(Optional.of(relationship));
-        when(relationshipStatusRepository.findByRelationshipId(20L))
-                .thenReturn(Optional.of(status));
         when(memberRepository.findById(memberId))
                 .thenReturn(Optional.of(member));
         when(callRepository.findCompletedCallTimes(20L)).thenReturn(List.of());
@@ -105,14 +95,12 @@ class RelationshipServiceTest {
                 .main(true)
                 .build();
         ReflectionTestUtils.setField(relationship, "id", 20L);
-        RelationshipStatus status = RelationshipStatus.builder().relationship(relationship).build();
         Member member = Member.createBySocialLogin("social-id", SocialType.KAKAO);
         member.updateProfile(null, "사용자닉네임", null, null, null, null, null);
         LocalDateTime now = LocalDateTime.now();
 
         when(relationshipRepository.findByMemberIdAndMainTrueAndCharacterDeletedAtIsNull(memberId))
                 .thenReturn(Optional.of(relationship));
-        when(relationshipStatusRepository.findByRelationshipId(20L)).thenReturn(Optional.of(status));
         when(memberRepository.findById(memberId)).thenReturn(Optional.of(member));
         when(callRepository.findCompletedCallTimes(20L)).thenReturn(List.of(
                 now, now.minusHours(1), now.minusDays(1), now.minusDays(2)));

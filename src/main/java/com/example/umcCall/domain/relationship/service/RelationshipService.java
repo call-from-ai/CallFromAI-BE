@@ -11,10 +11,8 @@ import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.domain.relationship.dto.response.ContactPreferenceResponse;
 import com.example.umcCall.domain.relationship.dto.response.CurrentRelationshipResponse;
 import com.example.umcCall.domain.relationship.entity.Relationship;
-import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.exception.RelationshipErrorCode;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
-import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import com.example.umcCall.global.exception.BaseException;
 import com.example.umcCall.domain.proactive.service.ProactiveScheduleCoordinator;
 import java.time.LocalDate;
@@ -31,7 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class RelationshipService {
 
     private final RelationshipRepository relationshipRepository;
-    private final RelationshipStatusRepository relationshipStatusRepository;
     private final CallRepository callRepository;
     private final MemberRepository memberRepository;
     private final CharacterSyncTaskService characterSyncTaskService;
@@ -39,8 +36,6 @@ public class RelationshipService {
 
     public CurrentRelationshipResponse getCurrentRelationship(Long memberId) {
         Relationship relationship = getCurrent(memberId);
-        RelationshipStatus status = relationshipStatusRepository.findByRelationshipId(relationship.getId())
-                .orElseThrow(() -> new BaseException(RelationshipErrorCode.RELATIONSHIP_STATUS_NOT_FOUND));
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
         Character character = relationship.getCharacter();

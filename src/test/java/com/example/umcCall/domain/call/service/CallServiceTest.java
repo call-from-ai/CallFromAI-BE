@@ -26,9 +26,7 @@ import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketStore;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.relationship.entity.Relationship;
-import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
-import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -54,7 +52,6 @@ class CallServiceTest {
 
     @Mock private RelationshipRepository relationshipRepository;
     @Mock private CallRepository callRepository;
-    @Mock private RelationshipStatusRepository relationshipStatusRepository;
     @Mock private WsTicketStore wsTicketStore;
     @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -100,16 +97,12 @@ class CallServiceTest {
         Call call = Call.builder().relationship(relationship).sender(CallSender.USER).build();
         call.connect(); // IN_PROGRESS
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
-        RelationshipStatus status = RelationshipStatus.builder().relationship(relationship).build();
-        when(relationshipStatusRepository.findByRelationshipId(RELATIONSHIP_ID)).thenReturn(Optional.of(status));
 
         callService.finish(CALL_ID);
 
         assertThat(call.getStatus()).isEqualTo(CallStatus.COMPLETED);
         assertThat(call.getEndedAt()).isNotNull();
         assertThat(call.getCallTime()).isNotNull().isGreaterThanOrEqualTo(0);
-        assertThat(status.getTotalCallCount()).isEqualTo(1);
-        assertThat(status.getCallStreakDays()).isEqualTo(1);
     }
 
     @Test
@@ -141,8 +134,6 @@ class CallServiceTest {
         Call call = Call.builder().relationship(relationship).sender(CallSender.USER).build();
         call.connect(); // IN_PROGRESS
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
-        when(relationshipStatusRepository.findByRelationshipId(RELATIONSHIP_ID))
-                .thenReturn(Optional.of(RelationshipStatus.builder().relationship(relationship).build()));
 
         callService.closeOverrunCall(CALL_ID);
 
@@ -392,8 +383,6 @@ class CallServiceTest {
         call.accept();
         call.connect(); // IN_PROGRESS
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
-        when(relationshipStatusRepository.findByRelationshipId(RELATIONSHIP_ID))
-                .thenReturn(Optional.of(RelationshipStatus.builder().relationship(relationship).build()));
 
         CallEndResponse response = callService.end(MEMBER_ID, CALL_ID);
 
@@ -410,8 +399,6 @@ class CallServiceTest {
         call.accept();
         call.connect();
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
-        when(relationshipStatusRepository.findByRelationshipId(RELATIONSHIP_ID))
-                .thenReturn(Optional.of(RelationshipStatus.builder().relationship(relationship).build()));
 
         callService.end(MEMBER_ID, CALL_ID);
 

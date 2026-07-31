@@ -11,7 +11,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import java.time.LocalDateTime;
-import java.time.LocalDate;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -53,19 +52,4 @@ public class RelationshipStatus extends BaseTimeEntity {
         this.callStreakDays = 0;
     }
 
-    /** 완료된 통화를 누적하고, 통화가 이어진 날짜 수를 갱신한다. */
-    public void recordCompletedCall(LocalDateTime completedAt) {
-        LocalDate completedDate = completedAt.toLocalDate();
-        LocalDate lastCallDate = lastCallAt == null ? null : lastCallAt.toLocalDate();
-
-        totalCallCount++;
-        if (lastCallDate == null) {
-            callStreakDays = 1;
-        } else if (completedDate.isEqual(lastCallDate.plusDays(1))) {
-            callStreakDays++;
-        } else if (!completedDate.isEqual(lastCallDate)) {
-            callStreakDays = 1;
-        }
-        lastCallAt = completedAt;
-    }
 }
