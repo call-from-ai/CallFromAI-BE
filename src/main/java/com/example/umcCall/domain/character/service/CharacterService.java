@@ -256,6 +256,19 @@ public class CharacterService {
         syncTaskService.enqueue(characterId, CharacterSyncOperation.DELETE);
     }
 
+    // 회원 탈퇴 시 캐릭터 삭제 (제약 무시)
+    @Transactional
+    public void deleteAllCharactersForWithdraw(Long memberId) {
+        List<Relationship> relationships = relationshipRepository.findByMemberId(memberId);
+        for (Relationship relationship : relationships) {
+            Character character = relationship.getCharacter();
+            character.markDeleted();
+            relationship.deactivate();
+            chatRoomService.archiveRoom(relationship.getId());
+            syncTaskService.enqueue(character.getId(), CharacterSyncOperation.DELETE);
+        }
+    }
+    
 
     // 회원 행에 비관적 락을 걸어 캐릭터 개수/메인 지정 동시성 문제를 막는다.
     private Member lockMember(Long memberId) {
