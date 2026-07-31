@@ -4,6 +4,9 @@ import com.example.umcCall.domain.ai.enums.CharacterSyncOperation;
 import com.example.umcCall.domain.ai.service.CharacterSyncTaskService;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.character.enums.PreferTime;
+import com.example.umcCall.domain.member.entity.Member;
+import com.example.umcCall.domain.member.exception.MemberErrorCode;
+import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.domain.relationship.dto.response.ContactPreferenceResponse;
 import com.example.umcCall.domain.relationship.dto.response.CurrentRelationshipResponse;
 import com.example.umcCall.domain.relationship.entity.Relationship;
@@ -26,6 +29,7 @@ public class RelationshipService {
 
     private final RelationshipRepository relationshipRepository;
     private final RelationshipStatusRepository relationshipStatusRepository;
+    private final MemberRepository memberRepository;
     private final CharacterSyncTaskService characterSyncTaskService;
     private final ProactiveScheduleCoordinator proactiveScheduleCoordinator;
 
@@ -33,11 +37,13 @@ public class RelationshipService {
         Relationship relationship = getCurrent(memberId);
         RelationshipStatus status = relationshipStatusRepository.findByRelationshipId(relationship.getId())
                 .orElseThrow(() -> new BaseException(RelationshipErrorCode.RELATIONSHIP_STATUS_NOT_FOUND));
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
         Character character = relationship.getCharacter();
 
         long relationshipDays = ChronoUnit.DAYS.between(relationship.getStartedAt(), LocalDate.now()) + 1;
         return new CurrentRelationshipResponse(
-                character.getFirstName(),
+                member.getFirstName(),
                 relationshipDays,
                 status.getTotalCallCount(),
                 status.getCallStreakDays(),

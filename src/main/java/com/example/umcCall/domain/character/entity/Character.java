@@ -1,5 +1,5 @@
 package com.example.umcCall.domain.character.entity;
-
+`
 import com.example.umcCall.domain.image.enums.Gender;
 import com.example.umcCall.domain.character.enums.Job;
 import com.example.umcCall.domain.character.enums.PreferTime;
