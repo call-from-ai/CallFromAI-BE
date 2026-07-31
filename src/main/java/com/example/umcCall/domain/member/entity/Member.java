@@ -111,9 +111,16 @@ public class Member extends BaseTimeEntity {
         if (job != null) this.job = job;
     }
 
-    public void deactivate() {
-        this.isInactive = true;
-    }
+public void deactivate() {
+    this.isInactive = true;
+    this.lastName = null;
+    this.firstName = null;
+    this.profilePhotoUrl = null;
+    this.gender = null;
+    this.birth = null;
+    this.mbti = null;
+    this.job = null;
+}
 
     public void markCharacterCreated() {
         this.characterCreatedAt = LocalDateTime.now();
