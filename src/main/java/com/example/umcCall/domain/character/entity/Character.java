@@ -76,7 +76,7 @@ public class Character extends BaseTimeEntity {
         this.imageUrl = imageUrl;
     }
 
-    public String getName() {
+    public String getFullName() {
         return lastName + firstName;
     }
 

@@ -32,6 +32,7 @@ public class NotificationService {
     private final RelationshipRepository relationshipRepository;
 
     // 조회
+    @Transactional(readOnly = true)
     public List<NotificationResponse> getNotifications(Long memberId) {
         LocalDateTime after = LocalDateTime.now().minusDays(VISIBLE_DAYS);
         return notificationRepository.findByMemberIdAndOccurredAtAfterOrderByOccurredAtDesc(memberId, after)
