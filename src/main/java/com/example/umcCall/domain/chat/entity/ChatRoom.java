@@ -19,8 +19,7 @@ import lombok.NoArgsConstructor;
 /**
  * 채팅방. 방 생성 자체는 캐릭터 생성(용환님 도메인)에서 수행하고,
  * 채팅 도메인은 이미 만들어진 방을 받아 조회/전송/상태관리를 담당한다.
- * 외부 도메인(member, relationship)으로 나가는 FK는 지금은 Long 값으로만 보유한다.
- * 상대 엔티티가 만들어지면 이 파일만 수정해 @ManyToOne으로 승격한다.
+ * 외부 도메인(member, relationship)은 도메인 경계상 엔티티 대신 Long id로만 참조한다
  */
 @Entity
 @Getter
@@ -57,11 +56,11 @@ public class ChatRoom extends BaseTimeEntity {
     @Column(name = "last_message_at")
     private LocalDateTime lastMessageAt;
 
-    /** 사용자 FK. Member 엔티티 확정 시 @ManyToOne으로 승격 예정. */
+    /** 회원 id. 도메인 경계상 Member 엔티티 대신 id로만 참조한다 */
     @Column(name = "member_id", nullable = false)
     private Long memberId;
 
-    /** 관계 FK. MANAGER 방은 null. Relationship 엔티티 확정 시 @ManyToOne으로 승격 예정. */
+    /** 관계 id. MANAGER 방은 null.*/
     @Column(name = "relationship_id")
     private Long relationshipId;
 
