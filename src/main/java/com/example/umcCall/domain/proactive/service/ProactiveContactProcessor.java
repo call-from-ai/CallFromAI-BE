@@ -91,7 +91,7 @@ public class ProactiveContactProcessor {
         if (schedule.isAwaitingUserResponse() && room != null
                 && schedule.getLastProactiveContactAt() != null) {
             boolean userResponded = messageRepository
-                    .findTopByChatRoomIdAndSenderTypeAndDeletedFalseOrderByIdDesc(room.getId(), SenderType.USER)
+                    .findTopByChatRoomIdAndSenderTypeOrderByIdDesc(room.getId(), SenderType.USER)
                     .map(message -> message.getCreatedAt().isAfter(schedule.getLastProactiveContactAt()))
                     .orElse(false);
             if (userResponded) {
@@ -220,7 +220,6 @@ public class ProactiveContactProcessor {
                     .content(reply)
                     .messageType(MessageType.TEXT)
                     .read(false)
-                    .deleted(false)
                     .chatRoom(room)
                     .proactiveRequestId(claim.requestId())
                     .build());

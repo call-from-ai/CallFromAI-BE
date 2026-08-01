@@ -59,7 +59,7 @@ public class ChatSummaryService {
 
         LocalDateTime todayStartedAt = LocalDate.now().atStartOfDay();
         ChatMessage lastMessage = chatMessageRepository
-                .findTopByChatRoomIdAndDeletedFalseAndCreatedAtBeforeOrderByIdDesc(
+                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
                         room.getId(), todayStartedAt)
                 .orElse(null);
         if (lastMessage == null) {
