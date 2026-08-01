@@ -115,7 +115,7 @@ public void deactivate() {
     this.isInactive = true;
     this.lastName = null;
     this.firstName = null;
-    this.profilePhotoUrl = null;
+    this.imageUrl = null;
     this.gender = null;
     this.birth = null;
     this.mbti = null;

@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.member.service;
 
 import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
+import com.example.umcCall.domain.character.service.CharacterService;
 import com.example.umcCall.domain.member.dto.request.DoNotDisturbUpdateRequest;
 import com.example.umcCall.domain.member.dto.request.NotificationSettingUpdateRequest;
 import com.example.umcCall.domain.member.dto.response.MemberResponse;

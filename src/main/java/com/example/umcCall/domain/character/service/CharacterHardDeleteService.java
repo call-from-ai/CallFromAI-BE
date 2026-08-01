@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.character.service;
 
+import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
 import com.example.umcCall.domain.character.repository.CharacterRepository;
 import com.example.umcCall.domain.character.repository.CharacterTraitRepository;
@@ -27,7 +28,7 @@ public class CharacterHardDeleteService {
     private final ChatSummaryRepository chatSummaryRepository;
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
-    private final CallRepository callRepository; 
+    private final CallRepository callRepository;
     private final ChatPhotoCleaner chatPhotoCleaner;
     private final ProactiveContactScheduleRepository proactiveContactScheduleRepository;
 

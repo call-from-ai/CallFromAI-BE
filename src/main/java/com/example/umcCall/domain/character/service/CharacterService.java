@@ -265,8 +265,10 @@ public class CharacterService {
         List<Relationship> relationships = relationshipRepository.findByMemberId(memberId);
         for (Relationship relationship : relationships) {
             Character character = relationship.getCharacter();
+
             character.markDeleted();
             relationship.deactivate();
+            proactiveScheduleCoordinator.delete(relationship);
             chatRoomService.archiveRoom(relationship.getId());
             syncTaskService.enqueue(character.getId(), CharacterSyncOperation.DELETE);
         }
