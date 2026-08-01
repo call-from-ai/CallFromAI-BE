@@ -143,4 +143,14 @@ public interface CallRepository extends JpaRepository<Call, Long> {
             CallSender sender,
             Collection<CallStatus> statuses,
             LocalDateTime createdAt);
+
+    /** 관계 요약 통계의 원본 데이터. 완료 시각 최신순으로 반환한다. */
+    @Query("""
+            select c.endedAt from Call c
+            where c.relationship.id = :relationshipId
+              and c.status = com.example.umcCall.domain.call.enums.CallStatus.COMPLETED
+              and c.endedAt is not null
+            order by c.endedAt desc
+            """)
+    List<LocalDateTime> findCompletedCallTimes(@Param("relationshipId") Long relationshipId);
 }

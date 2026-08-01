@@ -243,4 +243,5 @@ public class CallService {
             default -> { /* 이미 종료 상태 등 — 전이 없음 */ }
         }
     }
+
 }
