@@ -34,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -50,8 +51,8 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
  * 다운스트림은 STT final을 AI(chat)로 넘겨 응답 대사를 TTS로 합성해 wav를 그대로 내려보낸다.
  * <p>제어 신호는 텍스트(JSON) 프레임이고 봉투는 {@code {"type":..., "data":{...}}} 하나로 통일한다
  * ({@link MessageType} 참고 — 이름을 바꾸면 클라이언트가 깨진다).
- * <p>AI로 넘어가는 건 <b>final뿐</b>이다. partial은 <b>클라이언트로도 보내지 않고</b> 서버 로그로만 남긴다
- * (실시간 자막을 붙일 때 다운스트림을 배선한다).
+ * <p>AI로 넘어가는 건 <b>final뿐</b>이다. partial은 <b>클라이언트로 보내지 않고</b>, 서버에서 로그와
+ * <b>끼어들기 트리거</b>({@link #cancelSpeakingTurn})로만 쓴다 — 실시간 자막을 붙일 때 다운스트림을 배선한다.
  */
 @Slf4j
 @Component
@@ -140,7 +141,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 우선하기 때문이다 — 시딩해봐야 무시되고, 이어받기 깊이는 이제 AI 서버가 정한다.
             List<AiChatHistoryItem> history = new ArrayList<>();
             ExecutorService worker = Executors.newSingleThreadExecutor();
-            activeCalls.put(sessionId, new ActiveCall(session, stream, worker, ticket, history));
+            activeCalls.put(sessionId, new ActiveCall(session, stream, worker, ticket, history, new TurnGate()));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
@@ -225,8 +226,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
         WsTicket ticket = call.ticket();
         List<AiChatHistoryItem> history = call.history();
+        TurnGate turnGate = call.turnGate();
         try {
             call.worker().execute(() -> {
+                // 끼어들기 판정 기준. 워커(단일 스레드)만 턴을 열므로 여기서 번호를 잡는다.
+                long turn = turnGate.begin();
                 try {
                     // 이벤트 로그 방식: 발화가 '실제로 일어난 순간'에 독립적으로 append한다(user/ai 짝 아님).
                     // 워커 단일 스레드가 유일한 writer라 로그 접근은 스레드 confine(동기화 불필요).
@@ -248,7 +252,22 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                         return;
                     }
 
+                    // 끼어들기 확인 ①: LLM 대기(턴당 3~5초로 가장 긴 구간) 사이에 사용자가 말을 시작했다면
+                    // 합성 자체를 건너뛴다 — 어차피 못 내보낼 대사라 TTS 호출·비용이 통째로 낭비다.
+                    if (turnGate.isCanceled(turn)) {
+                        log.info("[Call] 끼어들기 — 합성 전 폐기. session={}, turn={}", sessionId, turn);
+                        return;
+                    }
+
                     byte[] wav = clovaVoiceClient.synthesize(reply, AI_SPEAKER);
+
+                    // 끼어들기 확인 ②: 합성 중에 말을 시작한 경우. 여기서 막아야 "사용자가 말하는데 AI가
+                    // 뒤늦게 떠드는" 상황이 안 생긴다. 아직 전송 전이라 사용자에겐 애초에 들리지 않는다.
+                    if (turnGate.isCanceled(turn)) {
+                        log.info("[Call] 끼어들기 — 송신 전 폐기. session={}, turn={}", sessionId, turn);
+                        return;
+                    }
+
                     // TTS 송신 성공 시에만 AI 발화를 남긴다.
                     if (sendAudio(session, wav)) {
                         history.add(new AiChatHistoryItem("assistant", reply, LocalDateTime.now()));
@@ -262,6 +281,20 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         } catch (RejectedExecutionException e) {
             // 통화 종료와 겹쳐 워커가 이미 내려간 경우. 정상 경로다.
             log.debug("[Call] 워커 종료됨 → 발화를 버림. session={}", sessionId);
+        }
+    }
+
+    /**
+     * 사용자가 말을 시작했다(STT partial) → 진행 중인 AI 턴을 취소로 표시한다 = <b>끼어들기</b>.
+     * <p>⚠ 이 메서드는 전 통화가 공유하는 gRPC 콜백 스레드에서 불린다 — 원자 변수 세팅만 하고 즉시 반환한다.
+     * <p>⚠ 막을 수 있는 건 <b>아직 전송 전</b>인 대사뿐이다(LLM 대기 + TTS 합성 = 턴당 5~8초 중 대부분).
+     * 이미 내려보낸 wav는 회수할 수 없다 — 클라이언트가 재생을 멈추게 하려면 제어 메시지가 필요하고,
+     * 그건 별도 단계다(FE 작업이 따라온다). 세션이 없으면 정리 중이라 no-op.
+     */
+    private void cancelSpeakingTurn(String sessionId) {
+        ActiveCall call = activeCalls.get(sessionId);
+        if (call != null) {
+            call.turnGate().cancelCurrent();
         }
     }
 
@@ -497,9 +530,45 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * @param worker  통화당 단일 스레드 — 제출 순서 = 실행 순서(AI 응답 순서 보장).
      * @param ticket  핸드셰이크에서 검증된 신원(callId/relationshipId/characterId). AI 배선·전사 저장의 기준.
      * @param history 세션 스코프 대화 이력. <b>워커 스레드만</b> 읽고 쓴다(스레드 confine → 동기화 불필요).
+     * @param turnGate 끼어들기 판정. history와 달리 <b>두 스레드가 만진다</b>(워커가 열고, gRPC 콜백이 취소).
      */
     private record ActiveCall(WebSocketSession session, SttStream stream, ExecutorService worker,
-                              WsTicket ticket, List<AiChatHistoryItem> history) {
+                              WsTicket ticket, List<AiChatHistoryItem> history, TurnGate turnGate) {
+    }
+
+    /**
+     * 통화 한 건의 <b>턴 취소 게이트</b>(끼어들기). 워커가 AI 턴을 시작할 때 번호를 받아두고, 사용자가 말을
+     * 시작하면 gRPC 콜백이 "지금 턴까지 취소"로 표시한다. 워커는 자기 턴이 취소됐는지만 확인하면 된다.
+     *
+     * <p><b>왜 플래그 하나가 아니라 번호인가</b>: 취소 표시가 다음 턴까지 살아 있으면 사용자가 끼어들어 만든
+     * <b>바로 그 다음 턴</b>이 시작하자마자 취소된다(끼어든 발화에 AI가 영영 답하지 못한다). 턴 번호로 비교하면
+     * 취소는 그 시점에 열려 있던 턴에만 적용된다.
+     */
+    private static final class TurnGate {
+
+        private final AtomicLong current = new AtomicLong();
+        private final AtomicLong canceled = new AtomicLong();
+
+        /** 새 턴을 열고 그 번호를 준다. 워커(통화당 단일 스레드)만 호출한다. */
+        long begin() {
+            return current.incrementAndGet();
+        }
+
+        /**
+         * 지금 열려 있는 턴을 취소로 표시한다. gRPC 콜백이 호출 — 블로킹 없이 값만 쓴다.
+         * <p>진행 중인 턴이 없어도 무해하다(직전 턴 번호를 찍을 뿐, 다음 턴은 번호가 더 커서 안 걸린다).
+         */
+        void cancelCurrent() {
+            canceled.set(current.get());
+        }
+
+        /**
+         * ⚠ 드물게 {@link #begin}과 겹치면 직전 턴 번호가 찍혀 이번 턴이 안 끊길 수 있다. partial은 말하는
+         * 동안 계속 도착하므로 바로 다음 프레임이 취소한다 — 재시도 로직을 넣을 이유가 없다.
+         */
+        boolean isCanceled(long turn) {
+            return canceled.get() >= turn;
+        }
     }
 
     /**
@@ -538,7 +607,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    /** CLOVA 인식 결과 콜백. partial/final을 구분해 로그. 에러 시 WebSocket을 닫는다. */
+    /** CLOVA 인식 결과 콜백. final은 AI 턴을 열고, partial은 끼어들기를 건다. 에러 시 WebSocket을 닫는다. */
     private final class ClovaResponseObserver implements StreamObserver<NestResponse> {
 
         private final WebSocketSession session;
@@ -563,6 +632,9 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                 // ⚠ 이 콜백은 즉시 반환해야 한다(스레드가 전 통화 공유). submitChat이 워커로 넘긴다.
                 if (result.isFinal()) {
                     submitChat(session, result.text());
+                } else {
+                    // partial = 사용자가 지금 말하는 중 → 진행 중인 AI 턴을 끊는다(끼어들기).
+                    cancelSpeakingTurn(sessionId);
                 }
             } catch (Exception e) {
                 log.warn("[Clova] 응답 파싱 실패. session={}, contents={}", sessionId, contents, e); // 원문 폴백

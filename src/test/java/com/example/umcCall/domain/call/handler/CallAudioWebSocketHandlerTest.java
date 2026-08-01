@@ -3,12 +3,15 @@ package com.example.umcCall.domain.call.handler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -16,8 +19,10 @@ import static org.mockito.Mockito.when;
 
 import com.example.umcCall.domain.call.client.ClovaSpeechClient;
 import com.example.umcCall.domain.call.client.ClovaSpeechProperties;
+import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.enums.CallEndReason;
+import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
@@ -26,10 +31,13 @@ import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
 import io.grpc.stub.StreamObserver;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -243,5 +251,92 @@ class CallAudioWebSocketHandlerTest {
         handler.handleBinaryMessage(session, new BinaryMessage(new byte[] {1, 2, 3}));
 
         verify(clovaSpeechClient, never()).openRecognizeStream(any());
+    }
+
+    // --- 끼어들기(barge-in) — 아직 전송 전인 AI 대사를 폐기하는 서버 측 취소 -------------------
+
+    /** 핸들러가 CLOVA에 넘긴 인식 결과 콜백. 이걸로 partial/final 도착을 재현한다. */
+    @SuppressWarnings("unchecked")
+    private StreamObserver<NestResponse> captureSttObserver() {
+        ArgumentCaptor<StreamObserver<NestResponse>> captor =
+                ArgumentCaptor.forClass(StreamObserver.class);
+        verify(clovaSpeechClient).openRecognizeStream(captor.capture());
+        return captor.getValue();
+    }
+
+    private static NestResponse sttResult(String text, String epdType) {
+        return NestResponse.newBuilder()
+                .setContents("{\"responseType\":[\"transcription\"],\"transcription\":{\"text\":\""
+                        + text + "\",\"epdType\":\"" + epdType + "\"}}")
+                .build();
+    }
+
+    /** 턴 끝(침묵) = final. AI 턴을 연다. */
+    private static NestResponse finalResult(String text) {
+        return sttResult(text, "gap");
+    }
+
+    /** 발화 중간 = partial. "사용자가 지금 말하는 중" 신호이자 끼어들기 트리거다. */
+    private static NestResponse partialResult(String text) {
+        return sttResult(text, "durationThreshold");
+    }
+
+    @Test
+    void 끼어들면_아직_전송_전인_AI_대사는_폐기된다() throws Exception {
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        CountDownLatch llmReturned = new CountDownLatch(1);
+
+        // 턴당 5~8초 중 가장 긴 구간(LLM 대기 3~5초)에 사용자가 말을 시작한 상황.
+        when(callConversationService.respond(any(), any(), any())).thenAnswer(invocation -> {
+            stt.onNext(partialResult("아니 잠깐만"));
+            llmReturned.countDown();
+            return new AiChatResponse("AI가 하려던 말", null, null, null, null);
+        });
+
+        stt.onNext(finalResult("안녕"));
+
+        assertThat(llmReturned.await(2, TimeUnit.SECONDS)).isTrue();
+        // 합성 자체를 건너뛴다 — 어차피 못 내보낼 대사라 TTS 호출·비용이 통째로 낭비다.
+        verify(clovaVoiceClient, after(300).never()).synthesize(any(), any());
+        verify(session, never()).sendMessage(any(BinaryMessage.class));
+        // 안 들린 대사는 이력·전사에 남기지 않는다(사용자 발화만 남는다).
+        verify(callHistoryService, never()).appendHistory(any(), eq(CallSpeaker.AI), any());
+    }
+
+    @Test
+    void 끼어들지_않으면_AI_대사가_그대로_나간다() throws Exception {
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        when(callConversationService.respond(any(), any(), any()))
+                .thenReturn(new AiChatResponse("정상 대사", null, null, null, null));
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1, 2, 3});
+
+        stt.onNext(finalResult("안녕"));
+
+        // 대조군: 취소 게이트가 정상 턴을 잡아먹지 않는지 본다.
+        verify(session, timeout(2000)).sendMessage(any(BinaryMessage.class));
+        verify(callHistoryService, timeout(2000)).appendHistory(CALL_ID, CallSpeaker.AI, "정상 대사");
+    }
+
+    @Test
+    void 끼어들어_만들어진_다음_턴은_취소되지_않는다() {
+        // ⚠ 취소를 boolean 플래그 하나로 두면 이 테스트가 깨진다 — 끼어든 발화가 만든 바로 그 다음 턴이
+        // 시작하자마자 취소돼 AI가 영영 답하지 못한다. 턴 번호로 비교하는 이유가 이것이다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        when(callConversationService.respond(any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    stt.onNext(partialResult("아니"));   // 턴1 도중 끼어듦
+                    return new AiChatResponse("첫째 대사", null, null, null, null);
+                })
+                .thenReturn(new AiChatResponse("둘째 대사", null, null, null, null));
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("안녕"));         // 턴1 — 끼어들기로 폐기된다
+        stt.onNext(finalResult("아니 잠깐만"));   // 턴2 — 끼어든 발화 자체가 만든 턴
+
+        verify(clovaVoiceClient, timeout(2000)).synthesize(eq("둘째 대사"), any());
+        verify(clovaVoiceClient, never()).synthesize(eq("첫째 대사"), any());
     }
 }
