@@ -19,7 +19,6 @@ import com.example.umcCall.domain.call.client.ClovaSpeechProperties;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.enums.CallEndReason;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
-import com.example.umcCall.domain.call.port.ChatHistoryProvider;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
@@ -59,7 +58,6 @@ class CallAudioWebSocketHandlerTest {
     @Mock private CallConversationService callConversationService;
     @Mock private CallService callService;
     @Mock private CallHistoryService callHistoryService;
-    @Mock private ChatHistoryProvider chatHistoryProvider;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private CallAudioWebSocketHandler handler;
@@ -68,7 +66,7 @@ class CallAudioWebSocketHandlerTest {
     void setUp() {
         handler = new CallAudioWebSocketHandler(
                 clovaSpeechClient, clovaVoiceClient, callConversationService, callService,
-                callHistoryService, chatHistoryProvider,
+                callHistoryService,
                 new ClovaSpeechProperties("clovaspeech-gw.ncloud.com", 50051, "secret", 700),
                 objectMapper);
     }
@@ -118,8 +116,6 @@ class CallAudioWebSocketHandlerTest {
     private WebSocketSession givenConnectedCall() {
         WebSocketSession session = openSession();
         givenSttStreamOpens();
-        lenient().when(chatHistoryProvider.recentHistory(any(Long.class), any(Integer.class)))
-                .thenReturn(List.of());
         handler.afterConnectionEstablished(session);
         return session;
     }
@@ -128,8 +124,6 @@ class CallAudioWebSocketHandlerTest {
     void 연결이_준비되면_CALL_READY를_보낸다() throws Exception {
         WebSocketSession session = openSession();
         givenSttStreamOpens();
-        lenient().when(chatHistoryProvider.recentHistory(any(Long.class), any(Integer.class)))
-                .thenReturn(List.of());
 
         handler.afterConnectionEstablished(session);
 

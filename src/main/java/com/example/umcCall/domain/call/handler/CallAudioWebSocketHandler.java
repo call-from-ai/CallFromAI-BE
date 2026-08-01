@@ -7,7 +7,6 @@ import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
-import com.example.umcCall.domain.call.port.ChatHistoryProvider;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
@@ -61,15 +60,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /** AI 응답 화자. 캐릭터별 음성 매핑은 후순위 — 지금은 고정값(캐릭터 음성이 들어올 자리다). */
     private static final String AI_SPEAKER = "nara";
 
-    /** 통화 시작 시 채팅 최근 대화로 LLM 맥락을 시딩하기 위해 가져올 개수(채팅 HISTORY_SIZE와 동일). */
-    private static final int SEED_HISTORY_SIZE = 20;
-
     private final ClovaSpeechClient clovaSpeechClient;
     private final ClovaVoiceClient clovaVoiceClient;
     private final CallConversationService callConversationService;
     private final CallService callService;
     private final CallHistoryService callHistoryService;
-    private final ChatHistoryProvider chatHistoryProvider;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -83,7 +78,6 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                                      CallConversationService callConversationService,
                                      CallService callService,
                                      CallHistoryService callHistoryService,
-                                     ChatHistoryProvider chatHistoryProvider,
                                      ClovaSpeechProperties speechProperties,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
@@ -91,7 +85,6 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         this.callConversationService = callConversationService;
         this.callService = callService;
         this.callHistoryService = callHistoryService;
-        this.chatHistoryProvider = chatHistoryProvider;
         this.objectMapper = objectMapper;
         this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
         log.info("[Clova] recognize CONFIG = {}", configJson);
@@ -142,13 +135,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
             // 워커는 스트림 개설 성공 뒤에 만든다(실패하면 정리할 워커도 없도록).
             // 등록(put)은 최대한 빨리 — 등록 전에 도착한 오디오 프레임은 버려진다.
+            // ⚠ 맥락은 빈 상태로 시작한다(가변 리스트 — 통화 턴이 여기에 append된다). 채팅에서 이어받는 시딩을
+            // 걷어낸 이유는 AI 서버가 채팅·통화를 통합해 자체 저장하고 그 기록을 우리가 보낸 history보다
+            // 우선하기 때문이다 — 시딩해봐야 무시되고, 이어받기 깊이는 이제 AI 서버가 정한다.
             List<AiChatHistoryItem> history = new ArrayList<>();
             ExecutorService worker = Executors.newSingleThreadExecutor();
             activeCalls.put(sessionId, new ActiveCall(session, stream, worker, ticket, history));
-
-            // LLM 맥락은 그 관계의 채팅 최근 대화로 시딩한다(전화가 채팅에서 이어지도록).
-            // 워커의 첫 작업이라 어떤 턴보다 먼저 끝나고, history를 워커만 만지는 원칙도 지켜진다.
-            worker.execute(() -> history.addAll(seedHistory(sessionId, ticket.relationshipId())));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
@@ -284,22 +276,6 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         } catch (RuntimeException e) {
             log.error("[Call] 전사 저장 실패(통화는 유지). session={}, callId={}, speaker={}",
                     sessionId, callId, speaker, e);
-        }
-    }
-
-    /**
-     * 통화 LLM 맥락 버퍼의 초기값을 만든다 = 그 관계의 채팅 최근 대화(과거→최신).
-     * <p>⚠ 반드시 <b>가변 리스트</b>다 — 이후 통화 턴이 여기에 append된다.
-     * ⚠ 이 시드는 {@code submitChat}(전사 저장 경로)을 거치지 않으므로 <b>전사(call_history)에 저장되지 않는다</b>
-     * (채팅에 이미 있는 대화라 통화 전사가 아니다). 조회 실패는 로그만 남기고 빈 맥락으로 시작한다(통화 유지).
-     */
-    private List<AiChatHistoryItem> seedHistory(String sessionId, Long relationshipId) {
-        try {
-            return new ArrayList<>(chatHistoryProvider.recentHistory(relationshipId, SEED_HISTORY_SIZE));
-        } catch (RuntimeException e) {
-            log.error("[Call] 채팅 맥락 시딩 실패 → 빈 맥락으로 시작(통화 유지). session={}, relationshipId={}",
-                    sessionId, relationshipId, e);
-            return new ArrayList<>();
         }
     }
 
