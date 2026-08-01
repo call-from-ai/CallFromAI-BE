@@ -39,4 +39,5 @@ public class RelationshipController {
         return ApiResponse.onSuccess(
                 relationshipService.updateContactPreference(memberId, request.preferTime()));
     }
+
 }

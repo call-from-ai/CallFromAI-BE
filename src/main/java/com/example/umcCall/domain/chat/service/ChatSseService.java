@@ -46,6 +46,14 @@ public class ChatSseService {
     }
 
     /**
+     * 유저가 현재 SSE로 접속(연결) 중인지 여부. 앱이 켜져 있어 라이브로 받을 수 있는지 판단하며,
+     * 채팅 배달 시 "접속 중이면 SSE / 아니면 FCM"을 가르는 데 쓰인다.
+     */
+    public boolean isConnected(Long memberId) {
+        return emitters.containsKey(memberId);
+    }
+
+    /**
      * 특정 유저에게 이벤트를 push
      */
     public void sendToMember(Long memberId, String eventName, Object data) {

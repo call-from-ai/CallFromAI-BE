@@ -21,6 +21,7 @@ public class MemberService {
 
     private final MemberRepository memberRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final CharacterService characterService;
 
     public MemberResponse getMyInfo(Long memberId) {
         Member member = findMember(memberId);
@@ -40,6 +41,7 @@ public class MemberService {
     @Transactional
     public void withdraw(Long memberId) {
         Member member = findMember(memberId);
+        characterService.deleteAllCharactersForWithdraw(memberId);
         member.deactivate();
         // 탈퇴 처리와 refreshToken DB 삭제
         refreshTokenRepository.findByMemberId(memberId)

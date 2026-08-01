@@ -7,7 +7,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update # 최초 update, 이후 validate로 수정
+      ddl-auto: validate # 최초 update, 이후 validate로 수정
     show-sql: false
     open-in-view: false
 cors:

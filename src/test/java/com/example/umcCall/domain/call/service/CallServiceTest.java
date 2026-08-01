@@ -17,6 +17,7 @@ import com.example.umcCall.domain.call.dto.response.CallTicketResponse;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
+import com.example.umcCall.domain.call.enums.CallEndReason;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.exception.CallException;
@@ -136,7 +137,9 @@ class CallServiceTest {
 
         assertThat(call.getStatus()).isEqualTo(CallStatus.COMPLETED);
         // 상태만 바꾸면 소켓이 살아남아 오디오가 계속 CLOVA로 흐른다.
-        verify(eventPublisher).publishEvent(new CallEndedEvent(CALL_ID));
+        // 사유는 TIMEOUT — 운영 안전망이지 AI가 끊은 게 아니다(프론트 문구가 갈린다).
+        verify(eventPublisher).publishEvent(
+                new CallEndedEvent(CALL_ID, CallEndReason.TIMEOUT, call.getCallTime()));
     }
 
     @Test
@@ -396,7 +399,9 @@ class CallServiceTest {
         callService.end(MEMBER_ID, CALL_ID);
 
         // 소켓을 안 닫으면 오디오가 계속 CLOVA로 흘러 STT 비용이 발생한다.
-        verify(eventPublisher).publishEvent(new CallEndedEvent(CALL_ID));
+        // callTime은 REST 응답과 같은 값이어야 한다 — 프론트가 두 경로에서 다른 통화 시간을 보면 안 된다.
+        verify(eventPublisher).publishEvent(
+                new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, call.getCallTime()));
     }
 
     @Test

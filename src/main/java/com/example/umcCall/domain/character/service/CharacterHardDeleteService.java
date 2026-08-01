@@ -8,6 +8,7 @@ import com.example.umcCall.domain.chat.repository.ChatRoomRepository;
 import com.example.umcCall.domain.chat.service.ChatPhotoCleaner;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
+import com.example.umcCall.domain.relationship.repository.ChatSummaryRepository;
 import com.example.umcCall.domain.proactive.repository.ProactiveContactScheduleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,8 +24,10 @@ public class CharacterHardDeleteService {
     private final CharacterAiProfileRepository characterAiProfileRepository;
     private final RelationshipRepository relationshipRepository;
     private final RelationshipStatusRepository relationshipStatusRepository;
+    private final ChatSummaryRepository chatSummaryRepository;
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final CallRepository callRepository; 
     private final ChatPhotoCleaner chatPhotoCleaner;
     private final ProactiveContactScheduleRepository proactiveContactScheduleRepository;
 
@@ -37,6 +40,8 @@ public class CharacterHardDeleteService {
                 chatMessageRepository.deleteByChatRoomId(chatRoom.getId());
                 chatRoomRepository.delete(chatRoom);
             });
+            callRepository.deleteByRelationshipId(relationship.getId()); 
+            chatSummaryRepository.deleteByRelationshipId(relationship.getId());
             relationshipStatusRepository.deleteByRelationshipId(relationship.getId());
             relationshipRepository.delete(relationship);
         });

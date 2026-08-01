@@ -6,6 +6,8 @@ import com.example.umcCall.domain.character.dto.response.CharacterCreateResponse
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
 import com.example.umcCall.domain.character.service.CharacterService;
+import com.example.umcCall.domain.relationship.dto.response.ChatSummaryResponse;
+import com.example.umcCall.domain.relationship.service.ChatSummaryService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import com.example.umcCall.global.apiPayload.code.GeneralSuccessCode;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,6 +38,7 @@ import org.springframework.http.ResponseEntity;
 public class CharacterController {
 
     private final CharacterService characterService;
+    private final ChatSummaryService chatSummaryService;
 
 
     // 캐릭터 생성
@@ -75,6 +78,16 @@ public class CharacterController {
     public ApiResponse<List<CharacterSummaryResponse>> getMyCharacters(Authentication authentication) {
         Long memberId = (Long) authentication.getPrincipal();
         return ApiResponse.onSuccess(characterService.getMyCharacters(memberId));
+    }
+
+    @Operation(
+            summary = "AI 대화 요약 조회",
+            description = "해당 캐릭터와 사용자가 나눈 대화를 200자 이내로 요약한다.")
+    @GetMapping("/{characterId}/chat-summary")
+    public ApiResponse<ChatSummaryResponse> getChatSummary(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long characterId) {
+        return ApiResponse.onSuccess(chatSummaryService.getSummary(memberId, characterId));
     }
 
     // 활성 캐릭터 변경
