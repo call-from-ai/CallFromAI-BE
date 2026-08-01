@@ -3,6 +3,7 @@ package com.example.umcCall.domain.chat.controller;
 import com.example.umcCall.domain.chat.dto.request.ChatRoomMuteRequest;
 import com.example.umcCall.domain.chat.dto.response.CharacterRoomHeader;
 import com.example.umcCall.domain.chat.dto.response.ChatRoomListResponse;
+import com.example.umcCall.domain.chat.dto.response.ChatRoomMuteResponse;
 import com.example.umcCall.domain.chat.service.ChatRoomService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -60,12 +61,11 @@ public class ChatRoomController {
     @Operation(summary = "채팅방 음소거 설정",
             description = "요청한 상태로 음소거를 설정한다(토글 아님). 음소거 시 이후 FCM 푸시를 건너뛴다.")
     @PatchMapping("/{chatRoomId}/mute")
-    public ApiResponse<Void> updateMute(
+    public ApiResponse<ChatRoomMuteResponse> updateMute(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long chatRoomId,
             @Valid @RequestBody ChatRoomMuteRequest request) {
-        chatRoomService.updateMute(memberId, chatRoomId, request.isMuted());
-        return ApiResponse.onSuccess();
+        return ApiResponse.onSuccess(chatRoomService.updateMute(memberId, chatRoomId, request.isMuted()));
     }
 
     /** 채팅방 목록에서 숨김. AI가 새 메시지를 보내면 목록에 다시 나타난다. */

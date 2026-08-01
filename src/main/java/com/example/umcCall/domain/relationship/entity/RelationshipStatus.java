@@ -51,4 +51,5 @@ public class RelationshipStatus extends BaseTimeEntity {
         this.totalCallCount = 0;
         this.callStreakDays = 0;
     }
+
 }
