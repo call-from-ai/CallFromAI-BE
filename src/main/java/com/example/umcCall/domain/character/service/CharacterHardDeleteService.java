@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.character.service;
 
+import com.example.umcCall.domain.call.repository.CallHistoryRepository;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
 import com.example.umcCall.domain.character.repository.CharacterRepository;
@@ -29,6 +30,7 @@ public class CharacterHardDeleteService {
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final CallRepository callRepository;
+    private final CallHistoryRepository callHistoryRepository;
     private final ChatPhotoCleaner chatPhotoCleaner;
     private final ProactiveContactScheduleRepository proactiveContactScheduleRepository;
 
@@ -41,7 +43,9 @@ public class CharacterHardDeleteService {
                 chatMessageRepository.deleteByChatRoomId(chatRoom.getId());
                 chatRoomRepository.delete(chatRoom);
             });
-            callRepository.deleteByRelationshipId(relationship.getId()); 
+            // 전사(call_history)가 통화를 nullable=false FK로 참조한다. Call엔 cascade가 없어 순서를 지켜야 한다.
+            callHistoryRepository.deleteByRelationshipId(relationship.getId());
+            callRepository.deleteByRelationshipId(relationship.getId());
             chatSummaryRepository.deleteByRelationshipId(relationship.getId());
             relationshipStatusRepository.deleteByRelationshipId(relationship.getId());
             relationshipRepository.delete(relationship);
