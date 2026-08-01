@@ -14,7 +14,7 @@ public class CharacterCreateResponse {
     public static CharacterCreateResponse from(Character character) {
         return CharacterCreateResponse.builder()
                 .characterId(character.getId())
-                .name(character.getLastName())
+                .name(character.getFirstName())
                 .build();
     }
 }

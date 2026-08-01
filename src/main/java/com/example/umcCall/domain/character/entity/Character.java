@@ -80,8 +80,6 @@ public class Character extends BaseTimeEntity {
         return lastName + firstName;
     }
 
-    public String getLastName() { return firstName; }
-
     public void updateProfile(String lastName, String firstName, Gender gender, Integer age,
                               Job job, PreferTime preferTime, String mbti, String imageUrl) {
         this.lastName = lastName;
