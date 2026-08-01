@@ -37,14 +37,20 @@ public class PushMessage {
         return new PushMessage(PushType.CHAT, title, body, data, false);
     }
 
-    /** 전화 착신 알림. 수락/거절 커스텀 UI라 배너 없이 data-only + 高우선순위로 보낸다. */
+    /**
+     * 전화 착신 알림. 수락/거절 커스텀 UI라 배너 없이 data-only + 高우선순위로 보낸다.
+     *
+     * <p>⚠ {@code characterImageUrl}은 이미지 없이 만든 캐릭터면 null인데, FCM data 맵은 null 값을
+     * 허용하지 않는다(전송이 아니라 <b>메시지 조립 단계</b>에서 "null value in entry" NPE).
+     * 빈 문자열로 채워 FE와 합의한 키 5개를 항상 유지한다.
+     */
     public static PushMessage call(Long callId, Long characterId, String characterName,
                                    String characterImageUrl, Long chatRoomId) {
         Map<String, String> data = new LinkedHashMap<>();
         data.put("callId", String.valueOf(callId));
         data.put("characterId", String.valueOf(characterId));
         data.put("characterName", characterName);
-        data.put("characterImageUrl", characterImageUrl);
+        data.put("characterImageUrl", characterImageUrl == null ? "" : characterImageUrl);
         data.put("chatRoomId", String.valueOf(chatRoomId));
         return new PushMessage(PushType.CALL, null, null, data, true);
     }
