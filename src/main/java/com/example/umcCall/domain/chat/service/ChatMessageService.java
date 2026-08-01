@@ -154,14 +154,22 @@ public class ChatMessageService {
             throw new ChatException(ChatErrorCode.INVALID_IMAGE_TYPE);
         }
 
-        boolean jpeg = (head[0] & 0xFF) == 0xFF
+        return isJpeg(head) || isPng(head);
+    }
+
+    /** JPEG 시그니처(FF D8 FF)인지 확인한다. */
+    private boolean isJpeg(byte[] head) {
+        return (head[0] & 0xFF) == 0xFF
                 && (head[1] & 0xFF) == 0xD8
                 && (head[2] & 0xFF) == 0xFF;
-        boolean png = (head[0] & 0xFF) == 0x89
+    }
+
+    /** PNG 시그니처(89 50 4E 47)인지 확인한다. */
+    private boolean isPng(byte[] head) {
+        return (head[0] & 0xFF) == 0x89
                 && (head[1] & 0xFF) == 0x50
                 && (head[2] & 0xFF) == 0x4E
                 && (head[3] & 0xFF) == 0x47;
-        return jpeg || png;
     }
 
     /**

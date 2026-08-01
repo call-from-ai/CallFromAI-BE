@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.chat.service;
 
 import com.example.umcCall.domain.chat.dto.response.CharacterRoomHeader;
+import com.example.umcCall.domain.chat.dto.response.ChatRoomMuteResponse;
 import com.example.umcCall.domain.chat.dto.response.ChatRoomSummaryResponse;
 import com.example.umcCall.domain.chat.entity.ChatMessage;
 import com.example.umcCall.domain.chat.entity.ChatRoom;
@@ -58,9 +59,10 @@ public class ChatRoomService {
      * 음소거된 방은 이후 FCM 발송 판정에서 푸시를 건너뛴다.
      */
     @Transactional
-    public void updateMute(Long memberId, Long chatRoomId, boolean muted) {
+    public ChatRoomMuteResponse updateMute(Long memberId, Long chatRoomId, boolean muted) {
         ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
         room.updateMuted(muted);
+        return new ChatRoomMuteResponse(room.isMuted());
     }
 
     /**
