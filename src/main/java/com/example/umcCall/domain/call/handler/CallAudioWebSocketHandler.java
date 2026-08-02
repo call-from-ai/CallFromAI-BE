@@ -3,13 +3,13 @@ package com.example.umcCall.domain.call.handler;
 import com.example.umcCall.domain.call.client.ClovaSpeechClient;
 import com.example.umcCall.domain.call.client.ClovaSpeechProperties;
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
-import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
+import com.example.umcCall.domain.call.service.SentenceBuffer;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
@@ -210,8 +210,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /**
      * final 발화를 AI로 넘겨 응답 대사를 TTS로 합성해 다운스트림으로 돌려보낸다.
      * 호출자(gRPC 콜백)를 잡아두지 않도록 통화 워커에 넘기고 즉시 반환한다.
-     * <p>chat()은 무거운 REST라 워커에서 비동기 실행하며, 워커 단일 스레드가 턴 순서를 보장한다.
-     * 전사 DB 저장(후순위)이 붙으면 {@link CallConversationService} 안에 들어간다.
+     * <p>AI 호출은 <b>스트리밍(SSE)</b>이라 워커를 수 초간 잡는다 — 워커 단일 스레드가 턴 순서를 보장한다.
+     * 대사는 문장이 완성되는 대로 합성·송신하므로, 첫 문장이 나가는 시점이 곧 사용자가 듣는 시점이다.
      */
     private void submitChat(WebSocketSession session, String text) {
         String sessionId = session.getId();
@@ -227,6 +227,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         WsTicket ticket = call.ticket();
         List<AiChatHistoryItem> history = call.history();
         TurnGate turnGate = call.turnGate();
+        // TTFA 원점. 워커 대기까지 포함해야 사용자가 겪는 침묵과 같아지므로 제출 전에 찍는다.
+        long turnStartedAt = System.nanoTime();
         try {
             call.worker().execute(() -> {
                 // 끼어들기 판정 기준. 워커(단일 스레드)만 턴을 열므로 여기서 번호를 잡는다.
@@ -240,41 +242,39 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     history.add(new AiChatHistoryItem("user", text, LocalDateTime.now()));
                     persistHistory(sessionId, ticket.callId(), CallSpeaker.USER, text);
 
-                    // respond는 로그의 마지막(방금 넣은 user)을 이번 message로, 그 앞을 이전 턴으로 파생한다.
-                    AiChatResponse response = callConversationService.respond(
-                            ticket.characterId(), ticket.relationshipId(), history);
-                    String reply = response.reply();
-
-                    // AI가 말할 게 없으면(빈 응답) TTS를 건너뛴다. user 로그는 이미 남았고 assistant만 안 남는다
-                    // = "사용자는 말했고 AI는 아무 말 안 함"이라 이벤트 로그상 정확한 상태다.
-                    if (reply == null || reply.isBlank()) {
-                        log.warn("[Call] AI 빈 응답 → 턴 스킵. session={}", sessionId);
-                        return;
+                    // AI 대사를 조각으로 받아(SSE) 문장이 완성될 때마다 합성·송신한다.
+                    // 대사 전체를 기다리지 않는 게 핵심 — LLM이 나머지를 만드는 시간이 체감 지연에서 빠진다.
+                    SentenceBuffer sentences = new SentenceBuffer();
+                    SpeakingTurn speaking = new SpeakingTurn(session, turnGate, turn, turnStartedAt);
+                    try {
+                        callConversationService.respondStream(
+                                ticket.characterId(), ticket.relationshipId(), history,
+                                chunk -> {
+                                    for (String sentence : sentences.feed(chunk)) {
+                                        speaking.speak(sentence);
+                                    }
+                                });
+                        // 마지막 문장은 대개 종결 부호 뒤에 아무것도 안 와서 버퍼에 남는다.
+                        sentences.flush().ifPresent(speaking::speak);
+                    } catch (TurnStoppedException e) {
+                        // 끼어들기 또는 소켓 종료. 여기까지 말한 건 사용자가 들었으므로 아래에서 그대로 남긴다.
+                        log.info("[Call] 남은 대사 중단. session={}, turn={}, 사유={}",
+                                sessionId, turn, e.getMessage());
+                    } catch (Exception e) {
+                        // stale/AI/TTS 오류: 말한 부분까지만 남기고 이 턴을 접는다. 통화는 유지.
+                        log.error("[Call] AI 턴 처리 실패 → 말한 부분까지만 남긴다. session={}", sessionId, e);
                     }
 
-                    // 끼어들기 확인 ①: LLM 대기(턴당 3~5초로 가장 긴 구간) 사이에 사용자가 말을 시작했다면
-                    // 합성 자체를 건너뛴다 — 어차피 못 내보낼 대사라 TTS 호출·비용이 통째로 낭비다.
-                    if (turnGate.isCanceled(turn)) {
-                        log.info("[Call] 끼어들기 — 합성 전 폐기. session={}, turn={}", sessionId, turn);
-                        return;
-                    }
-
-                    byte[] wav = clovaVoiceClient.synthesize(reply, AI_SPEAKER);
-
-                    // 끼어들기 확인 ②: 합성 중에 말을 시작한 경우. 여기서 막아야 "사용자가 말하는데 AI가
-                    // 뒤늦게 떠드는" 상황이 안 생긴다. 아직 전송 전이라 사용자에겐 애초에 들리지 않는다.
-                    if (turnGate.isCanceled(turn)) {
-                        log.info("[Call] 끼어들기 — 송신 전 폐기. session={}, turn={}", sessionId, turn);
-                        return;
-                    }
-
-                    // TTS 송신 성공 시에만 AI 발화를 남긴다.
-                    if (sendAudio(session, wav)) {
-                        history.add(new AiChatHistoryItem("assistant", reply, LocalDateTime.now()));
-                        persistHistory(sessionId, ticket.callId(), CallSpeaker.AI, reply);
+                    // ⚠ 실제로 <b>내보낸</b> 대사만 남긴다 — 안 들린 대사를 남기면 다음 턴이 사용자 모르는
+                    // 맥락 위에서 나온다. 아무것도 못 내보냈으면 assistant는 안 남는다
+                    // (= "사용자는 말했고 AI는 아무 말 안 함"으로 이벤트 로그상 정확한 상태다).
+                    String spoken = speaking.spokenText();
+                    if (!spoken.isEmpty()) {
+                        history.add(new AiChatHistoryItem("assistant", spoken, LocalDateTime.now()));
+                        persistHistory(sessionId, ticket.callId(), CallSpeaker.AI, spoken);
                     }
                 } catch (Exception e) {
-                    // stale/AI/TTS 오류 등: 이번 assistant 턴만 버린다(user 로그는 남는다). 통화는 유지.
+                    // 이력·전사 저장 등 위 블록 밖의 실패. 이번 턴만 버리고 통화는 유지한다.
                     log.error("[Call] AI 턴 처리 실패 → 턴 폐기. session={}", sessionId, e);
                 }
             });
@@ -282,6 +282,18 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 통화 종료와 겹쳐 워커가 이미 내려간 경우. 정상 경로다.
             log.debug("[Call] 워커 종료됨 → 발화를 버림. session={}", sessionId);
         }
+    }
+
+    /**
+     * 이 인식 결과에 <b>실제 말</b>이 담겼는가. 끼어들기 판정의 전제다.
+     * <p>⚠ 빈 결과가 취소로 이어지면 <b>AI가 영영 말을 못 한다</b> — 그런데 로그엔 "끼어들기"만 찍혀
+     * 원인 추적이 매우 어렵다. 지금은 CLOVA CONFIG의 {@code skipEmptyText}가 빈 결과를 막아주지만,
+     * <b>설정 한 줄에 기대지 않으려고</b> 여기서 한 번 더 본다(설정을 바꿔도 이 불변식은 유지된다).
+     * <p>⚠ 막아주는 건 "빈 결과"까지다 — <b>소음·에코가 단어로 인식되면</b> 여기를 통과해 AI를 끊는다.
+     * 그건 FE의 에코 제거(AEC)와 마이크 환경이 담당한다.
+     */
+    private static boolean hasSpeech(NestRecognizeResult result) {
+        return result.text() != null && !result.text().isBlank();
     }
 
     /**
@@ -296,6 +308,95 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         if (call != null) {
             call.turnGate().cancelCurrent();
         }
+    }
+
+    /**
+     * AI 턴 하나가 <b>말하는 동안</b>의 상태. 문장이 완성될 때마다 합성·송신하고, <b>실제로 내보낸</b> 대사를 모은다.
+     * <p>통화 워커 스레드에서만 쓴다(SSE 조각 콜백도 같은 스레드라 confine이 유지된다).
+     * <p>끼어들기 확인이 <b>문장마다 두 번</b>(합성 전·송신 전) 들어간다 — 대사를 한 번에 합성하던 때보다
+     * 촘촘해져서, 이미 내보내 못 막는 구간이 문장 하나 길이로 줄어든다.
+     */
+    private final class SpeakingTurn {
+
+        private final WebSocketSession session;
+        private final TurnGate turnGate;
+        private final long turn;
+        private final long turnStartedAt;
+        private final StringBuilder spoken = new StringBuilder();
+        private boolean firstAudioSent;
+
+        private SpeakingTurn(WebSocketSession session, TurnGate turnGate, long turn, long turnStartedAt) {
+            this.session = session;
+            this.turnGate = turnGate;
+            this.turn = turn;
+            this.turnStartedAt = turnStartedAt;
+        }
+
+        /**
+         * 문장 하나를 합성해 이 통화의 소켓으로 내보낸다.
+         * 더 말할 수 없는 상태면 {@link TurnStoppedException}으로 남은 문장까지 통째로 접는다 —
+         * 계속 스트림을 읽어봐야 워커가 묶여 <b>사용자가 방금 끼어들며 만든 다음 턴</b>이 밀린다.
+         */
+        private void speak(String sentence) {
+            // 끼어들기 확인 ①: 합성 전. 어차피 못 내보낼 문장이라 TTS 호출·비용이 통째로 낭비다.
+            if (turnGate.isCanceled(turn)) {
+                throw new TurnStoppedException("끼어들기(합성 전)");
+            }
+            long llmMs = firstAudioSent ? -1 : elapsedMs(turnStartedAt);
+
+            long ttsStartedAt = System.nanoTime();
+            byte[] wav = clovaVoiceClient.synthesize(sentence, AI_SPEAKER);
+            long ttsMs = elapsedMs(ttsStartedAt);
+
+            // 끼어들기 확인 ②: 합성 중에 말을 시작한 경우. 아직 전송 전이라 사용자에겐 애초에 들리지 않는다.
+            if (turnGate.isCanceled(turn)) {
+                throw new TurnStoppedException("끼어들기(송신 전)");
+            }
+            if (!sendAudio(session, wav)) {
+                throw new TurnStoppedException("소켓 종료");
+            }
+            if (!firstAudioSent) {
+                firstAudioSent = true;
+                logTurnLatency(session.getId(), turnStartedAt, llmMs, ttsMs);
+            }
+            if (!spoken.isEmpty()) {
+                spoken.append(' ');
+            }
+            spoken.append(sentence);
+        }
+
+        /** 이 턴에서 실제로 내보낸 대사 전체. 아무것도 못 내보냈으면 빈 문자열. */
+        private String spokenText() {
+            return spoken.toString();
+        }
+    }
+
+    /**
+     * 더 말할 수 없어 이 턴을 접는다(끼어들기 · 소켓 종료). <b>실패가 아니라 제어 흐름</b>이라
+     * 스택트레이스를 만들지 않고, 여기까지 말한 대사는 정상적으로 이력·전사에 남는다.
+     */
+    private static final class TurnStoppedException extends RuntimeException {
+        private TurnStoppedException(String reason) {
+            super(reason, null, false, false);
+        }
+    }
+
+    /** 경과 시간(ms). 벽시계가 아니라 단조 시계라 시각 보정에 흔들리지 않는다. */
+    private static long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
+    }
+
+    /**
+     * 턴 지연을 한 줄로 남긴다. <b>TTFA</b>(Time-To-First-Audio) = STT final 도착 → 첫 오디오 송신.
+     * 지연 개선의 전후 비교는 이 로그가 기준이다 — 지우거나 레벨을 낮추면 측정 수단이 사라진다.
+     * <p>{@code llmMs}는 <b>첫 문장이 준비되기까지</b>(final 도착 → 합성 시작), {@code ttsMs}는 그 문장의
+     * 합성 시간이다. 스트리밍 전에는 llmMs가 "대사 전체 생성"이었다 — 값을 비교할 땐 의미 차이를 감안할 것.
+     * <p>⚠ 사용자 체감 침묵은 여기에 <b>{@code gapThreshold}(기본 700ms)가 더 얹힌다</b> — 말이 끝난 순간이
+     * 아니라 침묵이 그만큼 이어진 뒤에야 final이 오기 때문이다. 서버는 말이 끝난 시각을 관측할 수 없다.
+     */
+    private void logTurnLatency(String sessionId, long turnStartedAt, long llmMs, long ttsMs) {
+        log.info("[Call] 턴 지연. session={}, ttfaMs={}, llmMs={}, ttsMs={}",
+                sessionId, elapsedMs(turnStartedAt), llmMs, ttsMs);
     }
 
     /**
@@ -632,7 +733,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                 // ⚠ 이 콜백은 즉시 반환해야 한다(스레드가 전 통화 공유). submitChat이 워커로 넘긴다.
                 if (result.isFinal()) {
                     submitChat(session, result.text());
-                } else {
+                } else if (hasSpeech(result)) {
                     // partial = 사용자가 지금 말하는 중 → 진행 중인 AI 턴을 끊는다(끼어들기).
                     cancelSpeakingTurn(sessionId);
                 }

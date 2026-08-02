@@ -2,6 +2,7 @@ package com.example.umcCall.domain.call.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,7 +64,8 @@ class CallConversationServiceTest {
                 .thenReturn(Optional.of(mock(Relationship.class)));
         when(relationshipStatusRepository.findByRelationshipId(RELATIONSHIP_ID))
                 .thenReturn(Optional.of(mock(RelationshipStatus.class)));
-        when(aiConversationService.chat(any()))
+        // 스트리밍 경로 테스트는 chat()을 타지 않는다 — 스텁이 남아도 실패하지 않게 lenient.
+        lenient().when(aiConversationService.chat(any()))
                 .thenReturn(new AiChatResponse("응답", null, null, null, null));
     }
 
@@ -120,5 +122,21 @@ class CallConversationServiceTest {
         AiChatRequest sent = captureRequest();
         assertThat(sent.message()).isEqualTo("혼잣말");
         assertThat(sent.history()).isEmpty();
+    }
+
+    @Test
+    void 스트리밍도_같은_요청을_조립해_보낸다() {
+        // 통화가 실제로 쓰는 경로다. 조립이 단발과 갈리면 스트리밍 턴만 다른 맥락 위에서 답하게 된다.
+        List<AiChatHistoryItem> log = new ArrayList<>(List.of(
+                new AiChatHistoryItem("user", "안녕", T),
+                new AiChatHistoryItem("assistant", "안녕하세요", T),
+                new AiChatHistoryItem("user", "뭐 해?", T)));
+
+        service.respondStream(CHARACTER_ID, RELATIONSHIP_ID, log, chunk -> { });
+
+        ArgumentCaptor<AiChatRequest> captor = ArgumentCaptor.forClass(AiChatRequest.class);
+        verify(aiConversationService).chatStream(captor.capture(), any());
+        assertThat(captor.getValue().message()).isEqualTo("뭐 해?");
+        assertThat(captor.getValue().history()).hasSize(2);
     }
 }

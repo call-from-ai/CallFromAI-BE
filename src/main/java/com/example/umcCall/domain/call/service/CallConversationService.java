@@ -17,6 +17,7 @@ import com.example.umcCall.domain.relationship.repository.RelationshipRepository
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -52,6 +53,25 @@ public class CallConversationService {
      */
     public AiChatResponse respond(Long characterId, Long relationshipId,
                                   List<AiChatHistoryItem> conversation) {
+        return aiConversationService.chat(buildRequest(characterId, relationshipId, conversation));
+    }
+
+    /**
+     * 같은 대화를 <b>스트리밍</b>으로 넘긴다. AI 대사 조각이 도착하는 대로 {@code onChunk}가 불린다.
+     * <p>통화가 실제로 쓰는 경로다 — 첫 문장이 나오는 즉시 합성·송신해 체감 지연(TTFA)을 줄이기 위함이다.
+     * 조각을 문장으로 묶는 건 호출부({@code SentenceBuffer})가 하고, 여기선 요청 조립만 공유한다.
+     *
+     * <p>⚠ {@code onChunk}는 <b>이 메서드를 호출한 스레드에서 동기로</b> 불린다(통화 워커). 그래서 안에서
+     * 합성·송신을 해도 턴 순서가 그대로 지켜진다.
+     */
+    public void respondStream(Long characterId, Long relationshipId,
+                              List<AiChatHistoryItem> conversation, Consumer<String> onChunk) {
+        aiConversationService.chatStream(buildRequest(characterId, relationshipId, conversation), onChunk);
+    }
+
+    /** 통화 신원으로 최신 스냅샷을 조립해 AI 요청을 만든다. 단발/스트리밍이 공유한다. */
+    private AiChatRequest buildRequest(Long characterId, Long relationshipId,
+                                       List<AiChatHistoryItem> conversation) {
         Character character = characterRepository.findById(characterId)
                 .orElseThrow(() -> new IllegalStateException("Character not found: " + characterId));
         CharacterAiProfile profile = characterAiProfileRepository.findById(characterId)
@@ -77,6 +97,6 @@ public class CallConversationService {
                 relationshipSnapshotMapper.toSnapshot(relationship, status),
                 history);
 
-        return aiConversationService.chat(request);
+        return request;
     }
 }
