@@ -66,8 +66,8 @@ public class CallHistoryService {
      * 통화 기록 상세(요약/시작시각/오디오)를 조회한다. 통화 목록에서 탭해 들어오는 화면용 메타데이터.
      * <p>검증 계단은 {@link #getScript}와 동일하다 — 존재({@code CALL_NOT_FOUND}) → 본인 소유
      * ({@code CALL_ACCESS_DENIED}) → 완료({@code CALL_NOT_COMPLETED}). 상세도 <b>완료된 통화의
-     * 완결된 기록</b>이라는 계약을 전문과 공유한다. {@code aiSummary}·{@code audioUrl}은 생성 로직
-     * 미구현이라 현재 항상 null(응답에서 키 생략) — 컬럼→응답 배관만 담당한다.
+     * 완결된 기록</b>이라는 계약을 전문과 공유한다. {@code aiSummary}는 생성 로직 미구현이라 현재 항상
+     * null(응답에서 키 생략)이고, 녹음은 {@code recordingStatus}와 짝으로 읽어야 한다(비동기 업로드).
      */
     @Transactional(readOnly = true)
     public CallDetailResponse getCallDetail(Long memberId, Long callId) {

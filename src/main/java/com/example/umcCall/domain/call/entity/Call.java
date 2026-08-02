@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.call.entity;
 
+import com.example.umcCall.domain.call.enums.CallRecordingStatus;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.relationship.entity.Relationship;
@@ -34,6 +35,14 @@ public class Call extends BaseTimeEntity {
 
     @Column(name="audio_url")
     private String audioUrl;
+
+    /**
+     * 녹음(다시듣기) 준비 상태. 업로드가 통화 종료 후 비동기라 {@code audioUrl}만으로는
+     * "준비 중"과 "녹음 없음"을 구별할 수 없다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name="recording_status", nullable = false, length = 20)
+    private CallRecordingStatus recordingStatus = CallRecordingStatus.NONE;
 
     @Column(name="call_time")
     private Integer callTime;
