@@ -128,6 +128,26 @@ public class Call extends BaseTimeEntity {
         this.status = CallStatus.MISSED;
     }
 
+    /**
+     * 녹음 업로드를 시작했다. → {@code PROCESSING}.
+     * <p>통화가 끝난 뒤라 상태 검증이 없다 — 녹음은 통화 상태 머신과 독립이고,
+     * 어떤 사유로 끝났든(정상·시간 상한) 그때까지 들린 소리는 남길 가치가 있다.
+     */
+    public void startRecordingUpload() {
+        this.recordingStatus = CallRecordingStatus.PROCESSING;
+    }
+
+    /** 녹음이 올라갔다. → {@code READY} + 다시듣기 URL. */
+    public void completeRecording(String audioUrl) {
+        this.audioUrl = audioUrl;
+        this.recordingStatus = CallRecordingStatus.READY;
+    }
+
+    /** 녹음·업로드가 실패했다. → {@code FAILED}. 통화·전사는 그대로다(fail-open). */
+    public void failRecording() {
+        this.recordingStatus = CallRecordingStatus.FAILED;
+    }
+
     /** 사용자가 착신을 거절함(AI 발신). RINGING → REJECTED. */
     public void reject() {
         if (status != CallStatus.RINGING) {

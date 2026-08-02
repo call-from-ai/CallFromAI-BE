@@ -62,6 +62,27 @@ public class S3Uploader {
     }
 
     /**
+     * 서버가 직접 만든 바이트를 올린다(통화 녹음 등). MultipartFile이 없어 확장자·content-type을 호출부가 준다.
+     * 이름은 {@link #upload(MultipartFile, String)}과 같이 UUID라, 퍼블릭 버킷에서 URL 추측을 어렵게 한다.
+     *
+     * @return 접근 가능한 객체 URL(채팅 사진과 동일한 형식)
+     */
+    public String upload(byte[] content, String dirName, String extension, String contentType) {
+        String key = dirName + "/" + UUID.randomUUID() + extension;
+
+        s3Client.putObject(
+                PutObjectRequest.builder()
+                        .bucket(bucket)
+                        .key(key)
+                        .contentType(contentType)
+                        .contentLength((long) content.length)
+                        .build(),
+                RequestBody.fromBytes(content));
+
+        return toUrl(key);
+    }
+
+    /**
      * 저장된 URL의 객체를 바이트로 내려받는다(예: AI 서버에 원본 파일을 전달할 때).
      * content-type은 업로드 시 저장된 값을 그대로 돌려준다.
      * 객체가 없거나 접근 실패 시 AWS SDK 예외가 그대로 전파된다(호출부가 처리).
