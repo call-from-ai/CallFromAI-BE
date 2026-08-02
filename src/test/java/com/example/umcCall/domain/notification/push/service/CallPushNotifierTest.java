@@ -77,6 +77,24 @@ class CallPushNotifierTest {
                 .doesNotContainValue(null);
     }
 
+    /**
+     * 채팅방 행이 없는 관계(레거시 데이터)에서도 벨은 울려야 한다. 대화방 이동은 착신의 부가 기능이라
+     * 그것 때문에 푸시를 막으면 사용자가 실제 통화를 놓친다(못 받은 통화는 MISSED로만 남는다).
+     * ⚠ chatRoomId는 Long이라 String.valueOf에 그냥 넘기면 리터럴 "null"이 실려 FE가 깨진다.
+     */
+    @Test
+    void 채팅방이_없어도_푸시를_보내고_chatRoomId를_빈_값으로_싣는다() {
+        when(chatRoomRepository.findByRelationshipId(RELATIONSHIP_ID)).thenReturn(Optional.empty());
+
+        callPushNotifier.onCallRinging(ringingEvent(CHARACTER_IMAGE_URL));
+
+        PushMessage message = capturePushMessage();
+        assertThat(message.getData())
+                .containsEntry("chatRoomId", "")
+                .doesNotContainEntry("chatRoomId", "null")
+                .doesNotContainValue(null);
+    }
+
     /** 통화 생성은 이미 커밋됐다 — 푸시가 터져도 통화는 살아 있어야 하고, 폴링으로 받을 수 있다. */
     @Test
     void 푸시_발송이_실패해도_예외를_전파하지_않는다() {

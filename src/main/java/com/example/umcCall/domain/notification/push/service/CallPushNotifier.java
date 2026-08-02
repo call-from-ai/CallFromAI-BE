@@ -47,10 +47,23 @@ public class CallPushNotifier {
         }
     }
 
-    /** 착신 화면에서 대화방으로 이동할 때 쓸 채팅방 ID. 캐릭터 생성 시 방이 함께 만들어져 사실상 항상 있다. */
+    /**
+     * 착신 화면에서 대화방으로 이동할 때 쓸 채팅방 ID.
+     *
+     * <p>캐릭터 생성 시 방이 함께 만들어지고({@code CharacterService.createCharacter}) 이 조회는
+     * {@code deleted}를 거르지 않으므로, 사용자가 숨겼거나 soft delete된 방도 ID를 돌려준다.
+     * 따라서 null = <b>행 자체가 없는</b> 이상 데이터(방 생성 배선 이전의 레거시 관계 등)다.
+     *
+     * <p>⚠ 그래도 <b>푸시를 막지 않는다</b> — 없으면 {@link PushMessage#call}이 빈 문자열로 채운다.
+     * 대화방 이동은 착신의 부가 기능이라, 그것 때문에 벨을 생략하면 사용자가 실제 통화를 놓친다.
+     */
     private Long resolveChatRoomId(Long relationshipId) {
-        return chatRoomRepository.findByRelationshipId(relationshipId)
+        Long chatRoomId = chatRoomRepository.findByRelationshipId(relationshipId)
                 .map(ChatRoom::getId)
                 .orElse(null);
+        if (chatRoomId == null) {
+            log.warn("관계에 채팅방이 없어 착신 푸시의 chatRoomId를 비워 보낸다. relationshipId={}", relationshipId);
+        }
+        return chatRoomId;
     }
 }
