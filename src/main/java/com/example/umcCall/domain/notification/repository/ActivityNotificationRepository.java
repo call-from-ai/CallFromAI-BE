@@ -1,6 +1,6 @@
 package com.example.umcCall.domain.notification.repository;
 
-import com.example.umcCall.domain.notification.entity.SystemNotification;
+import com.example.umcCall.domain.notification.entity.ActivityNotification;
 import com.example.umcCall.domain.notification.enums.NotificationType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -8,19 +8,19 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-public interface SystemNotificationRepository extends JpaRepository<SystemNotification, Long> {
+public interface ActivityNotificationRepository extends JpaRepository<ActivityNotification, Long> {
 
     // 최근 7일간의 알림만
-    List<SystemNotification> findByMemberIdAndCreatedAtAfterOrderByCreatedAtDesc(
+    List<ActivityNotification> findByMemberIdAndCreatedAtAfterOrderByCreatedAtDesc(
             Long memberId, LocalDateTime after);
 
-    Optional<SystemNotification> findByIdAndMemberId(Long notificationId, Long memberId);
+    Optional<ActivityNotification> findByIdAndMemberId(Long notificationId, Long memberId);
 
     boolean existsByMemberIdAndRelationshipIdAndTypeAndContent(
             Long memberId, Long relationshipId, NotificationType type, String content);
 
-    List<SystemNotification> findByTypeAndCreatedAtBetween(
+    List<ActivityNotification> findByTypeAndCreatedAtBetween(
             NotificationType type, LocalDateTime start, LocalDateTime end);
 
-    List<SystemNotification> findByMemberIdAndReadFalse(Long memberId);
+    List<ActivityNotification> findByMemberIdAndReadFalse(Long memberId);
 }

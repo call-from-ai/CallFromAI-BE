@@ -22,9 +22,9 @@ public class CallMissedNotificationListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCallMissed(CallMissedEvent event) {
         try {
-            String characterName = relationshipRepository.findById(event.relationshipId())
-                    .map(Relationship::getCharacter)
-                    .map(character -> character.getFirstName())
+            String characterName = relationshipRepository
+                    .findByIdWithCharacter(event.relationshipId())
+                    .map(relationship -> relationship.getCharacter().getFirstName())
                     .orElse("상대방");
 
             String content = String.format("%s에게서 받지 못한 전화가 있어요.", characterName);

@@ -8,13 +8,11 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-
 @Entity
 @Getter
 @Table(name = "activity_notification")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class SystemNotification extends BaseTimeEntity {
+public class ActivityNotification extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -41,8 +39,8 @@ public class SystemNotification extends BaseTimeEntity {
     private boolean read;
 
     @Builder
-    public SystemNotification(Long memberId, Long relationshipId, NotificationType type,
-                              String title, String content) {
+    public ActivityNotification(Long memberId, Long relationshipId, NotificationType type,
+                                String title, String content) {
         this.memberId = memberId;
         this.relationshipId = relationshipId;
         this.type = type;

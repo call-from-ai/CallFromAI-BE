@@ -1,6 +1,6 @@
 package com.example.umcCall.domain.notification.dto.response;
 
-import com.example.umcCall.domain.notification.entity.SystemNotification;
+import com.example.umcCall.domain.notification.entity.ActivityNotification;
 
 import java.time.LocalDateTime;
 
@@ -12,7 +12,7 @@ public record NotificationResponse(
         boolean read,
         LocalDateTime createdAt
 ) {
-    public static NotificationResponse from(SystemNotification notification) {
+    public static NotificationResponse from(ActivityNotification notification) {
         return new NotificationResponse(
                 notification.getId(),
                 notification.getType().name(),
