@@ -8,6 +8,8 @@ import com.example.umcCall.domain.relationship.repository.RelationshipRepository
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -20,6 +22,7 @@ public class CallMissedNotificationListener {
     private final RelationshipRepository relationshipRepository;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onCallMissed(CallMissedEvent event) {
         try {
             String characterName = relationshipRepository
