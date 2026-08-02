@@ -17,6 +17,7 @@ import com.example.umcCall.domain.call.entity.CallHistory;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.enums.CallStatus;
+import com.example.umcCall.domain.call.enums.CallSummaryStatus;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallHistoryRepository;
@@ -126,9 +127,11 @@ class CallHistoryServiceTest {
     @Test
     void getCallList는_종료된_통화만_최신순_최대20건을_요청해_반환한다() {
         CallListItem item1 = new CallListItem(
-                12L, "민준", CallSender.USER, "요약", LocalDateTime.now(), CallStatus.COMPLETED);
+                12L, "민준", CallSender.USER, "오늘하루와 퇴근 후 일상 이야기", CallSummaryStatus.READY,
+                LocalDateTime.now(), CallStatus.COMPLETED);
         CallListItem item2 = new CallListItem(
-                9L, "동휘", CallSender.USER, null, LocalDateTime.now().minusHours(1), CallStatus.CANCELED);
+                9L, "동휘", CallSender.USER, null, CallSummaryStatus.NONE,
+                LocalDateTime.now().minusHours(1), CallStatus.CANCELED);
         when(callRepository.findRecentCallList(eq(MEMBER_ID), anySet(), any(Pageable.class)))
                 .thenReturn(List.of(item1, item2));
 

@@ -30,6 +30,7 @@ import com.example.umcCall.domain.call.recording.WavCodec;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
+import com.example.umcCall.domain.call.service.CallSummaryService;
 import com.example.umcCall.domain.call.service.CallVoiceResolver;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.image.enums.TTSVoice;
@@ -45,6 +46,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -79,7 +81,11 @@ class CallAudioWebSocketHandlerTest {
     @Mock private CallService callService;
     @Mock private CallHistoryService callHistoryService;
     @Mock private CallRecordingService callRecordingService;
+    @Mock private CallSummaryService callSummaryService;
     @Mock private CallVoiceResolver callVoiceResolver;
+
+    /** 종료 응답이 산출물을 기다리는 상한. 테스트는 즉시 끝나는 future만 주므로 값 자체는 중요치 않다. */
+    private static final long ARTIFACT_WAIT_MS = 2000;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private CallAudioWebSocketHandler handler;
@@ -87,11 +93,15 @@ class CallAudioWebSocketHandlerTest {
     @BeforeEach
     void setUp() {
         lenient().when(callVoiceResolver.resolve(CHARACTER_ID)).thenReturn(CHARACTER_VOICE);
+        lenient().when(callRecordingService.save(any(), any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        lenient().when(callSummaryService.generate(any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
         handler = new CallAudioWebSocketHandler(
                 clovaSpeechClient, clovaVoiceClient, callConversationService, callService,
                 callHistoryService,
                 new ClovaSpeechProperties("clovaspeech-gw.ncloud.com", 50051, "secret", 700),
-                callRecordingService, callVoiceResolver,
+                callRecordingService, callSummaryService, callVoiceResolver, ARTIFACT_WAIT_MS,
                 objectMapper);
     }
 
@@ -207,6 +217,94 @@ class CallAudioWebSocketHandlerTest {
         InOrder inOrder = inOrder(session);
         inOrder.verify(session).sendMessage(controlOfType("CALL_ENDED"));
         inOrder.verify(session).close(CloseStatus.NORMAL);
+    }
+
+    // --- 종료 시 산출물 준비 (녹음·요약) ---------------------------------------------------------
+
+    @Test
+    void 통화_종료_응답은_녹음과_요약이_끝날_때까지_기다린다() {
+        // 이게 이 기능의 전부다 — 여기서 기다리는 덕에 프론트가 폴링 없이 한 번의 조회로 둘 다 받는다.
+        // AFTER_COMMIT이라 통화 종료는 이미 커밋됐고, 이 리스너는 응답이 나가기 전에 돈다.
+        WebSocketSession session = givenConnectedCall();
+        // 소리가 있어야 녹음이 보관된다 — 무음 통화면 save가 아예 안 불려 대기 대상이 요약뿐이 된다.
+        handler.handleBinaryMessage(session, new BinaryMessage(ByteBuffer.wrap(pcm((short) 100, 160))));
+        CompletableFuture<Void> recording = new CompletableFuture<>();
+        CompletableFuture<Void> summary = new CompletableFuture<>();
+        when(callRecordingService.save(any(), any())).thenReturn(recording);
+        when(callSummaryService.generate(CALL_ID)).thenReturn(summary);
+
+        Thread ender = new Thread(() ->
+                handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42)));
+        ender.start();
+
+        // 아직 둘 다 안 끝났으니 응답 스레드는 살아 있어야 한다.
+        await(() -> !recording.isDone() && ender.isAlive());
+        assertThat(ender.isAlive()).isTrue();
+
+        recording.complete(null);
+        summary.complete(null);
+        joinWithin(ender, ARTIFACT_WAIT_MS * 2);
+        assertThat(ender.isAlive()).isFalse();
+    }
+
+    @Test
+    void 산출물이_상한을_넘겨도_통화_종료는_끝난다() throws Exception {
+        // ⚠ 상한이 없으면 S3·AI가 hang할 때 전화가 안 끊긴다. 통화 종료는 반드시 성공해야 하는 동작이다.
+        givenConnectedCall();
+        // 영원히 안 끝나는 산출물 — 취소하지 않으므로 백그라운드에서 계속되는 상황을 흉내낸다.
+        when(callSummaryService.generate(CALL_ID)).thenReturn(new CompletableFuture<>());
+
+        long startedAt = System.nanoTime();
+        handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42));
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
+
+        // 상한만큼만 기다리고 돌아온다.
+        assertThat(elapsedMs).isGreaterThanOrEqualTo(ARTIFACT_WAIT_MS);
+        assertThat(elapsedMs).isLessThan(ARTIFACT_WAIT_MS * 3);
+    }
+
+    @Test
+    void 종료되면_녹음과_요약을_모두_시작한다() {
+        givenConnectedCall();
+
+        handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42));
+
+        // 녹음은 소리가 있어야 저장되므로(이 통화는 무음) save는 안 불릴 수 있지만, 요약은 항상 시도한다
+        // — 전사가 없으면 요약 서비스가 스스로 NONE으로 끝낸다.
+        verify(callSummaryService).generate(CALL_ID);
+    }
+
+    @Test
+    void 클라이언트가_먼저_끊은_경로는_산출물을_기다리지_않는다() {
+        // ⚠ 정리 경로는 onCallEnded 말고도 여럿이 공유한다(소켓 종료·WS 수신 스레드·gRPC 오류·앱 종료).
+        // 거기서도 기다리면 기다려 줄 요청도 없이 그 스레드만 묶인다 — 대기는 onCallEnded에서만이다.
+        WebSocketSession session = givenConnectedCall();
+        when(callSummaryService.generate(CALL_ID)).thenReturn(new CompletableFuture<>());
+
+        long startedAt = System.nanoTime();
+        handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
+
+        // 산출물이 영원히 안 끝나는데도 즉시 돌아와야 한다.
+        assertThat(elapsedMs).isLessThan(ARTIFACT_WAIT_MS);
+        // 그래도 시작은 한다 — 이 통화는 나중에 조회될 때 PROCESSING일 수 있다.
+        verify(callSummaryService).generate(CALL_ID);
+    }
+
+    /** 조건이 참이 될 때까지 잠깐 기다린다(스레드 경합 테스트용). */
+    private static void await(java.util.function.BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500);
+        while (System.nanoTime() < deadline && !condition.getAsBoolean()) {
+            Thread.onSpinWait();
+        }
+    }
+
+    private static void joinWithin(Thread thread, long millis) {
+        try {
+            thread.join(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Test

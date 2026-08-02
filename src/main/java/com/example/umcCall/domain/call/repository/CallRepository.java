@@ -28,7 +28,7 @@ public interface CallRepository extends JpaRepository<Call, Long> {
      */
     @Query("""
             select new com.example.umcCall.domain.call.dto.response.CallListItem(
-                c.id, ch.firstName, c.sender, c.aiSummary, c.createdAt, c.status)
+                c.id, ch.firstName, c.sender, c.aiSummary, c.summaryStatus, c.createdAt, c.status)
             from Call c
                 join c.relationship r
                 join r.character ch
@@ -177,4 +177,19 @@ public interface CallRepository extends JpaRepository<Call, Long> {
             where c.recordingStatus = com.example.umcCall.domain.call.enums.CallRecordingStatus.PROCESSING
             """)
     int failStaleRecordings();
+
+    /**
+     * 요약 생성 중({@code PROCESSING})을 전부 실패로 내린다. 기동 시 1회 —
+     * 녹음({@link #failStaleRecordings})과 같은 이유다: 생성은 앱이 살아 있을 때만 도므로
+     * <b>기동 시점의 {@code PROCESSING}은 정의상 전부 죽은 것</b>이고, 안 걷으면 영영 "준비 중"으로 남는다.
+     *
+     * @return 마감한 건수
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("""
+            update Call c
+            set c.summaryStatus = com.example.umcCall.domain.call.enums.CallSummaryStatus.FAILED
+            where c.summaryStatus = com.example.umcCall.domain.call.enums.CallSummaryStatus.PROCESSING
+            """)
+    int failStaleSummaries();
 }

@@ -1,5 +1,7 @@
 package com.example.umcCall.domain.ai.client;
 
+import com.example.umcCall.domain.ai.dto.AiCallTopicRequest;
+import com.example.umcCall.domain.ai.dto.AiCallTopicResponse;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.dto.AiHealthResponse;
@@ -213,7 +215,16 @@ public class AiServerClient {
         }
     }
 
+    /**
+     * 대화 요약 1건. 채팅(관계 단위 누적 요약)과 통화(한 건 요약)가 같이 쓴다.
+     *
+     * <p>소요 시간을 남기는 건 <b>통화 종료 응답 안에서 이 호출을 기다릴지</b> 정하기 위해서다(#129).
+     * LLM 호출이라 여기가 상한을 지배한다 — 지우면 그 판단 근거가 사라진다.
+     * ⚠ {@code messages}·{@code maxCharacters}를 같이 남긴다: 입력 길이에 비례하는지 봐야
+     * "통화 요약은 채팅보다 짧으니 더 빠르다" 같은 추정을 숫자로 확인할 수 있다.
+     */
     public AiSummaryResponse summarize(AiSummaryRequest request) {
+        long startedAt = System.nanoTime();
         try {
             AiSummaryResponse response = restClient.post()
                     .uri("/internal/conversations/summary")
@@ -222,20 +233,71 @@ public class AiServerClient {
                     .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
                         String responseBody = StreamUtils.copyToString(
                                 httpResponse.getBody(), StandardCharsets.UTF_8);
-                        log.error("AI 대화 요약 API 오류. status={}, body={}",
-                                httpResponse.getStatusCode(), responseBody);
+                        log.error("AI 대화 요약 API 오류. status={}, body={}, elapsedMs={}",
+                                httpResponse.getStatusCode(), responseBody, elapsedMs(startedAt));
                         throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
                     })
                     .body(AiSummaryResponse.class);
             if (response == null || response.summary() == null || response.summary().isBlank()) {
                 throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
             }
+            log.info("[AI] 대화 요약 완료. messages={}, maxCharacters={}, summaryLength={}, elapsedMs={}",
+                    request.messages().size(), request.maxCharacters(),
+                    response.summary().length(), elapsedMs(startedAt));
             return response;
         } catch (AiServerException exception) {
             throw exception;
         } catch (RestClientException exception) {
+            log.error("[AI] 대화 요약 실패. messages={}, elapsedMs={}",
+                    request.messages().size(), elapsedMs(startedAt), exception);
             throw new AiServerException(AiErrorCode.AI_SERVER_UNAVAILABLE, exception);
         }
+    }
+
+    /**
+     * 통화 한 건의 주제 라벨. 통화 종료 파이프라인이 부른다.
+     *
+     * <p>⚠ {@link #summarize}를 재사용하지 <b>않는</b> 이유: 그쪽 프롬프트는 채팅의 관계 누적 요약용이라
+     * "관심사·성격 중심 + 관계 분위기 포함 + 참여자를 이름으로 지칭"을 시키고, 길이를 넘기면
+     * <b>코드포인트 단위로 잘라</b> 돌려준다. {@code maxCharacters}를 20으로 줘도 라벨이 되는 게 아니라
+     * <b>서술형 요약이 20자에서 끊긴 문자열</b>이 나온다.
+     *
+     * <p>소요 시간을 남기는 건 통화 종료 응답 안에서 이 호출을 기다리기 때문이다(#129) — 상한을 정하는
+     * 근거이자, 상한을 넘긴 원인이 여기인지 S3인지 가르는 유일한 단서다.
+     */
+    public AiCallTopicResponse summarizeCallTopic(AiCallTopicRequest request) {
+        long startedAt = System.nanoTime();
+        try {
+            AiCallTopicResponse response = restClient.post()
+                    .uri("/internal/calls/topic")
+                    .body(request)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
+                        String responseBody = StreamUtils.copyToString(
+                                httpResponse.getBody(), StandardCharsets.UTF_8);
+                        log.error("[AI] 통화 주제 라벨 API 오류. status={}, body={}, elapsedMs={}",
+                                httpResponse.getStatusCode(), responseBody, elapsedMs(startedAt));
+                        throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
+                    })
+                    .body(AiCallTopicResponse.class);
+            if (response == null || response.topic() == null || response.topic().isBlank()) {
+                throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
+            }
+            log.info("[AI] 통화 주제 라벨 완료. callId={}, messages={}, topic={}, elapsedMs={}",
+                    request.callId(), request.messages().size(), response.topic(), elapsedMs(startedAt));
+            return response;
+        } catch (AiServerException exception) {
+            throw exception;
+        } catch (RestClientException exception) {
+            log.error("[AI] 통화 주제 라벨 실패. callId={}, messages={}, elapsedMs={}",
+                    request.callId(), request.messages().size(), elapsedMs(startedAt), exception);
+            throw new AiServerException(AiErrorCode.AI_SERVER_UNAVAILABLE, exception);
+        }
+    }
+
+    /** 경과 시간(ms). 벽시계가 아니라 단조 시계라 시각 보정에 흔들리지 않는다. */
+    private static long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
     }
 
     public void syncCharacter(AiCharacterSnapshot snapshot) {

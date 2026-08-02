@@ -5,6 +5,7 @@ import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.global.infra.s3.S3Uploader;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -46,32 +47,71 @@ public class CallRecordingService {
     private final TransactionTemplate transactionTemplate;
 
     /**
-     * 업로드 전용 스레드(전 통화 공유). 통화 워커는 이 시점에 이미 내려가 있어 쓸 수 없고,
-     * 통화가 끝난 뒤의 뒷일이라 순차 처리로 충분하다.
+     * 업로드 풀(전 통화 공유). 통화 워커는 이 시점에 이미 내려가 있어 쓸 수 없다.
+     *
+     * <p>⚠ <b>단일 스레드였다가 풀로 바꿨다.</b> 예전 근거는 "통화가 끝난 뒤의 뒷일이라 순차로 충분하다"였는데,
+     * 이제 <b>종료 응답이 이 결과를 기다리므로</b> 그 근거가 무너졌다 — 동시에 끝난 통화들이 줄을 서면
+     * 뒤 통화의 <b>끊기 응답이 앞 통화의 업로드 시간만큼 밀린다</b>. S3 대기는 CPU가 아니라 I/O라
+     * 몇 개 더 두는 비용이 거의 없다. (줄 서는 정도는 {@code queueMs} 로그로 관측된다)
      */
-    private final ExecutorService uploader = Executors.newSingleThreadExecutor();
+    private final ExecutorService uploader = Executors.newFixedThreadPool(4);
 
-    /** 마감된 녹음 하나를 보관 대기열에 넣는다. 호출부(WS 핸들러)를 잡아두지 않는다. */
-    public void save(Long callId, byte[] wav) {
+    /**
+     * 마감된 녹음 하나를 보관 대기열에 넣는다. 호출부(WS 핸들러)를 잡아두지 않는다.
+     *
+     * @return 업로드가 끝나면(성공·실패 무관) 완료되는 future. 통화 종료 응답이 상한까지만 이걸 기다린다 —
+     *         상한을 넘겨도 <b>취소하지 않는다</b>(기다리기를 포기할 뿐 업로드는 계속된다).
+     */
+    public CompletableFuture<Void> save(Long callId, byte[] wav) {
+        long queuedAt = System.nanoTime();
         try {
-            uploader.execute(() -> upload(callId, wav));
+            return CompletableFuture.runAsync(() -> upload(callId, wav, queuedAt), uploader);
         } catch (RejectedExecutionException e) {
             // 앱 종료로 업로더가 내려간 뒤. 상태는 NONE으로 남는다(녹음 없음과 구별할 방법이 없다).
             log.warn("[Recording] 업로더 종료됨 → 녹음을 버린다. callId={}", callId);
+            return CompletableFuture.completedFuture(null);
         }
     }
 
-    private void upload(Long callId, byte[] wav) {
+    private void upload(Long callId, byte[] wav, long queuedAt) {
+        long queueMs = elapsedMs(queuedAt);
         // 올리기 전에 PROCESSING을 찍는다 — 이 사이에 사용자가 상세를 열면 "녹음 없음"으로 오판한다.
         updateCall(callId, Call::startRecordingUpload);
         try {
+            long uploadStartedAt = System.nanoTime();
             String audioUrl = s3Uploader.upload(wav, RECORDING_DIR, EXTENSION, CONTENT_TYPE);
+            long uploadMs = elapsedMs(uploadStartedAt);
             updateCall(callId, call -> call.completeRecording(audioUrl));
-            log.info("[Recording] 녹음 업로드 완료. callId={}, bytes={}", callId, wav.length);
+            logDuration(callId, wav.length, queueMs, uploadMs, elapsedMs(queuedAt));
         } catch (RuntimeException e) {
-            log.error("[Recording] 녹음 업로드 실패. callId={}, bytes={}", callId, wav.length, e);
+            log.error("[Recording] 녹음 업로드 실패. callId={}, bytes={}, queueMs={}, elapsedMs={}",
+                    callId, wav.length, queueMs, elapsedMs(queuedAt), e);
             updateCall(callId, Call::failRecording);
         }
+    }
+
+    /**
+     * 녹음 보관에 걸린 시간을 한 줄로 남긴다. <b>측정 목적이 분명하다</b>: 이 업로드를 통화 종료 응답
+     * ({@code PATCH /calls/{id}/end}의 AFTER_COMMIT) 안에서 <b>기다릴지</b>, 기다린다면 상한을 몇 초로 둘지
+     * 정하는 근거다(#129). 지우거나 레벨을 낮추면 그 판단 근거가 사라진다.
+     *
+     * <p>값의 의미가 서로 다르니 묶어 읽지 말 것:
+     * <ul>
+     *   <li>{@code queueMs} — 업로더 큐 대기. ⚠ <b>동기로 바꾸면 사라지는 값</b>이라 상한 계산에서 빼야 한다.
+     *       여기가 크면 통화가 몰려 단일 스레드 업로더가 밀린다는 뜻이다.</li>
+     *   <li>{@code uploadMs} — S3 호출만. <b>상한을 정하는 실제 숫자</b>.</li>
+     *   <li>{@code totalMs} — 큐 + 상태 갱신 tx 2개 + 업로드. 현재 구조에서 프론트가 겪는 지연.</li>
+     * </ul>
+     * {@code bytes}를 같이 남기는 건 통화 길이에 비례하는지 보기 위해서다(5분 상한 = 최대 ~9.6MB).
+     */
+    private void logDuration(Long callId, int bytes, long queueMs, long uploadMs, long totalMs) {
+        log.info("[Recording] 녹음 보관 완료. callId={}, bytes={}, queueMs={}, uploadMs={}, totalMs={}",
+                callId, bytes, queueMs, uploadMs, totalMs);
+    }
+
+    /** 경과 시간(ms). 벽시계가 아니라 단조 시계라 시각 보정에 흔들리지 않는다. */
+    private static long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
     }
 
     /**
