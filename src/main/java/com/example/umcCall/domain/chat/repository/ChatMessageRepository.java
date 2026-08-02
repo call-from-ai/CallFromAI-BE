@@ -39,7 +39,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     @Query("""
             select m from ChatMessage m
-            where m.chatRoom.id = :roomId              and m.createdAt < :before
+            where m.chatRoom.id = :roomId
+            and m.createdAt < :before
             order by m.id desc
             """)
     List<ChatMessage> findRecentBefore(@Param("roomId") Long roomId,
@@ -48,8 +49,9 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     @Query("""
             select m from ChatMessage m
-            where m.chatRoom.id = :roomId              and m.id > :afterId
-              and m.createdAt < :before
+            where m.chatRoom.id = :roomId
+            and m.id > :afterId
+            and m.createdAt < :before
             order by m.id desc
             """)
     List<ChatMessage> findRecentAfterAndBefore(@Param("roomId") Long roomId,
@@ -65,7 +67,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             select m.chatRoom.id as roomId, count(m) as unreadCount
             from ChatMessage m
             where m.chatRoom.id in :roomIds
-              and m.read = false              and m.senderType <> :excludedSender
+              and m.read = false
+              and m.senderType <> :excludedSender
               and (m.chatRoom.messageVisibleAfterId is null
                    or m.id > m.chatRoom.messageVisibleAfterId)
             group by m.chatRoom.id
@@ -79,7 +82,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Query("""
             select m.chatRoom.id as roomId, max(m.id) as lastMessageId
             from ChatMessage m
-            where m.chatRoom.id in :roomIds              and (m.chatRoom.messageVisibleAfterId is null
+            where m.chatRoom.id in :roomIds
+                   and (m.chatRoom.messageVisibleAfterId is null
                    or m.id > m.chatRoom.messageVisibleAfterId)
             group by m.chatRoom.id
             """)
@@ -92,7 +96,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
      */
     @Query("""
             select m from ChatMessage m
-            where m.chatRoom.id = :roomId              and (:cutoff is null or m.id > :cutoff)
+            where m.chatRoom.id = :roomId
+              and (:cutoff is null or m.id > :cutoff)
               and (:cursor is null or m.id < :cursor)
             order by m.id desc
             """)
@@ -111,7 +116,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             update ChatMessage m
             set m.read = true
             where m.chatRoom.id = :roomId
-              and m.read = false              and m.senderType <> :excludedSender
+              and m.read = false
+              and m.senderType <> :excludedSender
               and (:cutoff is null or m.id > :cutoff)
             """)
     int markIncomingAsRead(@Param("roomId") Long roomId,
@@ -132,7 +138,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Query("""
             select m from ChatMessage m
             where m.chatRoom.id = :roomId
-              and m.senderType = :userSender              and m.id > :afterId
+              and m.senderType = :userSender
+              and m.id > :afterId
             order by m.id asc
             """)
     List<ChatMessage> findUserMessagesAfter(@Param("roomId") Long roomId,
