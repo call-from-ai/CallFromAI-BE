@@ -40,7 +40,7 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Query("""
             select m from ChatMessage m
             where m.chatRoom.id = :roomId
-            and m.createdAt < :before
+              and m.createdAt < :before
             order by m.id desc
             """)
     List<ChatMessage> findRecentBefore(@Param("roomId") Long roomId,
@@ -50,8 +50,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Query("""
             select m from ChatMessage m
             where m.chatRoom.id = :roomId
-            and m.id > :afterId
-            and m.createdAt < :before
+              and m.id > :afterId
+              and m.createdAt < :before
             order by m.id desc
             """)
     List<ChatMessage> findRecentAfterAndBefore(@Param("roomId") Long roomId,
@@ -83,7 +83,7 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             select m.chatRoom.id as roomId, max(m.id) as lastMessageId
             from ChatMessage m
             where m.chatRoom.id in :roomIds
-                   and (m.chatRoom.messageVisibleAfterId is null
+              and (m.chatRoom.messageVisibleAfterId is null
                    or m.id > m.chatRoom.messageVisibleAfterId)
             group by m.chatRoom.id
             """)
