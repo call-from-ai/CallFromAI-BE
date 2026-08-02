@@ -190,7 +190,7 @@ public class ChatMessageService {
 
         // 남은 최신 메시지 기준으로 마지막 메시지 시각 재계산(없으면 null).
         LocalDateTime lastMessageAt = chatMessageRepository
-                .findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(chatRoomId)
+                .findTopByChatRoomIdOrderByIdDesc(chatRoomId)
                 .map(ChatMessage::getCreatedAt)
                 .orElse(null);
         room.updateLastMessageAt(lastMessageAt);
@@ -209,7 +209,6 @@ public class ChatMessageService {
                         .content(content)
                         .messageType(MessageType.TEXT)
                         .read(false)     // 유저가 아직 안 읽음 → 안읽음 집계 대상
-                        .deleted(false)
                         .chatRoom(room)
                         .build()
         );

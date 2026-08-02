@@ -74,7 +74,7 @@ public class ChatRoomService {
     public void hideRoom(Long memberId, Long chatRoomId) {
         ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
         Long cutoffMessageId = chatMessageRepository
-                .findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(chatRoomId)
+                .findTopByChatRoomIdOrderByIdDesc(chatRoomId)
                 .map(ChatMessage::getId)
                 .orElse(null);   // 메시지가 없는 방이면 null
         room.hide(cutoffMessageId);

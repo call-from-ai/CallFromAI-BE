@@ -54,10 +54,6 @@ public class ChatMessage extends BaseTimeEntity {
     @Column(name = "is_read", nullable = false)
     private boolean read;
 
-    /** 소프트삭제 여부. true면 유저 노출 조회에서 제외한다. */
-    @Column(name = "is_deleted", nullable = false)
-    private boolean deleted;
-
     /** 소속 채팅방. 같은 도메인이므로 지연로딩 @ManyToOne으로 연관. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "chat_room_id", nullable = false)
@@ -69,12 +65,11 @@ public class ChatMessage extends BaseTimeEntity {
 
     @Builder
     private ChatMessage(SenderType senderType, String content, MessageType messageType,
-                        boolean read, boolean deleted, ChatRoom chatRoom, String proactiveRequestId) {
+                        boolean read, ChatRoom chatRoom, String proactiveRequestId) {
         this.senderType = senderType;
         this.content = content;
         this.messageType = messageType;
         this.read = read;
-        this.deleted = deleted;
         this.chatRoom = chatRoom;
         this.proactiveRequestId = proactiveRequestId;
     }

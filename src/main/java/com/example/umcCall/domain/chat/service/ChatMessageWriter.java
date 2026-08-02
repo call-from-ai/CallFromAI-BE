@@ -45,7 +45,6 @@ public class ChatMessageWriter {
                         .content(hasText ? content : null)
                         .messageType(resolveMessageType(hasText, hasImage))
                         .read(true)      // 내가 보낸 메시지는 읽음 처리
-                        .deleted(false)
                         .chatRoom(room)
                         .build()
         );
