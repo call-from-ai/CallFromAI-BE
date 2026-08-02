@@ -46,6 +46,16 @@ public interface RelationshipRepository extends JpaRepository<Relationship, Long
             """)
     List<Relationship> findAllWithCharacterByCharacterDeletedAtIsNull();
 
+    @Query("""
+        select r
+        from Relationship r
+        join fetch r.character
+        where r.id = :relationshipId
+        """)
+    Optional<Relationship> findByIdWithCharacter(
+            @Param("relationshipId") Long relationshipId
+    );
+
     int countByMemberId(Long memberId);
     int countByMemberIdAndCharacterDeletedAtIsNull(Long memberId);
 }

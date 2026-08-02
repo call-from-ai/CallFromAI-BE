@@ -83,7 +83,7 @@ public class Relationship extends BaseTimeEntity {
         this.speechStyle = speechStyle;
         this.startedAt = LocalDate.now();
         this.main = main;
-        this.becameMainAt = main ? LocalDateTime.now() : null;
+        this.becameMainAt = null;   // 최초 생성 시 자동 메인 지정은 3일 제한 대상 아님 (명시적 activate() 호출 시에만 세팅)
     }
 
     public void updateInfo(RelationshipStage relationshipStage, Integer spiceLevel, SpeechStyle speechStyle) {
