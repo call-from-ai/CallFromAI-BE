@@ -78,4 +78,15 @@ public class ChatRoomController {
         chatRoomService.hideRoom(memberId, chatRoomId);
         return ApiResponse.onSuccess();
     }
+
+    /** 채팅방 목록에서 숨김. AI가 새 메시지를 보내면 목록에 다시 나타난다. */
+    @Operation(summary = "채팅방 숨김",
+            description = "채팅방을 목록에서 숨긴다. 지금까지의 메시지는 감춰지고, 이후 AI가 새 메시지를 보내면 목록에 다시 나타난다.")
+    @DeleteMapping("/{chatRoomId}")
+    public ApiResponse<Void> hideRoom(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long chatRoomId) {
+        chatRoomService.hideRoom(memberId, chatRoomId);
+        return ApiResponse.onSuccess();
+    }
 }
