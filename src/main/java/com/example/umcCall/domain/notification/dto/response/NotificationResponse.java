@@ -10,7 +10,7 @@ public record NotificationResponse(
         String title,
         String content,
         boolean read,
-        LocalDateTime occurredAt
+        LocalDateTime createdAt
 ) {
     public static NotificationResponse from(SystemNotification notification) {
         return new NotificationResponse(
@@ -19,7 +19,7 @@ public record NotificationResponse(
                 notification.getTitle(),
                 notification.getContent(),
                 notification.isRead(),
-                notification.getOccurredAt()
+                notification.getCreatedAt()
         );
     }
 }

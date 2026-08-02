@@ -11,7 +11,7 @@ import java.util.Optional;
 public interface SystemNotificationRepository extends JpaRepository<SystemNotification, Long> {
 
     // 최근 7일간의 알림만
-    List<SystemNotification> findByMemberIdAndOccurredAtAfterOrderByOccurredAtDesc(
+    List<SystemNotification> findByMemberIdAndCreatedAtAfterOrderByCreatedAtDesc(
             Long memberId, LocalDateTime after);
 
     Optional<SystemNotification> findByIdAndMemberId(Long notificationId, Long memberId);
@@ -19,7 +19,7 @@ public interface SystemNotificationRepository extends JpaRepository<SystemNotifi
     boolean existsByMemberIdAndRelationshipIdAndTypeAndContent(
             Long memberId, Long relationshipId, NotificationType type, String content);
 
-    List<SystemNotification> findByTypeAndOccurredAtBetween(
+    List<SystemNotification> findByTypeAndCreatedAtBetween(
             NotificationType type, LocalDateTime start, LocalDateTime end);
 
     List<SystemNotification> findByMemberIdAndReadFalse(Long memberId);

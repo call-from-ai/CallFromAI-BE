@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "알림", description = "홈화면 지난 알림 조회/읽음처리 API")
+@Tag(name = "알림", description = "지난 알림 조회 및 읽음 처리 API")
 @RestController
 @RequestMapping("/notifications")
 @RequiredArgsConstructor

@@ -12,13 +12,13 @@ import java.time.LocalDateTime;
 
 @Entity
 @Getter
-@Table(name = "system_notification")
+@Table(name = "activity_notification")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class SystemNotification extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "notification_id")
+    @Column(name = "activity_notification_id")
     private Long id;
 
     @Column(name = "member_id", nullable = false)
@@ -40,19 +40,15 @@ public class SystemNotification extends BaseTimeEntity {
     @Column(name = "is_read", nullable = false)
     private boolean read;
 
-    @Column(name = "occurred_at", nullable = false)
-    private LocalDateTime occurredAt;
-
     @Builder
     public SystemNotification(Long memberId, Long relationshipId, NotificationType type,
-                              String title, String content, LocalDateTime occurredAt) {
+                              String title, String content) {
         this.memberId = memberId;
         this.relationshipId = relationshipId;
         this.type = type;
         this.title = title;
         this.content = content;
         this.read = false;
-        this.occurredAt = occurredAt;
     }
 
     public void markAsRead() {

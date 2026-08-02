@@ -43,7 +43,7 @@ public class NotificationService {
     @Transactional(readOnly = true)
     public List<NotificationResponse> getNotifications(Long memberId) {
         LocalDateTime after = LocalDateTime.now().minusDays(VISIBLE_DAYS);
-        return notificationRepository.findByMemberIdAndOccurredAtAfterOrderByOccurredAtDesc(memberId, after)
+        return notificationRepository.findByMemberIdAndCreatedAtAfterOrderByCreatedAtDesc(memberId, after)
                 .stream()
                 .map(NotificationResponse::from)
                 .toList();
@@ -75,7 +75,7 @@ public class NotificationService {
 
         // 오늘 이미 생성된 기념일 알림의 relationshipId를 한 번에 조회
         Set<Long> alreadyNotifiedRelationshipIds = notificationRepository
-                .findByTypeAndOccurredAtBetween(NotificationType.ANNIVERSARY, todayStart, todayEnd)
+                .findByTypeAndCreatedAtBetween(NotificationType.ANNIVERSARY, todayStart, todayEnd)
                 .stream()
                 .map(SystemNotification::getRelationshipId)
                 .collect(Collectors.toSet());
@@ -103,24 +103,21 @@ public class NotificationService {
 
     @Transactional
     public void notifyAndPush(Long memberId, Long relationshipId, NotificationType type, String title, String content) {
-        notificationRepository.save(
+        SystemNotification notification = notificationRepository.save(
                 SystemNotification.builder()
                         .memberId(memberId)
                         .relationshipId(relationshipId)
                         .type(type)
                         .title(title)
                         .content(content)
-                        .occurredAt(LocalDateTime.now())
                         .build()
         );
 
-        Member member = memberRepository.findById(memberId).orElse(null);
-        if (member == null || !member.isAllNotificationEnabled() || member.isWithinDoNotDisturb()) {
-            return;
-        }
+        // 중복 제거
 
+        //안드로이드 쪽에서 배너 클릭 시 notificationId 받을 수 있게
         try {
-            pushNotificationService.send(memberId, PushMessage.notice(title, content));
+            pushNotificationService.send(memberId, PushMessage.notice(notification.getId(), title, content));
         } catch (Exception e) {
             log.warn("FCM 발송 실패. memberId={}", memberId, e);
         }
