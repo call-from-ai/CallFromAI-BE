@@ -63,7 +63,10 @@ public class PushMessage {
     }
 
     /** 공지·지난 알림(기념일/통화약속/부재중 등) 배너. */
-    public static PushMessage notice(String title, String body) {
-        return new PushMessage(PushType.NOTICE, title, body, new LinkedHashMap<>(), false);
+    // notice() 메서드에 notificationId 파라미터 추가
+    public static PushMessage notice(Long notificationId, String title, String body) {
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("notificationId", String.valueOf(notificationId));
+        return new PushMessage(PushType.NOTICE, title, body, data, false);
     }
 }

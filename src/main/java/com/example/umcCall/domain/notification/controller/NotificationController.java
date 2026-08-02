@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "알림", description = "홈화면 지난 알림 조회/읽음처리 API")
+@Tag(name = "알림", description = "지난 알림 조회 및 읽음 처리 API")
 @RestController
 @RequestMapping("/notifications")
 @RequiredArgsConstructor
@@ -31,6 +31,13 @@ public class NotificationController {
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long notificationId) {
         notificationService.markAsRead(memberId, notificationId);
+        return ApiResponse.onSuccess();
+    }
+
+    @Operation(summary = "전체 알림 읽음 처리", description = "안 읽은 알림을 전부 읽음 처리한다. 홈화면 진입 시 호출한다.")
+    @PatchMapping("/read-all")
+    public ApiResponse<Void> markAllAsRead(@AuthenticationPrincipal Long memberId) {
+        notificationService.markAllAsRead(memberId);
         return ApiResponse.onSuccess();
     }
 }
