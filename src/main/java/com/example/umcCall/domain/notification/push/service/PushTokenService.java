@@ -34,8 +34,8 @@ public class PushTokenService {
 
     /**
      * 토큰 삭제(로그아웃). 본인 소유 토큰 1건만 제거하며, 없는 토큰이어도 조용히 성공한다(멱등).
+     * 트랜잭션은 레포의 deleteByTokenAndMemberId가 자체 보유한다.
      */
-    @Transactional
     public void delete(Long memberId, String token) {
         pushTokenRepository.deleteByTokenAndMemberId(token, memberId);
     }

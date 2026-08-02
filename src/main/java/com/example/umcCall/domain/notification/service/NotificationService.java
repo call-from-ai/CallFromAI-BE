@@ -5,14 +5,13 @@ import com.example.umcCall.domain.notification.dto.response.NotificationResponse
 import com.example.umcCall.domain.notification.entity.ActivityNotification;
 import com.example.umcCall.domain.notification.enums.NotificationType;
 import com.example.umcCall.domain.notification.exception.NotificationErrorCode;
-import com.example.umcCall.domain.notification.push.dto.PushMessage;
-import com.example.umcCall.domain.notification.push.service.PushNotificationService;
+import com.example.umcCall.domain.notification.event.ActivityNotificationCreatedEvent;
 import com.example.umcCall.domain.notification.repository.ActivityNotificationRepository;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.global.exception.BaseException;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +23,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
@@ -35,7 +33,7 @@ public class NotificationService {
     private final ActivityNotificationRepository notificationRepository;
     private final RelationshipRepository relationshipRepository;
     private final MemberRepository memberRepository;
-    private final PushNotificationService pushNotificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 조회
     @Transactional(readOnly = true)
@@ -111,13 +109,7 @@ public class NotificationService {
                         .build()
         );
 
-        // 중복 제거
-
-        //안드로이드 쪽에서 배너 클릭 시 notificationId 받을 수 있게
-        try {
-            pushNotificationService.send(memberId, PushMessage.notice(notification.getId(), title, content));
-        } catch (Exception e) {
-            log.warn("FCM 발송 실패. memberId={}", memberId, e);
-        }
+        eventPublisher.publishEvent(
+                new ActivityNotificationCreatedEvent(memberId, notification.getId(), title, content));
     }
 }
