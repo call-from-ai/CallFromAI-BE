@@ -12,25 +12,17 @@ import lombok.extern.slf4j.Slf4j;
  * 얹어, 통화가 끝나면 그대로 재생 가능한 wav 바이트가 된다(다시듣기).
  *
  * <p><b>왜 이어붙이기(concat)가 아니라 믹스인가</b>: 이어붙이면 침묵·생각하는 시간이 통째로 빠져 길이가
- * {@code callTime}과 크게 어긋나고, 사용자 발화 구간을 잘라낼 근거(STT 타임스탬프)가 필요해지며, 끼어들기가
- * 겹치는 순간을 표현할 수 없다. 믹스는 업스트림을 통째로 담으므로 절단이 아예 불필요하다.
+ * {@code callTime}과 크게 어긋나고, 사용자 발화 구간을 잘라낼 근거(STT 타임스탬프)가 필요해지며,
+ * 끼어들기가 겹치는 순간을 표현할 수 없다.
  *
  * <p><b>왜 랜덤 액세스인가</b>: AI 대사가 사용자의 침묵 구간보다 길면 <b>이미 써둔 뒤쪽에 겹쳐 써야</b> 한다.
- * 앞에서 뒤로만 흐르는 스트리밍 인코더로는 구조적으로 불가능하다. 아직 안 쓴 구간은 0(무음)이라 침묵이 공짜다.
+ * 앞에서 뒤로만 흐르는 스트리밍 인코더로는 구조적으로 불가능하다. (어느 위치에 얹는지는 {@link #append})
  *
- * <p>⚠ <b>메모리 배열이다.</b> 통화 상한이 {@code call.timeout.max-call-minutes}(5분)라 통화당 최대 ~10MB고,
- * 크래시로 남은 녹음은 어차피 버리기로 했으므로 디스크에 둘 이유가 없었다(파일 생성·고아 정리·디스크 실패
- * 처리가 통째로 사라진다). ⚠ <b>동시 통화가 두 자릿수 후반으로 가면 되돌려야 한다</b> — 그때는 힙이 통화 수에
- * 비례해 커진다.
+ * <p>⚠ 버퍼가 <b>메모리</b>인 건 통화 상한이 5분(통화당 최대 ~10MB)이기 때문이다 —
+ * <b>동시 통화가 두 자릿수 후반으로 가면 파일로 되돌려야 한다</b>(힙이 통화 수에 비례한다).
  *
- * <p><b>트랙마다 커서가 있다.</b> 도착 시각에 그대로 얹지 않는 이유는 두 소스 모두 <b>실시간보다 빠르게
- * 도착하는 구간</b>이 있어서다 — 프론트는 {@code CALL_READY} 전에 버퍼링한 프레임을 한꺼번에 flush하고,
- * TTS는 문장 wav를 재생 속도보다 빨리 뱉는다(#117). 도착 시각에 얹으면 그 구간이 통째로 겹쳐 뭉개진다.
- * 커서는 "직전 소리가 끝난 지점"과 "지금"의 <b>늦은 쪽</b>을 골라 이걸 막는다.
- *
- * <p><b>fail-open이다.</b> 녹음 실패가 통화·전사에 영향을 주면 안 되므로 깨진 조각은 건너뛰고 로그만 남긴다.
- *
- * <p>스레드 안전하다 — 업스트림은 WS 수신 스레드, AI는 통화 워커가 쓰므로 접근을 통째로 직렬화한다.
+ * <p>fail-open이다 — 깨진 조각은 건너뛰고 통화·녹음 모두 계속한다.
+ * 스레드 안전하다: 업스트림은 WS 수신 스레드, AI는 통화 워커가 쓴다.
  */
 @Slf4j
 public final class CallRecorder {
@@ -46,7 +38,7 @@ public final class CallRecorder {
      */
     private static final int MAX_FRAMES = 5 * 60 * SAMPLE_RATE;
 
-    /** 첫 할당(30초). 짧은 통화가 대부분이라 작게 잡고 필요할 때 두 배씩 늘린다. */
+    /** 첫 할당(30초). 짧은 통화가 대부분이라 작게 잡고 필요하면 늘린다. */
     private static final int INITIAL_FRAMES = 30 * SAMPLE_RATE;
 
     private final LongSupplier nanoClock;
@@ -73,8 +65,8 @@ public final class CallRecorder {
 
     /**
      * AI 대사 wav 한 조각(CLOVA Voice 24kHz)을 16kHz로 낮춰 타임라인에 얹는다.
-     * <p>한 턴이 문장 단위로 <b>여러 조각</b>이라(#117) 커서가 조각을 이어 붙인다 — 클라이언트가
-     * 큐에 넣어 순서대로 재생하는 모습과 같은 배치가 된다.
+     * <p>한 턴이 문장 단위로 <b>여러 조각</b>이라(#117) 커서가 조각을 이어 붙인다 —
+     * 클라이언트가 큐에 넣어 순서대로 재생하는 모습과 같은 배치가 된다.
      */
     public synchronized void writeAiWav(byte[] wav) {
         try {
@@ -140,7 +132,7 @@ public final class CallRecorder {
         length = Math.max(length, from + count);
     }
 
-    /** 필요한 만큼 두 배씩 늘린다. 늘어난 구간은 0 = 무음이라 침묵이 따로 표현할 필요 없이 채워진다. */
+    /** 두 배씩 늘린다. 늘어난 구간은 0 = 무음이라 침묵이 저절로 채워진다. */
     private void ensureCapacity(int frames) {
         if (frames <= mix.length) {
             return;
@@ -152,7 +144,7 @@ public final class CallRecorder {
         mix = Arrays.copyOf(mix, capacity);
     }
 
-    /** 녹음 원점부터 지금까지의 프레임(=샘플) 수. 타임라인 위치의 기준이다. */
+    /** 녹음 원점부터 지금까지의 프레임(=샘플) 수. */
     private long nowFrame() {
         return (nanoClock.getAsLong() - startedAtNanos) / 1_000_000L * FRAMES_PER_MS;
     }

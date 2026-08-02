@@ -165,9 +165,8 @@ public interface CallRepository extends JpaRepository<Call, Long> {
     List<LocalDateTime> findCompletedCallTimes(@Param("relationshipId") Long relationshipId);
 
     /**
-     * 기동 시점에 남아 있는 녹음 업로드 중({@code PROCESSING})을 전부 실패로 내린다.
-     * <p>업로드는 앱이 살아 있을 때만 도므로 기동 시점의 {@code PROCESSING}은 정의상 전부 죽은 것이다 —
-     * 안 걷으면 그 통화는 프론트에서 영영 "준비 중"으로 남는다.
+     * 녹음 업로드 중({@code PROCESSING})을 전부 실패로 내린다. 기동 시 1회 —
+     * 부르는 쪽({@code CallRecordingService.failStaleUploads})에 왜 그래도 되는지가 적혀 있다.
      *
      * @return 마감한 건수
      */

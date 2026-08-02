@@ -214,8 +214,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             terminateCall(session, CloseStatus.SERVER_ERROR);
             return;
         }
-        // ⚠ STT 중계 뒤에 스풀한다 — 이 메서드는 WS 수신 스레드라, 디스크 쓰기를 앞에 두면
-        // 그만큼 STT 도착이 밀려 턴 감지·끼어들기가 통째로 늦어진다. 녹음은 밀려도 되는 쪽이다.
+        // ⚠ STT 중계 뒤에 녹음한다 — 이 메서드는 WS 수신 스레드라, 녹음을 앞에 두면 그만큼
+        // STT 도착이 밀려 턴 감지·끼어들기가 늦어진다. 녹음은 밀려도 되는 쪽이다.
         call.recorder().writeUpstream(chunk);
     }
 
@@ -336,9 +336,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * <p>best-effort다: 통지가 늦거나 유실돼도 통화는 그대로 진행된다(문장 하나가 더 들릴 뿐).
      */
     private void notifySpeechCanceled(ActiveCall call) {
-        // 클라이언트가 큐를 버리므로 녹음의 AI 커서도 "지금"으로 되돌린다 — 안 그러면 버려진 소리가
-        // 차지하던 시간만큼 다음 대사가 밀려, 녹음에서만 AI가 늦게 대답하는 것처럼 들린다.
-        call.recorder().resetAiCursor();
+        call.recorder().resetAiCursor(); // 녹음 타임라인도 같이 맞춘다 — 이유는 resetAiCursor 참고
         try {
             controlNotifier.execute(() -> sendControl(call.session(),
                     MessageType.AI_SPEECH_CANCELED,
@@ -580,7 +578,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /**
      * 이 통화의 녹음을 마감한다. 정리 경로(정상 종료·서버 주도 종료·앱 종료)가 공유하며,
      * 맵의 원자 remove로 상호배타라 <b>정확히 한 번</b>만 불린다(워커·스트림 정리와 같은 보증).
-     * <p>워커가 이미 {@code shutdownNow}된 뒤라 여기서 더 쓰일 일이 없다.
+     * <p>⚠ {@code finish()}엔 멱등 가드가 없다 — 두 번 부르면 S3에 객체가 둘 생긴다.
+     * 1회 보장은 <b>전적으로 위 원자 remove에 달려 있으니</b> 다른 곳에서 부르지 말 것.
      */
     private void finishRecording(ActiveCall call) {
         call.recorder().finish()

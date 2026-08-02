@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * wav 컨테이너 최소 코덱. 통화 녹음이 다루는 두 방향만 있다 —
- * <b>CLOVA Voice가 준 wav를 열어 PCM을 꺼내고</b>, <b>스풀 PCM 앞에 붙일 헤더를 만든다</b>.
+ * <b>CLOVA Voice가 준 wav를 열어 PCM을 꺼내고</b>, <b>모아둔 PCM 앞에 붙일 헤더를 만든다</b>.
  *
  * <p>범용 코덱이 아니다: <b>PCM 16-bit 모노</b>만 받고 그 외는 예외다. 다운믹스·비트 변환을 넣지 않은 건
  * 실제 입력이 CLOVA Voice 하나뿐이고 그 포맷이 yml({@code format=wav}, {@code sampling-rate})로 고정돼
@@ -14,7 +14,7 @@ import java.nio.charset.StandardCharsets;
  */
 public final class WavCodec {
 
-    /** 표준 44바이트 헤더(RIFF + fmt 16 + data). 스풀 파일 앞머리에 이만큼 자리를 비워둔다. */
+    /** 표준 44바이트 헤더(RIFF + fmt 16 + data). */
     public static final int HEADER_BYTES = 44;
 
     private static final int PCM_FORMAT = 1;
@@ -66,7 +66,7 @@ public final class WavCodec {
         throw new IllegalArgumentException("data 청크가 없습니다. bytes=" + wav.length);
     }
 
-    /** 스풀 PCM 앞에 붙일 44바이트 헤더. 모노 16-bit 고정. */
+    /** PCM 앞에 붙일 44바이트 헤더. 모노 16-bit 고정. */
     public static byte[] header(int dataBytes, int sampleRate) {
         ByteBuffer buffer = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN);
         buffer.put("RIFF".getBytes(StandardCharsets.US_ASCII));
