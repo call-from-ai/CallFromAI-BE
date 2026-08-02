@@ -3,11 +3,14 @@ package com.example.umcCall.domain.call.service;
 import com.example.umcCall.domain.call.entity.Call;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
+import com.example.umcCall.domain.call.event.CallRingingEvent;
 import com.example.umcCall.domain.call.repository.CallRepository;
+import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +24,7 @@ public class ImmediateAiCallService {
 
     private final RelationshipRepository relationshipRepository;
     private final CallRepository callRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 호출 가능한 관계이고 진행 중인 통화가 없으면 RINGING 통화를 만든다.
@@ -46,6 +50,16 @@ public class ImmediateAiCallService {
                 .sender(CallSender.AI)
                 .build());
         log.info("선제 AI 즉시 발신. callId={}, relationshipId={}", call.getId(), relationshipId);
+
+        // 알림 도메인이 착신 푸시를 보낸다(AFTER_COMMIT 수신).
+        Character character = relationship.getCharacter();
+        eventPublisher.publishEvent(new CallRingingEvent(
+                call.getId(),
+                relationshipId,
+                relationship.getMemberId(),
+                character.getId(),
+                character.getFirstName(),
+                character.getImageUrl()));
         return true;
     }
 }

@@ -13,6 +13,7 @@ import com.example.umcCall.domain.call.enums.CallSender;
 import java.time.LocalDateTime;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -117,6 +118,15 @@ public interface CallRepository extends JpaRepository<Call, Long> {
     Optional<Call> findByIdForUpdate(@Param("id") Long id);
 
     boolean existsByRelationshipIdAndStatusIn(Long relationshipId, Collection<CallStatus> statuses);
+
+    /**
+     * 관계에 속한 통화를 전부 지운다. 캐릭터 물리 삭제(하드 딜리트) 전용이다.
+     * <p>⚠ 호출 전에 {@code CallHistoryRepository.deleteByRelationshipId}로 <b>전사를 먼저</b> 지워야 한다 —
+     * {@code call_history.call_id}가 {@code nullable=false} FK인데 {@code Call}엔 cascade가 없다.
+     */
+    @Modifying
+    @Query("delete from Call c where c.relationship.id = :relationshipId")
+    void deleteByRelationshipId(@Param("relationshipId") Long relationshipId);
 
     /**
      * 관계의 활성 통화를 <b>비관적 락으로</b> 가져온다(발신 중복 방어용).
