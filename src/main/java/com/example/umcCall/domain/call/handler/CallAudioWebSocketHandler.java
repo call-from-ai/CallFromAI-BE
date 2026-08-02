@@ -11,10 +11,12 @@ import com.example.umcCall.domain.call.recording.CallRecordingService;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
+import com.example.umcCall.domain.call.service.CallVoiceResolver;
 import com.example.umcCall.domain.call.service.SentenceBuffer;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
+import com.example.umcCall.domain.image.enums.TTSVoice;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
@@ -60,15 +62,13 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 @Component
 public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
-    /** AI 응답 화자. 캐릭터별 음성 매핑은 후순위 — 지금은 고정값(캐릭터 음성이 들어올 자리다). */
-    private static final String AI_SPEAKER = "nara";
-
     private final ClovaSpeechClient clovaSpeechClient;
     private final ClovaVoiceClient clovaVoiceClient;
     private final CallConversationService callConversationService;
     private final CallService callService;
     private final CallHistoryService callHistoryService;
     private final CallRecordingService callRecordingService;
+    private final CallVoiceResolver callVoiceResolver;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -92,6 +92,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                                      CallHistoryService callHistoryService,
                                      ClovaSpeechProperties speechProperties,
                                      CallRecordingService callRecordingService,
+                                     CallVoiceResolver callVoiceResolver,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
@@ -99,6 +100,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         this.callService = callService;
         this.callHistoryService = callHistoryService;
         this.callRecordingService = callRecordingService;
+        this.callVoiceResolver = callVoiceResolver;
         this.objectMapper = objectMapper;
         this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
         log.info("[Clova] recognize CONFIG = {}", configJson);
@@ -154,8 +156,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 우선하기 때문이다 — 시딩해봐야 무시되고, 이어받기 깊이는 이제 AI 서버가 정한다.
             List<AiChatHistoryItem> history = new ArrayList<>();
             ExecutorService worker = Executors.newSingleThreadExecutor();
+            // ⚠ 화자 해석은 여기서 <b>딱 한 번</b>이다. TTS는 턴마다 문장 수만큼 불리므로 그쪽에서 해석하면
+            // 문장 하나에 DB가 두 번 나간다. 실패해도 기본 목소리가 돌아올 뿐 통화는 그대로 이어진다.
+            TTSVoice voice = callVoiceResolver.resolve(ticket.characterId());
             activeCalls.put(sessionId, new ActiveCall(session, stream, worker, ticket, history,
-                    new TurnGate(), new CallRecorder()));
+                    new TurnGate(), new CallRecorder(), voice));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
@@ -263,8 +268,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // AI 대사를 조각으로 받아(SSE) 문장이 완성될 때마다 합성·송신한다.
                     // 대사 전체를 기다리지 않는 게 핵심 — LLM이 나머지를 만드는 시간이 체감 지연에서 빠진다.
                     SentenceBuffer sentences = new SentenceBuffer();
-                    SpeakingTurn speaking =
-                            new SpeakingTurn(session, turnGate, turn, turnStartedAt, call.recorder());
+                    SpeakingTurn speaking = new SpeakingTurn(session, turnGate, turn, turnStartedAt,
+                            call.recorder(), call.voice().speakerId());
                     try {
                         callConversationService.respondStream(
                                 ticket.characterId(), ticket.relationshipId(), history,
@@ -360,11 +365,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         private final long turn;
         private final long turnStartedAt;
         private final CallRecorder recorder;
+        /** 이 통화 AI의 목소리(CLOVA 화자 ID). 연결 시 해석해 둔 값을 그대로 받는다. */
+        private final String speaker;
         private final StringBuilder spoken = new StringBuilder();
         private boolean firstAudioSent;
 
         private SpeakingTurn(WebSocketSession session, TurnGate turnGate, long turn,
-                             long turnStartedAt, CallRecorder recorder) {
+                             long turnStartedAt, CallRecorder recorder, String speaker) {
+            this.speaker = speaker;
             this.session = session;
             this.turnGate = turnGate;
             this.turn = turn;
@@ -392,7 +400,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             long llmMs = firstAudioSent ? -1 : elapsedMs(turnStartedAt);
 
             long ttsStartedAt = System.nanoTime();
-            byte[] wav = clovaVoiceClient.synthesize(sentence, AI_SPEAKER);
+            byte[] wav = clovaVoiceClient.synthesize(sentence, speaker);
             long ttsMs = elapsedMs(ttsStartedAt);
 
             // 끼어들기 확인 ②: 합성 중에 말을 시작한 경우. 아직 전송 전이라 사용자에겐 애초에 들리지 않는다.
@@ -709,10 +717,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * @param history 세션 스코프 대화 이력. <b>워커 스레드만</b> 읽고 쓴다(스레드 confine → 동기화 불필요).
      * @param turnGate 끼어들기 판정. history와 달리 <b>두 스레드가 만진다</b>(워커가 열고, gRPC 콜백이 취소).
      * @param recorder 통화 녹음(타임라인 믹스). 세 스레드가 쓰지만 내부에서 직렬화한다.
+     * @param voice   이 통화 AI의 목소리. 연결 시 1회 해석해 얼려둔다 — 문장마다 다시 조회하지 않기 위함이자,
+     *                통화 도중 캐릭터 이미지가 바뀌어도 말하던 목소리가 중간에 갈리지 않게 하기 위함이다.
      */
     private record ActiveCall(WebSocketSession session, SttStream stream, ExecutorService worker,
                               WsTicket ticket, List<AiChatHistoryItem> history, TurnGate turnGate,
-                              CallRecorder recorder) {
+                              CallRecorder recorder, TTSVoice voice) {
     }
 
     /**
