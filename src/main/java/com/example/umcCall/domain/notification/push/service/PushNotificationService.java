@@ -11,7 +11,6 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 공용 푸시 발송기. 채팅·통화·알림 도메인이 memberId + PushMessage로 호출하면
@@ -27,7 +26,6 @@ public class PushNotificationService {
     private final MemberRepository memberRepository;   // 회원 알림설정 읽기 전용
     private final FcmSender fcmSender;
 
-    @Transactional
     public void send(Long memberId, PushMessage message) {
         Member member = memberRepository.findById(memberId).orElse(null);
         if (member == null || !isAllowedByMemberSetting(member)) {
