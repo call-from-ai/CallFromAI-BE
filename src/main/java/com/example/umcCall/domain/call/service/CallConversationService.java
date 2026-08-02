@@ -2,7 +2,6 @@ package com.example.umcCall.domain.call.service;
 
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
-import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
@@ -22,7 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * 통화 한 턴의 AI 대화 오케스트레이션. STT final 텍스트 → AI 요청 조립 → chat() 호출.
+ * 통화 한 턴의 AI 대화 오케스트레이션. STT final 텍스트 → AI 요청 조립 → chatStream() 호출.
  * <p>AI 경계 호출은 {@link AiConversationService}(client + stale 가드)에 맡기고, 여기선 통화 신원으로
  * 최신 스냅샷을 조립한다. <b>전사 DB 저장(후순위)이 나중에 이 서비스에 붙는다</b> — 그 자리가 여기다.
  * <p>조립엔 트랜잭션이 불필요하다: {@code findById}가 scalar 컬럼을 로드하고, 매퍼가 lazy 연관을 타지 않는다.
@@ -43,33 +42,25 @@ public class CallConversationService {
     private final AiConversationService aiConversationService;
 
     /**
-     * 통화 대화 로그를 AI로 넘겨 응답을 받는다.
+     * 통화 대화 로그를 AI로 넘겨 대사 조각을 <b>스트리밍</b>으로 받는다. 조각이 도착할 때마다 {@code onChunk}가 불린다.
      * <p>로그는 <b>이번 사용자 발화까지 포함</b>한 append-only 이벤트 로그다(호출부가 STT final 시 append).
      * AI 서버 계약은 {@code message}(이번 발화)와 {@code history}(이전 턴)를 분리해 받으므로,
      * 로그의 <b>마지막 항목을 message</b>로, 그 앞을 history로 파생해 보낸다 — 쪼개는 지점만 여기로 옮긴 것.
      *
-     * @param conversation 이번 발화를 마지막에 포함한 대화 로그(비어 있으면 안 된다)
-     * @return AI 응답. stale/AI 오류 시 {@code AiServerException}이 던져진다(호출부가 그 턴을 폐기).
-     */
-    public AiChatResponse respond(Long characterId, Long relationshipId,
-                                  List<AiChatHistoryItem> conversation) {
-        return aiConversationService.chat(buildRequest(characterId, relationshipId, conversation));
-    }
-
-    /**
-     * 같은 대화를 <b>스트리밍</b>으로 넘긴다. AI 대사 조각이 도착하는 대로 {@code onChunk}가 불린다.
-     * <p>통화가 실제로 쓰는 경로다 — 첫 문장이 나오는 즉시 합성·송신해 체감 지연(TTFA)을 줄이기 위함이다.
-     * 조각을 문장으로 묶는 건 호출부({@code SentenceBuffer})가 하고, 여기선 요청 조립만 공유한다.
+     * <p>첫 문장이 나오는 즉시 합성·송신할 수 있어야 체감 지연(TTFA)이 줄어든다. 조각을 문장으로 묶는 건
+     * 호출부({@code SentenceBuffer})가 하고, 여긴 요청 조립만 맡는다.
      *
      * <p>⚠ {@code onChunk}는 <b>이 메서드를 호출한 스레드에서 동기로</b> 불린다(통화 워커). 그래서 안에서
      * 합성·송신을 해도 턴 순서가 그대로 지켜진다.
+     *
+     * @param conversation 이번 발화를 마지막에 포함한 대화 로그(비어 있으면 안 된다)
      */
     public void respondStream(Long characterId, Long relationshipId,
                               List<AiChatHistoryItem> conversation, Consumer<String> onChunk) {
         aiConversationService.chatStream(buildRequest(characterId, relationshipId, conversation), onChunk);
     }
 
-    /** 통화 신원으로 최신 스냅샷을 조립해 AI 요청을 만든다. 단발/스트리밍이 공유한다. */
+    /** 통화 신원으로 최신 스냅샷을 조립해 AI 요청을 만든다. */
     private AiChatRequest buildRequest(Long characterId, Long relationshipId,
                                        List<AiChatHistoryItem> conversation) {
         Character character = characterRepository.findById(characterId)
