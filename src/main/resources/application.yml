@@ -53,8 +53,10 @@ call:
     # 발신했지만(DIALING) 이 초 안에 WebSocket을 열지 않으면 CANCELED. 기준 시각은 Call.createdAt.
     dial-seconds: 60
     # 이 분을 넘겨 진행 중인 통화는 COMPLETED로 마감하고 세션도 정리한다. 기준 시각은 Call.startedAt.
-    # 크래시·SIGKILL·half-open으로 남은 통화를 걷는 안전망이라 정상 통화를 자르지 않게 넉넉히 잡는다.
-    max-call-minutes: 60
+    # ⚠ 안전망이 아니라 실제 통화 시간 상한이다(기획 결정 2026-08-03) — 정상 통화가 여기서 끊긴다.
+    #   프론트는 CALL_ENDED reason=TIMEOUT을 "오류"가 아니라 "통화 시간 종료"로 안내해야 한다.
+    #   실제 끊기는 시점은 scheduler-delay-ms(10초) 때문에 5:00~5:10 사이다.
+    max-call-minutes: 5
 
 proactive:
   # 선제 연락은 시간 단위 간격이라 10분 단위 폴링이면 충분하다.

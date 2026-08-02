@@ -3,15 +3,11 @@ package com.example.umcCall.domain.call.recording;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Optional;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
  * 타임라인 믹스의 배치 규칙을 고정하는 테스트. 여기가 흔들리면 녹음에서 말이 겹치거나,
@@ -26,29 +22,27 @@ class CallRecorderTest {
     private static final int FRAMES_PER_MS = 16;
 
     private final AtomicLong nanos = new AtomicLong();
+    private final CallRecorder recorder = new CallRecorder(nanos::get);
 
     @Test
-    void 몰아서_도착한_프레임도_겹치지_않고_이어붙는다(@TempDir Path dir) throws IOException {
-        CallRecorder recorder = start(dir);
-
+    void 몰아서_도착한_프레임도_겹치지_않고_이어붙는다() {
         // 프론트는 CALL_READY 전에 버퍼링한 프레임을 한꺼번에 flush한다(3장 계약).
         // 도착 시각에 그대로 얹으면 이 구간이 통째로 겹쳐 첫 마디가 뭉개진다.
         recorder.writeUpstream(pcm((short) 1, (short) 2));
         recorder.writeUpstream(pcm((short) 3, (short) 4));
 
-        assertThat(samplesOf(recorder)).containsExactly((short) 1, (short) 2, (short) 3, (short) 4);
+        assertThat(samples()).containsExactly((short) 1, (short) 2, (short) 3, (short) 4);
     }
 
     @Test
-    void 말이_끊긴_구간은_무음으로_남는다(@TempDir Path dir) throws IOException {
-        CallRecorder recorder = start(dir);
+    void 말이_끊긴_구간은_무음으로_남는다() {
         recorder.writeUpstream(pcm((short) 1, (short) 2));
 
         elapse(100);
         recorder.writeUpstream(pcm((short) 3, (short) 4));
 
         // 침묵이 사라지면 그게 곧 concat이다 — 길이가 callTime과 어긋나고 AI 위치도 전부 밀린다.
-        short[] samples = samplesOf(recorder);
+        short[] samples = samples();
         int gapStart = 100 * FRAMES_PER_MS;
         assertThat(samples).hasSize(gapStart + 2);
         assertThat(samples[2]).isZero();
@@ -56,9 +50,7 @@ class CallRecorderTest {
     }
 
     @Test
-    void AI_음성은_24kHz에서_16kHz로_변환돼_들어간다(@TempDir Path dir) throws IOException {
-        CallRecorder recorder = start(dir);
-
+    void AI_음성은_24kHz에서_16kHz로_변환돼_들어간다() {
         short[] ramp = new short[30];
         for (int i = 0; i < ramp.length; i++) {
             ramp[i] = (short) (i * 100);
@@ -66,51 +58,43 @@ class CallRecorderTest {
         recorder.writeAiWav(wav(24_000, ramp));
 
         // 24k 30샘플 = 16k 20샘플. 값은 선형 보간이라 램프 기울기가 1.5배가 된다.
-        short[] samples = samplesOf(recorder);
+        short[] samples = samples();
         assertThat(samples).hasSize(20);
         assertThat(samples[1]).isEqualTo((short) 150);
         assertThat(samples[2]).isEqualTo((short) 300);
     }
 
     @Test
-    void AI_문장이_연달아_와도_겹치지_않고_이어진다(@TempDir Path dir) throws IOException {
-        CallRecorder recorder = start(dir);
-
+    void AI_문장이_연달아_와도_겹치지_않고_이어진다() {
         // 한 턴이 문장 단위 wav N조각으로 쪼개져(#117) 재생 속도보다 빨리 도착한다.
         recorder.writeAiWav(wav(16_000, (short) 10, (short) 20));
         recorder.writeAiWav(wav(16_000, (short) 30, (short) 40));
 
-        assertThat(samplesOf(recorder))
-                .containsExactly((short) 10, (short) 20, (short) 30, (short) 40);
+        assertThat(samples()).containsExactly((short) 10, (short) 20, (short) 30, (short) 40);
     }
 
     @Test
-    void 사용자와_AI가_동시에_말하면_두_소리가_섞인다(@TempDir Path dir) throws IOException {
-        CallRecorder recorder = start(dir);
-
+    void 사용자와_AI가_동시에_말하면_두_소리가_섞인다() {
         // 끼어들기 구간 = 두 목소리가 같은 시각에 있는 구간. 덮어쓰면 한쪽이 통째로 사라진다.
         recorder.writeUpstream(pcm((short) 100, (short) 100));
         recorder.writeAiWav(wav(16_000, (short) 50, (short) 50));
 
-        assertThat(samplesOf(recorder)).containsExactly((short) 150, (short) 150);
+        assertThat(samples()).containsExactly((short) 150, (short) 150);
     }
 
     @Test
-    void 더한_값이_한계를_넘으면_잘라낸다(@TempDir Path dir) throws IOException {
-        CallRecorder recorder = start(dir);
-
+    void 더한_값이_한계를_넘으면_잘라낸다() {
         recorder.writeUpstream(pcm((short) 32_000));
         recorder.writeAiWav(wav(16_000, (short) 32_000));
 
         // 넘긴 채 두면 부호가 뒤집혀 '딱' 하는 잡음이 된다.
-        assertThat(samplesOf(recorder)).containsExactly(Short.MAX_VALUE);
+        assertThat(samples()).containsExactly(Short.MAX_VALUE);
     }
 
     @Test
-    void 끼어들기_뒤의_AI_음성은_현재_시각부터_기록된다(@TempDir Path dir) throws IOException {
-        CallRecorder recorder = start(dir);
+    void 끼어들기_뒤의_AI_음성은_현재_시각부터_기록된다() {
         short[] longSpeech = new short[3200]; // 200ms 분량
-        java.util.Arrays.fill(longSpeech, (short) 1000);
+        Arrays.fill(longSpeech, (short) 1000);
         recorder.writeAiWav(wav(16_000, longSpeech));
 
         elapse(50);
@@ -118,45 +102,43 @@ class CallRecorderTest {
         recorder.writeAiWav(wav(16_000, (short) 7));
 
         // 커서를 그대로 두면 다음 대사가 150ms 뒤로 밀려, 녹음에서만 AI가 늦게 대답하는 것처럼 들린다.
-        short[] samples = samplesOf(recorder);
-        assertThat(samples[50 * FRAMES_PER_MS]).isEqualTo((short) 1007);
+        assertThat(samples()[50 * FRAMES_PER_MS]).isEqualTo((short) 1007);
     }
 
     @Test
-    void 마감하면_재생_가능한_wav가_된다(@TempDir Path dir) throws IOException {
-        CallRecorder recorder = start(dir);
+    void 마감하면_재생_가능한_wav가_된다() {
         recorder.writeUpstream(pcm((short) 1, (short) 2));
 
-        Optional<Path> result = recorder.finish();
+        byte[] wav = recorder.finish().orElseThrow();
 
-        assertThat(result).isPresent();
-        byte[] file = Files.readAllBytes(result.orElseThrow());
-        assertThat(file).hasSize(WavCodec.HEADER_BYTES + 4); // 헤더 + 샘플 2개
-        assertThat(WavCodec.decode(file).sampleRate()).isEqualTo(CallRecorder.SAMPLE_RATE);
+        assertThat(wav).hasSize(WavCodec.HEADER_BYTES + 4); // 헤더 + 샘플 2개
+        assertThat(WavCodec.decode(wav).sampleRate()).isEqualTo(CallRecorder.SAMPLE_RATE);
     }
 
     @Test
-    void 소리가_하나도_없으면_파일을_남기지_않는다(@TempDir Path dir) throws IOException {
-        Path spool = dir.resolve("empty.wav");
-        CallRecorder recorder = CallRecorder.start(spool, nanos::get);
-
+    void 소리가_하나도_없으면_빈_값이다() {
+        // 연결만 되고 끝난 통화 — 빈 녹음이 S3로 올라가지 않게.
         assertThat(recorder.finish()).isEmpty();
-        assertThat(spool).doesNotExist(); // 빈 녹음이 S3로 올라가지 않게
     }
 
     @Test
-    void 녹음이_깨져도_통화_경로로_예외가_나가지_않는다(@TempDir Path dir) throws IOException {
-        CallRecorder recorder = start(dir);
+    void 깨진_AI_조각은_건너뛰고_녹음은_계속된다() {
         recorder.writeUpstream(pcm((short) 1, (short) 2));
 
-        // fail-open: 녹음 실패가 통화·전사를 끊으면 안 된다.
+        // fail-open: 조각 하나가 깨져도 통화도 녹음도 멈추지 않는다.
         assertThatCode(() -> recorder.writeAiWav("이건 wav가 아니다".getBytes()))
                 .doesNotThrowAnyException();
-        assertThat(recorder.finish()).isEmpty();
+
+        assertThat(samples()).containsExactly((short) 1, (short) 2);
     }
 
-    private CallRecorder start(Path dir) throws IOException {
-        return CallRecorder.start(dir.resolve("call.wav"), nanos::get);
+    @Test
+    void 상한을_넘긴_오디오는_버린다() {
+        // 스위퍼가 못 돌아도 힙이 무한정 늘지 않아야 한다 — 마지막 방어선.
+        elapse(6 * 60 * 1000); // 상한(5분)을 넘긴 시각
+        recorder.writeUpstream(pcm((short) 1, (short) 2));
+
+        assertThat(recorder.finish()).isEmpty();
     }
 
     /** 시계를 ms만큼 앞으로 돌린다(= 그동안 아무 소리도 도착하지 않았다). */
@@ -165,9 +147,8 @@ class CallRecorderTest {
     }
 
     /** 마감한 녹음의 샘플 전체. */
-    private short[] samplesOf(CallRecorder recorder) throws IOException {
-        Path path = recorder.finish().orElseThrow();
-        return WavCodec.decode(Files.readAllBytes(path)).samples();
+    private short[] samples() {
+        return WavCodec.decode(recorder.finish().orElseThrow()).samples();
     }
 
     private static byte[] pcm(short... samples) {

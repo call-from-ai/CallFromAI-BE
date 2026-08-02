@@ -12,6 +12,10 @@ package com.example.umcCall.domain.call.enums;
 public enum CallEndReason {
     /** 사용자가 끊었다({@code PATCH /calls/{callId}/end}). REST 응답으로도 알 수 있지만, 정상 종료 앞엔 항상 통지가 있다는 계약을 위해 함께 보낸다. */
     USER_ENDED,
-    /** 통화 시간 상한({@code call.timeout.max-call-minutes})을 넘겨 서버가 마감했다. AI의 의도가 아니라 운영 안전망이다. */
+    /**
+     * 통화 시간 상한({@code call.timeout.max-call-minutes}, 현재 5분)을 넘겨 서버가 마감했다.
+     * <p>⚠ AI가 끊은 게 아니다 — <b>정상 통화가 시간을 다 써서</b> 끝난 것이다. 프론트 문구는
+     * "오류"가 아니라 "통화 시간이 끝났어요" 쪽이어야 한다({@code USER_ENDED}와 화면을 갈라야 하는 이유).
+     */
     TIMEOUT
 }
