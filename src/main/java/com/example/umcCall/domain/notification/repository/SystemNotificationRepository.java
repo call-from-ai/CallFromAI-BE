@@ -21,4 +21,6 @@ public interface SystemNotificationRepository extends JpaRepository<SystemNotifi
 
     List<SystemNotification> findByTypeAndOccurredAtBetween(
             NotificationType type, LocalDateTime start, LocalDateTime end);
+
+    List<SystemNotification> findByMemberIdAndReadFalse(Long memberId);
 }

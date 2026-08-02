@@ -135,5 +135,19 @@ public void deactivate() {
         this.doNotDisturbStart = start;
         this.doNotDisturbEnd = end;
     }
+
+
+    // 방해 금지 판단 메서드 추가
+    public boolean isWithinDoNotDisturb() {
+        if (doNotDisturbStart == null || doNotDisturbEnd == null) {
+            return false;
+        }
+        LocalTime now = LocalTime.now();
+        if (doNotDisturbStart.isBefore(doNotDisturbEnd)) {
+            return !now.isBefore(doNotDisturbStart) && !now.isAfter(doNotDisturbEnd);
+        } else {
+            return !now.isBefore(doNotDisturbStart) || !now.isAfter(doNotDisturbEnd);
+        }
+    }
 }
 

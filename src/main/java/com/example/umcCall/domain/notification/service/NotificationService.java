@@ -1,14 +1,19 @@
 package com.example.umcCall.domain.notification.service;
 
+import com.example.umcCall.domain.member.entity.Member;
+import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.domain.notification.dto.response.NotificationResponse;
 import com.example.umcCall.domain.notification.entity.SystemNotification;
 import com.example.umcCall.domain.notification.enums.NotificationType;
 import com.example.umcCall.domain.notification.exception.NotificationErrorCode;
+import com.example.umcCall.domain.notification.push.dto.PushMessage;
+import com.example.umcCall.domain.notification.push.service.PushNotificationService;
 import com.example.umcCall.domain.notification.repository.SystemNotificationRepository;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.global.exception.BaseException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +26,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
@@ -30,6 +36,8 @@ public class NotificationService {
 
     private final SystemNotificationRepository notificationRepository;
     private final RelationshipRepository relationshipRepository;
+    private final MemberRepository memberRepository;
+    private final PushNotificationService pushNotificationService;
 
     // 조회
     @Transactional(readOnly = true)
@@ -41,12 +49,19 @@ public class NotificationService {
                 .toList();
     }
 
-    // 읽음 처리
+    // 부분 읽음 처리
     @Transactional
     public void markAsRead(Long memberId, Long notificationId) {
         SystemNotification notification = notificationRepository.findByIdAndMemberId(notificationId, memberId)
                 .orElseThrow(() -> new BaseException(NotificationErrorCode.NOTIFICATION_NOT_FOUND));
         notification.markAsRead();
+    }
+
+    // 전체 읽음 처리
+    @Transactional
+    public void markAllAsRead(Long memberId) {
+        List<SystemNotification> unread = notificationRepository.findByMemberIdAndReadFalse(memberId);
+        unread.forEach(SystemNotification::markAsRead);
     }
 
     // 기념일 알림 생성 (매일 자정 스케줄러)
@@ -65,8 +80,6 @@ public class NotificationService {
                 .map(SystemNotification::getRelationshipId)
                 .collect(Collectors.toSet());
 
-        List<SystemNotification> newNotifications = new ArrayList<>();
-
         for (Relationship relationship : relationships) {
             if (alreadyNotifiedRelationshipIds.contains(relationship.getId())) {
                 continue;
@@ -80,19 +93,36 @@ public class NotificationService {
                         relationship.getCharacter().getFirstName(), daysTogether
                 );
 
-                newNotifications.add(
-                        SystemNotification.builder()
-                                .memberId(relationship.getMemberId())
-                                .relationshipId(relationship.getId())
-                                .type(NotificationType.ANNIVERSARY)
-                                .title("기념일")
-                                .content(content)
-                                .occurredAt(LocalDateTime.now())
-                                .build()
-                );
+                notifyAndPush(relationship.getMemberId(), relationship.getId(),
+                        NotificationType.ANNIVERSARY, "기념일", content);
             }
         }
+    }
 
-        notificationRepository.saveAll(newNotifications);
+    // ===== 공통: 알림 저장 + FCM 발송 (방해금지/전체알림 설정 체크 포함) =====
+
+    @Transactional
+    public void notifyAndPush(Long memberId, Long relationshipId, NotificationType type, String title, String content) {
+        notificationRepository.save(
+                SystemNotification.builder()
+                        .memberId(memberId)
+                        .relationshipId(relationshipId)
+                        .type(type)
+                        .title(title)
+                        .content(content)
+                        .occurredAt(LocalDateTime.now())
+                        .build()
+        );
+
+        Member member = memberRepository.findById(memberId).orElse(null);
+        if (member == null || !member.isAllNotificationEnabled() || member.isWithinDoNotDisturb()) {
+            return;
+        }
+
+        try {
+            pushNotificationService.send(memberId, PushMessage.notice(title, content));
+        } catch (Exception e) {
+            log.warn("FCM 발송 실패. memberId={}", memberId, e);
+        }
     }
 }

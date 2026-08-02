@@ -33,4 +33,11 @@ public class NotificationController {
         notificationService.markAsRead(memberId, notificationId);
         return ApiResponse.onSuccess();
     }
+
+    @Operation(summary = "전체 알림 읽음 처리", description = "안 읽은 알림을 전부 읽음 처리한다. 홈화면 진입 시 호출한다.")
+    @PatchMapping("/read-all")
+    public ApiResponse<Void> markAllAsRead(@AuthenticationPrincipal Long memberId) {
+        notificationService.markAllAsRead(memberId);
+        return ApiResponse.onSuccess();
+    }
 }
