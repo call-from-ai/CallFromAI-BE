@@ -405,6 +405,24 @@ class CallAudioWebSocketHandlerTest {
     }
 
     @Test
+    void 이모지만_남은_꼬리는_합성하지_않고_턴도_끊지_않는다() throws Exception {
+        // ⚠ CLOVA는 발음할 게 없는 텍스트에 400을 준다("TN result is empty").
+        // AI 대사가 이모지로 끝나면 flush 꼬리가 딱 이 모양이라, 안 거르면 매 턴 오류로 끊긴다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        givenAiStreams("응, 오늘은 그냥 집에 있었어. ", "🙂");
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("뭐 해?"));
+
+        verify(clovaVoiceClient, timeout(2000)).synthesize(eq("응, 오늘은 그냥 집에 있었어."), any());
+        verify(clovaVoiceClient, never()).synthesize(eq("🙂"), any());
+        // 이모지는 소리로 안 나갔으니 이력에도 안 남는다.
+        verify(callHistoryService, timeout(2000))
+                .appendHistory(CALL_ID, CallSpeaker.AI, "응, 오늘은 그냥 집에 있었어.");
+    }
+
+    @Test
     void 첫_문장을_말한_뒤_끼어들면_말한_부분까지만_남는다() throws Exception {
         WebSocketSession session = givenConnectedCall();
         StreamObserver<NestResponse> stt = captureSttObserver();

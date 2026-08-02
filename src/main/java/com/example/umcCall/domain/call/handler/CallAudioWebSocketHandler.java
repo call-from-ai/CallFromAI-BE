@@ -338,6 +338,13 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
          * 계속 스트림을 읽어봐야 워커가 묶여 <b>사용자가 방금 끼어들며 만든 다음 턴</b>이 밀린다.
          */
         private void speak(String sentence) {
+            // ⚠ 발음할 게 없는 조각(이모지·구두점만)은 CLOVA가 400을 준다("TN result is empty").
+            // AI 대사가 이모지로 끝나면 flush 꼬리가 딱 이 모양이라 실전에서 매번 걸린다.
+            // 턴을 접지 않고 이 조각만 건너뛴다 — 어차피 소리로 나갈 내용이 아니다.
+            if (!isSpeakable(sentence)) {
+                log.debug("[Call] 합성할 내용이 없어 건너뜀. session={}, text={}", session.getId(), sentence);
+                return;
+            }
             // 끼어들기 확인 ①: 합성 전. 어차피 못 내보낼 문장이라 TTS 호출·비용이 통째로 낭비다.
             if (turnGate.isCanceled(turn)) {
                 throw new TurnStoppedException("끼어들기(합성 전)");
@@ -369,6 +376,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         private String spokenText() {
             return spoken.toString();
         }
+    }
+
+    /**
+     * 합성해서 들려줄 내용이 있는가. 글자·숫자가 하나도 없으면(이모지·구두점만) CLOVA가 정규화 결과가 비었다며
+     * 400을 돌려준다 — 보내기 전에 걸러야 그 턴이 오류로 끊기지 않는다.
+     */
+    private static boolean isSpeakable(String text) {
+        return text.codePoints().anyMatch(Character::isLetterOrDigit);
     }
 
     /**
