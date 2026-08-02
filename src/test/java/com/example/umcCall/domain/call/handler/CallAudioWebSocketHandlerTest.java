@@ -448,7 +448,7 @@ class CallAudioWebSocketHandlerTest {
 
     // --- 끼어들기 2단계: 이미 보낸 wav의 재생 중단 통지 -----------------------------------------
 
-    /** 세션에 나간 제어 프레임 중 해당 {@code type}인 것들. 오디오(바이너리)는 캡터가 걸러낸다. */
+    /** 세션에 나간 제어 프레임 중 해당 {@code type}인 것들. 같이 나간 오디오는 captor가 타입으로 걸러낸다. */
     private List<JsonNode> controlsOfType(WebSocketSession session, String type) throws Exception {
         ArgumentCaptor<TextMessage> captor = ArgumentCaptor.forClass(TextMessage.class);
         verify(session, atLeast(0)).sendMessage(captor.capture());
