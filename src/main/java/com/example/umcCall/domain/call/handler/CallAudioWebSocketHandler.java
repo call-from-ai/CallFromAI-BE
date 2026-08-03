@@ -250,6 +250,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                         callConversationService.respondStream(
                                 ticket.characterId(), ticket.relationshipId(), history,
                                 chunk -> {
+                                    // ⚠ 취소 확인을 speak()에만 두면 <b>문장이 완성돼야</b> 알아챈다 —
+                                    // 종결 부호 없이 흐르는 응답에선 MAX_CHARS(120자)까지 워커가 SSE를 계속
+                                    // 읽고, 그동안 <b>사용자가 방금 끼어들며 만든 다음 턴</b>이 밀린다.
+                                    // 조각 도착마다 보면 스트림 소비 자체가 즉시 멈춘다.
+                                    speaking.stopIfCanceled("끼어들기(스트림 수신 중)");
                                     for (String sentence : sentences.feed(chunk)) {
                                         speaking.speak(sentence);
                                     }
@@ -323,6 +328,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         private final long turn;
         private final long turnStartedAt;
         private final StringBuilder spoken = new StringBuilder();
+        /**
+         * 소리로는 못 내보냈지만 <b>대사에는 속하는</b> 조각(이모지·구두점만). 다음 문장이 실제로 나가면
+         * 그 앞에 붙여 함께 남긴다 — 그냥 버리면 전사·이력에서 대사 일부가 조용히 사라진다.
+         */
+        private final StringBuilder pending = new StringBuilder();
         private boolean firstAudioSent;
 
         private SpeakingTurn(WebSocketSession session, TurnGate turnGate, long turn, long turnStartedAt) {
@@ -343,12 +353,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 턴을 접지 않고 이 조각만 건너뛴다 — 어차피 소리로 나갈 내용이 아니다.
             if (!isSpeakable(sentence)) {
                 log.debug("[Call] 합성할 내용이 없어 건너뜀. session={}, text={}", session.getId(), sentence);
+                // 소리로는 안 나가지만 대사 텍스트의 일부다 — 다음 문장이 실제로 나갈 때 함께 남긴다.
+                pending.append(sentence);
                 return;
             }
             // 끼어들기 확인 ①: 합성 전. 어차피 못 내보낼 문장이라 TTS 호출·비용이 통째로 낭비다.
-            if (turnGate.isCanceled(turn)) {
-                throw new TurnStoppedException("끼어들기(합성 전)");
-            }
+            stopIfCanceled("끼어들기(합성 전)");
             long llmMs = firstAudioSent ? -1 : elapsedMs(turnStartedAt);
 
             long ttsStartedAt = System.nanoTime();
@@ -356,9 +366,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             long ttsMs = elapsedMs(ttsStartedAt);
 
             // 끼어들기 확인 ②: 합성 중에 말을 시작한 경우. 아직 전송 전이라 사용자에겐 애초에 들리지 않는다.
-            if (turnGate.isCanceled(turn)) {
-                throw new TurnStoppedException("끼어들기(송신 전)");
-            }
+            stopIfCanceled("끼어들기(송신 전)");
             if (!sendAudio(session, wav)) {
                 throw new TurnStoppedException("소켓 종료");
             }
@@ -366,14 +374,40 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                 firstAudioSent = true;
                 logTurnLatency(session.getId(), turnStartedAt, llmMs, ttsMs);
             }
+            // 이 문장 앞에 건너뛴 조각이 있었으면 함께 남긴다(순서 유지).
+            append(pending.toString());
+            pending.setLength(0);
+            append(sentence);
+        }
+
+        /** 더 말할 수 없는 상태면 이 턴을 접는다. 확인 지점이 여럿이라 한 군데로 모았다. */
+        private void stopIfCanceled(String reason) {
+            if (turnGate.isCanceled(turn)) {
+                throw new TurnStoppedException(reason);
+            }
+        }
+
+        /** 대사 조각을 이어붙인다. 문장 사이는 공백 하나로 구분한다(전사는 턴당 한 줄로 남기므로). */
+        private void append(String fragment) {
+            if (fragment.isEmpty()) {
+                return;
+            }
             if (!spoken.isEmpty()) {
                 spoken.append(' ');
             }
-            spoken.append(sentence);
+            spoken.append(fragment);
         }
 
-        /** 이 턴에서 실제로 내보낸 대사 전체. 아무것도 못 내보냈으면 빈 문자열. */
+        /**
+         * 이 턴에서 실제로 내보낸 대사 전체. 아무것도 못 내보냈으면 빈 문자열.
+         * <p>⚠ 꼬리에 남은 {@link #pending}(이모지 등)은 <b>소리가 한 번이라도 나갔을 때만</b> 붙인다.
+         * 아무것도 못 들려준 턴에 이모지만 assistant로 남기면 "들린 대사만 남긴다"가 깨진다.
+         */
         private String spokenText() {
+            if (!spoken.isEmpty()) {
+                append(pending.toString());
+                pending.setLength(0);
+            }
             return spoken.toString();
         }
     }
