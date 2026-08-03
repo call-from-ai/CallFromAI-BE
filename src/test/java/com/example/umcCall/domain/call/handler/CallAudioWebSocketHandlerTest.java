@@ -418,16 +418,15 @@ class CallAudioWebSocketHandlerTest {
 
         verify(clovaVoiceClient, timeout(2000)).synthesize(eq("응, 오늘은 그냥 집에 있었어."), any());
         verify(clovaVoiceClient, never()).synthesize(eq("🙂"), any());
-        // ⚠ 합성만 건너뛰고 <b>텍스트는 남긴다</b>. "들린 대사만 남긴다"가 걸러내려는 건 끼어들기·오류로
-        // 사용자가 <b>못 들은 문장</b>이지, 애초에 소리가 될 수 없는 조각이 아니다. 버리면 전사에서
-        // 대사 일부가 조용히 사라진다(PR #122 리뷰).
+        // ⚠ 이모지는 소리로 안 나갔으니 이력·전사에도 안 남는다. 통화 전문은 <b>실제로 들린 것</b>의
+        // 기록이다 — #122 리뷰에서 "원문 보존" 안을 검토했다가 이 이유로 기각했다(2026-08-03).
         verify(callHistoryService, timeout(2000))
-                .appendHistory(CALL_ID, CallSpeaker.AI, "응, 오늘은 그냥 집에 있었어. 🙂");
+                .appendHistory(CALL_ID, CallSpeaker.AI, "응, 오늘은 그냥 집에 있었어.");
     }
 
     @Test
-    void 아무_소리도_못_낸_턴은_이모지만_남기지_않는다() throws Exception {
-        // 위 규칙의 경계. 소리가 한 번도 안 나갔으면 assistant를 아예 안 남긴다 —
+    void 이모지만_있는_대사는_assistant를_아예_안_남긴다() throws Exception {
+        // 위 규칙의 경계. 소리가 한 번도 안 나갔으면 assistant 자체를 안 남긴다 —
         // 이모지 하나가 "AI가 말했다"로 둔갑하면 다음 턴이 사용자 모르는 맥락 위에서 나온다.
         WebSocketSession session = givenConnectedCall();
         StreamObserver<NestResponse> stt = captureSttObserver();

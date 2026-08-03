@@ -328,11 +328,6 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         private final long turn;
         private final long turnStartedAt;
         private final StringBuilder spoken = new StringBuilder();
-        /**
-         * 소리로는 못 내보냈지만 <b>대사에는 속하는</b> 조각(이모지·구두점만). 다음 문장이 실제로 나가면
-         * 그 앞에 붙여 함께 남긴다 — 그냥 버리면 전사·이력에서 대사 일부가 조용히 사라진다.
-         */
-        private final StringBuilder pending = new StringBuilder();
         private boolean firstAudioSent;
 
         private SpeakingTurn(WebSocketSession session, TurnGate turnGate, long turn, long turnStartedAt) {
@@ -353,8 +348,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 턴을 접지 않고 이 조각만 건너뛴다 — 어차피 소리로 나갈 내용이 아니다.
             if (!isSpeakable(sentence)) {
                 log.debug("[Call] 합성할 내용이 없어 건너뜀. session={}, text={}", session.getId(), sentence);
-                // 소리로는 안 나가지만 대사 텍스트의 일부다 — 다음 문장이 실제로 나갈 때 함께 남긴다.
-                pending.append(sentence);
+                // ⚠ 이력·전사에도 남기지 않는다. 통화 전문은 <b>실제로 들린 것</b>의 기록이고,
+                // 이 조각은 소리가 된 적이 없다(2026-08-03 결정 — #122 리뷰에서 보존안을 검토했다가 기각).
                 return;
             }
             // 끼어들기 확인 ①: 합성 전. 어차피 못 내보낼 문장이라 TTS 호출·비용이 통째로 낭비다.
@@ -374,9 +369,6 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                 firstAudioSent = true;
                 logTurnLatency(session.getId(), turnStartedAt, llmMs, ttsMs);
             }
-            // 이 문장 앞에 건너뛴 조각이 있었으면 함께 남긴다(순서 유지).
-            append(pending.toString());
-            pending.setLength(0);
             append(sentence);
         }
 
@@ -398,16 +390,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             spoken.append(fragment);
         }
 
-        /**
-         * 이 턴에서 실제로 내보낸 대사 전체. 아무것도 못 내보냈으면 빈 문자열.
-         * <p>⚠ 꼬리에 남은 {@link #pending}(이모지 등)은 <b>소리가 한 번이라도 나갔을 때만</b> 붙인다.
-         * 아무것도 못 들려준 턴에 이모지만 assistant로 남기면 "들린 대사만 남긴다"가 깨진다.
-         */
+        /** 이 턴에서 실제로 내보낸 대사 전체. 아무것도 못 내보냈으면 빈 문자열. */
         private String spokenText() {
-            if (!spoken.isEmpty()) {
-                append(pending.toString());
-                pending.setLength(0);
-            }
             return spoken.toString();
         }
     }
