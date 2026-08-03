@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -517,6 +518,34 @@ class CallAudioWebSocketHandlerTest {
         stt.onNext(finalResult("뭐 해?"));
 
         assertThat(awaitControlsOfType(session, "AI_SPEECH_CANCELED")).hasSize(1);
+    }
+
+    @Test
+    void 송신_도중_끼어들어도_재생_중단을_통지한다() throws Exception {
+        // ⚠ wav를 소켓에 쓰는 동안(= 아직 "나갔다"고 표시하기 전) 끼어들면, 취소를 찍는 콜백은
+        // "나간 오디오가 없다"고 보고 통지를 건너뛴다. 그 경우까지 통지가 나가야 한다 —
+        // 하필 그게 그 발화의 마지막 partial이면 뒤이어 만회할 partial이 없어 통지가 영영 사라진다
+        // (final은 끼어들기 트리거가 아니다) = FE 큐에 남은 AI 음성이 다음 턴 위로 계속 재생된다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        AtomicBoolean interrupted = new AtomicBoolean();
+        // 첫 wav를 쓰는 도중에 partial이 도착한 상황을 재현한다.
+        doAnswer(invocation -> {
+            if (interrupted.compareAndSet(false, true)) {
+                stt.onNext(partialResult("아 맞다"));
+            }
+            return null;
+        }).when(session).sendMessage(any(BinaryMessage.class));
+        givenAiStreams("응, 나 방금 퇴근했어. ", "너는 뭐 하고 있었어?");
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("뭐 해?"));
+
+        List<JsonNode> canceled = awaitControlsOfType(session, "AI_SPEECH_CANCELED");
+        assertThat(canceled).hasSize(1);   // 통지 경로가 둘이어도 중복되지 않는다
+        assertThat(canceled.get(0).get("data").get("callId").asLong()).isEqualTo(CALL_ID);
+        // 뒷문장은 그대로 폐기된다 — 통지 경로가 늘어도 1단계 취소는 그대로다.
+        verify(clovaVoiceClient, never()).synthesize(eq("너는 뭐 하고 있었어?"), any());
     }
 
     @Test
