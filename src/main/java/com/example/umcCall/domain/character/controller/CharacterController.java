@@ -2,12 +2,14 @@ package com.example.umcCall.domain.character.controller;
 
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
 import com.example.umcCall.domain.character.dto.request.CharacterUpdateRequest;
+import com.example.umcCall.domain.character.dto.response.CharacterCreateResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterResponse;
 import com.example.umcCall.domain.character.dto.response.CharacterSummaryResponse;
 import com.example.umcCall.domain.character.service.CharacterService;
 import com.example.umcCall.domain.relationship.dto.response.ChatSummaryResponse;
 import com.example.umcCall.domain.relationship.service.ChatSummaryService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
+import com.example.umcCall.global.apiPayload.code.GeneralSuccessCode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -42,14 +44,13 @@ public class CharacterController {
     // 캐릭터 생성
     @Operation(summary = "캐릭터 생성", description = "온보딩에서 입력한 정보로 캐릭터를 생성한다. 매력 키워드는 1~5개이며 enum code로 전달한다.")
     @PostMapping
-    public ResponseEntity<ApiResponse<Void>> createCharacter(
-            Authentication authentication,
+    public ResponseEntity<ApiResponse<CharacterCreateResponse>> createCharacter(
+            @AuthenticationPrincipal Long memberId,
             @RequestBody @Valid CharacterCreateRequest request) {
-        Long memberId = (Long) authentication.getPrincipal();
-        characterService.createCharacter(memberId, request);
+        CharacterCreateResponse response = characterService.createCharacter(memberId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.onSuccess(
-                        com.example.umcCall.global.apiPayload.code.GeneralSuccessCode.CREATED, null));
+                        GeneralSuccessCode.CREATED, response));
     }
 
     // 캐릭터 정보 수정

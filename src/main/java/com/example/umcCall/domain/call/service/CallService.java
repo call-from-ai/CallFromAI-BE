@@ -9,12 +9,14 @@ import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
+import com.example.umcCall.domain.call.event.CallMissedEvent;
 import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.call.ticket.WsTicketStore;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
@@ -181,9 +183,18 @@ public class CallService {
     /**
      * 벨을 너무 오래 울린 통화를 부재중으로 마감한다(스위퍼). RINGING → MISSED.
      * <p>락 뒤 상태 재확인이 "받는 순간 부재중 처리되는" 레이스를 막는다.
+     * <p>알림 도메인이 부재중 알림을 만들도록 {@link CallMissedEvent}를 발행한다 — ⚠ <b>전이가 실제로
+     * 일어났을 때만</b>이다. no-op(그 사이 사용자가 받음)에도 발행하면 받은 전화가 부재중으로 뜬다.
+     * {@link CallEndedEvent}와 달리 정리할 세션은 없다(RINGING은 소켓이 열린 적 없다).
      */
     public void markMissed(Long callId) {
-        transitionIfStatusIs(callId, CallStatus.RINGING, Call::markMissed);
+        Call call = transitionIfStatusIs(callId, CallStatus.RINGING, Call::markMissed);
+        if (call == null) {
+            return;
+        }
+        Relationship relationship = call.getRelationship();
+        eventPublisher.publishEvent(new CallMissedEvent(
+                callId, relationship.getId(), relationship.getMemberId(), LocalDateTime.now()));
     }
 
     /**
@@ -219,13 +230,18 @@ public class CallService {
         eventPublisher.publishEvent(new CallEndedEvent(callId, CallEndReason.TIMEOUT, call.getCallTime()));
     }
 
-    /** 스위퍼 전이의 공통 골격 — 락 → 상태 재확인 → 전이. 상태가 바뀌었으면 no-op. */
-    private void transitionIfStatusIs(Long callId, CallStatus expected, Consumer<Call> transition) {
+    /**
+     * 스위퍼 전이의 공통 골격 — 락 → 상태 재확인 → 전이. 상태가 바뀌었으면 no-op.
+     *
+     * @return 전이한 통화. <b>no-op이면 null</b> — 후속 이벤트 발행을 전이 성공에만 걸 수 있어야 한다.
+     */
+    private Call transitionIfStatusIs(Long callId, CallStatus expected, Consumer<Call> transition) {
         Call call = callRepository.findByIdForUpdate(callId).orElse(null);
         if (call == null || call.getStatus() != expected) {
-            return;
+            return null;
         }
         transition.accept(call);
+        return call;
     }
 
     /**
@@ -243,4 +259,5 @@ public class CallService {
             default -> { /* 이미 종료 상태 등 — 전이 없음 */ }
         }
     }
+
 }

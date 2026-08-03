@@ -73,7 +73,7 @@ class ChatSummaryServiceTest {
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
         when(chatMessageRepository
-                .findTopByChatRoomIdAndDeletedFalseAndCreatedAtBeforeOrderByIdDesc(
+                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
                         any(Long.class), any(LocalDateTime.class)))
                 .thenReturn(Optional.of(lastMessage));
         when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.of(cached));
@@ -106,7 +106,7 @@ class ChatSummaryServiceTest {
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
         when(chatMessageRepository
-                .findTopByChatRoomIdAndDeletedFalseAndCreatedAtBeforeOrderByIdDesc(
+                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
                         any(Long.class), any(LocalDateTime.class)))
                 .thenReturn(Optional.of(lastMessage));
         when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.empty());
@@ -155,7 +155,7 @@ class ChatSummaryServiceTest {
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
         when(chatMessageRepository
-                .findTopByChatRoomIdAndDeletedFalseAndCreatedAtBeforeOrderByIdDesc(
+                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
                         any(Long.class), any(LocalDateTime.class)))
                 .thenReturn(Optional.of(lastMessage));
         when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.of(cached));
@@ -196,7 +196,7 @@ class ChatSummaryServiceTest {
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
         when(chatMessageRepository
-                .findTopByChatRoomIdAndDeletedFalseAndCreatedAtBeforeOrderByIdDesc(
+                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
                         any(Long.class), any(LocalDateTime.class)))
                 .thenReturn(Optional.of(lastMessage));
         when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.of(cached));

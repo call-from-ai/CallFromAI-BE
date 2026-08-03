@@ -19,6 +19,7 @@ import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.enums.CallEndReason;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
+import com.example.umcCall.domain.call.event.CallMissedEvent;
 import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallRepository;
@@ -93,7 +94,8 @@ class CallServiceTest {
 
     @Test
     void finish는_연결된_통화를_COMPLETED로_마감한다() {
-        Call call = dialingCall();
+        Relationship relationship = relationshipOf(MEMBER_ID);
+        Call call = Call.builder().relationship(relationship).sender(CallSender.USER).build();
         call.connect(); // IN_PROGRESS
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
@@ -129,7 +131,8 @@ class CallServiceTest {
 
     @Test
     void closeOverrunCall은_진행_중인_통화를_COMPLETED로_마감하고_세션_정리를_알린다() {
-        Call call = dialingCall();
+        Relationship relationship = relationshipOf(MEMBER_ID);
+        Call call = Call.builder().relationship(relationship).sender(CallSender.USER).build();
         call.connect(); // IN_PROGRESS
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
 
@@ -376,7 +379,8 @@ class CallServiceTest {
 
     @Test
     void end는_진행_중_통화를_COMPLETED로_마감하고_통화시간을_준다() {
-        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        Relationship relationship = relationshipOf(MEMBER_ID);
+        Call call = ringingCall(relationship);
         call.accept();
         call.connect(); // IN_PROGRESS
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
@@ -391,7 +395,8 @@ class CallServiceTest {
 
     @Test
     void end는_세션_정리를_위해_종료_이벤트를_발행한다() {
-        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        Relationship relationship = relationshipOf(MEMBER_ID);
+        Call call = ringingCall(relationship);
         call.accept();
         call.connect();
         when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
@@ -450,6 +455,24 @@ class CallServiceTest {
     }
 
     @Test
+    void markMissed는_알림_도메인을_위해_부재중_이벤트를_발행한다() {
+        Call call = ringingCall(relationshipOf(MEMBER_ID));
+        when(callRepository.findByIdForUpdate(CALL_ID)).thenReturn(Optional.of(call));
+        LocalDateTime before = LocalDateTime.now();
+
+        callService.markMissed(CALL_ID);
+
+        ArgumentCaptor<CallMissedEvent> captor = ArgumentCaptor.forClass(CallMissedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        CallMissedEvent event = captor.getValue();
+        // memberId는 알림 생성의 필수 값이자 홈화면 조회 키다 — 없으면 리스너가 관계를 다시 읽어야 한다.
+        assertThat(event.callId()).isEqualTo(CALL_ID);
+        assertThat(event.relationshipId()).isEqualTo(RELATIONSHIP_ID);
+        assertThat(event.memberId()).isEqualTo(MEMBER_ID);
+        assertThat(event.occurredAt()).isBetween(before, LocalDateTime.now());
+    }
+
+    @Test
     void markMissed는_그_사이_사용자가_받았으면_마감하지_않는다() {
         Call call = ringingCall(relationshipOf(MEMBER_ID));
         call.accept(); // 스위퍼가 조회한 뒤 사용자가 받은 상황
@@ -459,6 +482,8 @@ class CallServiceTest {
 
         // 락 뒤 상태 재확인이 "받는 순간 부재중 처리" 레이스를 막는다.
         assertThat(call.getStatus()).isEqualTo(CallStatus.PENDING);
+        // ⚠ no-op에도 이벤트가 나가면 받은 전화가 부재중 알림으로 뜬다.
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -490,6 +515,8 @@ class CallServiceTest {
 
         callService.markMissed(CALL_ID);
         callService.cancelStalePending(CALL_ID);
+
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test

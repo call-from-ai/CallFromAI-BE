@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.member.service;
 
 import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
+import com.example.umcCall.domain.character.service.CharacterService;
 import com.example.umcCall.domain.member.dto.request.DoNotDisturbUpdateRequest;
 import com.example.umcCall.domain.member.dto.request.NotificationSettingUpdateRequest;
 import com.example.umcCall.domain.member.dto.response.MemberResponse;
@@ -21,6 +22,7 @@ public class MemberService {
 
     private final MemberRepository memberRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final CharacterService characterService;
 
     public MemberResponse getMyInfo(Long memberId) {
         Member member = findMember(memberId);
@@ -40,6 +42,7 @@ public class MemberService {
     @Transactional
     public void withdraw(Long memberId) {
         Member member = findMember(memberId);
+        characterService.deleteAllCharactersForWithdraw(memberId);
         member.deactivate();
         // 탈퇴 처리와 refreshToken DB 삭제
         refreshTokenRepository.findByMemberId(memberId)

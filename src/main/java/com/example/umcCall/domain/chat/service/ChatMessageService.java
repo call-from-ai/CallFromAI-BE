@@ -154,14 +154,22 @@ public class ChatMessageService {
             throw new ChatException(ChatErrorCode.INVALID_IMAGE_TYPE);
         }
 
-        boolean jpeg = (head[0] & 0xFF) == 0xFF
+        return isJpeg(head) || isPng(head);
+    }
+
+    /** JPEG 시그니처(FF D8 FF)인지 확인한다. */
+    private boolean isJpeg(byte[] head) {
+        return (head[0] & 0xFF) == 0xFF
                 && (head[1] & 0xFF) == 0xD8
                 && (head[2] & 0xFF) == 0xFF;
-        boolean png = (head[0] & 0xFF) == 0x89
+    }
+
+    /** PNG 시그니처(89 50 4E 47)인지 확인한다. */
+    private boolean isPng(byte[] head) {
+        return (head[0] & 0xFF) == 0x89
                 && (head[1] & 0xFF) == 0x50
                 && (head[2] & 0xFF) == 0x4E
                 && (head[3] & 0xFF) == 0x47;
-        return jpeg || png;
     }
 
     /**
@@ -182,7 +190,7 @@ public class ChatMessageService {
 
         // 남은 최신 메시지 기준으로 마지막 메시지 시각 재계산(없으면 null).
         LocalDateTime lastMessageAt = chatMessageRepository
-                .findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(chatRoomId)
+                .findTopByChatRoomIdOrderByIdDesc(chatRoomId)
                 .map(ChatMessage::getCreatedAt)
                 .orElse(null);
         room.updateLastMessageAt(lastMessageAt);
@@ -201,7 +209,6 @@ public class ChatMessageService {
                         .content(content)
                         .messageType(MessageType.TEXT)
                         .read(false)     // 유저가 아직 안 읽음 → 안읽음 집계 대상
-                        .deleted(false)
                         .chatRoom(room)
                         .build()
         );

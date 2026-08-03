@@ -13,6 +13,7 @@ import com.example.umcCall.domain.call.enums.CallSender;
 import java.time.LocalDateTime;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -119,6 +120,15 @@ public interface CallRepository extends JpaRepository<Call, Long> {
     boolean existsByRelationshipIdAndStatusIn(Long relationshipId, Collection<CallStatus> statuses);
 
     /**
+     * 관계에 속한 통화를 전부 지운다. 캐릭터 물리 삭제(하드 딜리트) 전용이다.
+     * <p>⚠ 호출 전에 {@code CallHistoryRepository.deleteByRelationshipId}로 <b>전사를 먼저</b> 지워야 한다 —
+     * {@code call_history.call_id}가 {@code nullable=false} FK인데 {@code Call}엔 cascade가 없다.
+     */
+    @Modifying
+    @Query("delete from Call c where c.relationship.id = :relationshipId")
+    void deleteByRelationshipId(@Param("relationshipId") Long relationshipId);
+
+    /**
      * 관계의 활성 통화를 <b>비관적 락으로</b> 가져온다(발신 중복 방어용).
      * <p>{@code exists}가 아닌 이유: 발신 정책이 상태마다 달라서다 — 사용자 재시도로 남은 DIALING은
      * 취소하고 진행하지만, 그 외(RINGING·PENDING·IN_PROGRESS)는 거절한다.
@@ -143,4 +153,14 @@ public interface CallRepository extends JpaRepository<Call, Long> {
             CallSender sender,
             Collection<CallStatus> statuses,
             LocalDateTime createdAt);
+
+    /** 관계 요약 통계의 원본 데이터. 완료 시각 최신순으로 반환한다. */
+    @Query("""
+            select c.endedAt from Call c
+            where c.relationship.id = :relationshipId
+              and c.status = com.example.umcCall.domain.call.enums.CallStatus.COMPLETED
+              and c.endedAt is not null
+            order by c.endedAt desc
+            """)
+    List<LocalDateTime> findCompletedCallTimes(@Param("relationshipId") Long relationshipId);
 }

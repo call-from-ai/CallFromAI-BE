@@ -22,17 +22,17 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     boolean existsByProactiveRequestId(String proactiveRequestId);
 
-    Optional<ChatMessage> findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(Long chatRoomId);
+    Optional<ChatMessage> findTopByChatRoomIdOrderByIdDesc(Long chatRoomId);
 
-    Optional<ChatMessage> findTopByChatRoomIdAndDeletedFalseAndCreatedAtBeforeOrderByIdDesc(
+    Optional<ChatMessage> findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
             Long chatRoomId, LocalDateTime before);
 
-    Optional<ChatMessage> findTopByChatRoomIdAndSenderTypeAndDeletedFalseOrderByIdDesc(
+    Optional<ChatMessage> findTopByChatRoomIdAndSenderTypeOrderByIdDesc(
             Long chatRoomId, SenderType senderType);
 
     @Query("""
             select m from ChatMessage m
-            where m.chatRoom.id = :roomId and m.deleted = false
+            where m.chatRoom.id = :roomId
             order by m.id desc
             """)
     List<ChatMessage> findRecent(@Param("roomId") Long roomId, Pageable pageable);
@@ -40,7 +40,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Query("""
             select m from ChatMessage m
             where m.chatRoom.id = :roomId
-              and m.deleted = false
               and m.createdAt < :before
             order by m.id desc
             """)
@@ -51,7 +50,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Query("""
             select m from ChatMessage m
             where m.chatRoom.id = :roomId
-              and m.deleted = false
               and m.id > :afterId
               and m.createdAt < :before
             order by m.id desc
@@ -63,14 +61,13 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     /**
      * 방별 안 읽음 수 일괄 집계
-     * 기준: 수신 메시지 + 미읽음 + 미삭제 + 이 방의 message_visible_after_id 초과
+     * 기준: 수신 메시지 + 미읽음 + 이 방의 message_visible_after_id 초과
      */
     @Query("""
             select m.chatRoom.id as roomId, count(m) as unreadCount
             from ChatMessage m
             where m.chatRoom.id in :roomIds
               and m.read = false
-              and m.deleted = false
               and m.senderType <> :excludedSender
               and (m.chatRoom.messageVisibleAfterId is null
                    or m.id > m.chatRoom.messageVisibleAfterId)
@@ -86,7 +83,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             select m.chatRoom.id as roomId, max(m.id) as lastMessageId
             from ChatMessage m
             where m.chatRoom.id in :roomIds
-              and m.deleted = false
               and (m.chatRoom.messageVisibleAfterId is null
                    or m.id > m.chatRoom.messageVisibleAfterId)
             group by m.chatRoom.id
@@ -95,13 +91,12 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     /**
      * 커서 기반 메시지 조회.
-     * 특정 방의 미삭제 + cutoff 초과 메시지를 cursor보다 과거(id < cursor)로 최신순(DESC) 조회
+     * 특정 방의 cutoff 초과 메시지를 cursor보다 과거(id < cursor)로 최신순(DESC) 조회
      * 개수 제한은 Pageable로 준다(page 0, size = 요청 size + 1로 hasNext 판단)
      */
     @Query("""
             select m from ChatMessage m
             where m.chatRoom.id = :roomId
-              and m.deleted = false
               and (:cutoff is null or m.id > :cutoff)
               and (:cursor is null or m.id < :cursor)
             order by m.id desc
@@ -113,7 +108,7 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     /**
      * 방의 안 읽은 수신 메시지를 일괄 읽음 처리.
-     * 기준은 안 읽음 집계와 동일: 수신 메시지 + 미읽음 + 미삭제 + cutoff 초과.
+     * 기준은 안 읽음 집계와 동일: 수신 메시지 + 미읽음 + cutoff 초과.
      * @return 읽음 처리된 메시지 수
      */
     @Modifying(clearAutomatically = true)
@@ -122,7 +117,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             set m.read = true
             where m.chatRoom.id = :roomId
               and m.read = false
-              and m.deleted = false
               and m.senderType <> :excludedSender
               and (:cutoff is null or m.id > :cutoff)
             """)
@@ -145,7 +139,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             select m from ChatMessage m
             where m.chatRoom.id = :roomId
               and m.senderType = :userSender
-              and m.deleted = false
               and m.id > :afterId
             order by m.id asc
             """)
