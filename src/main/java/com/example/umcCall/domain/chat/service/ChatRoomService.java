@@ -81,21 +81,6 @@ public class ChatRoomService {
     }
 
     /**
-     * 채팅방을 목록에서 숨긴다.
-     * 현재 마지막 메시지 id를 cutoff로 세팅해 지금까지의 메시지를 묻고, is_deleted=true로 목록에서 제외한다.
-     * 이후 AI가 새 메시지를 보내면 cutoff 초과분만 노출되며 목록에 부활한다(메인방 포함 모든 방 대상).
-     */
-    @Transactional
-    public void hideRoom(Long memberId, Long chatRoomId) {
-        ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
-        Long cutoffMessageId = chatMessageRepository
-                .findTopByChatRoomIdAndDeletedFalseOrderByIdDesc(chatRoomId)
-                .map(ChatMessage::getId)
-                .orElse(null);   // 메시지가 없는 방이면 null
-        room.hide(cutoffMessageId);
-    }
-
-    /**
      * 채팅방 목록 조회.
      * 방 목록을 한 번 조회한 뒤, 안읽음 수 / 마지막 메시지 / 캐릭터 정보를
      * 각각 IN 절 배치 조회로 모아 조립
