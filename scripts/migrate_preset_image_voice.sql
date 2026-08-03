@@ -8,7 +8,9 @@
 --    nullable=false로 막으려던 누락이 그대로 돌아온다. 게다가 기본값은 성별이 하나라
 --    남성 프리셋을 깜빡하면 남캐가 여성 목소리로 말하게 된다.
 --
--- 대상: female_1~7 / male_1~7 (성별당 7개). 화자는 성별당 11종이라 4종씩 남는다(중복 없음).
+-- 대상: female_1~11 / male_1~11 (성별당 11개, 총 22행). 화자도 성별당 11종이라 <b>1:1로 정확히
+--       맞아떨어진다</b> — 남는 화자가 없다. 그래서 배정에 중복이 하나라도 있으면 반드시 안 쓰이는
+--       화자가 생긴다(에러는 아니지만 의도한 게 아니라면 실수다 — 3단계 전 검증 쿼리 ⓑ가 잡는다).
 
 -- ── 1단계: 컬럼 추가 (배정 전까지 NULL 허용) ────────────────────────────────────
 ALTER TABLE preset_image
@@ -22,29 +24,40 @@ ALTER TABLE preset_image
 -- ⚠ ELSE voice가 없으면 매칭 안 된 행이 NULL로 덮인다 — 지우지 말 것.
 UPDATE preset_image
 SET voice = CASE image_url
-    -- 여성 7
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_1.png' THEN 'HEERA'        -- 희라
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_2.png' THEN 'ARA_PRO'      -- 아라(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_3.png' THEN 'MINYOUNG'     -- 민영
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_4.png' THEN 'YUNA_PRO'     -- 유나(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_5.png' THEN 'GOEUN_PRO'    -- 고은(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_6.png' THEN 'SHASHA'       -- 샤샤
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_7.png' THEN 'YOUNGMI'      -- 영미
-    -- 남성 7
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_1.png'   THEN 'MINSANG'      -- 민상
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_2.png'   THEN 'DONGHYUN_PRO' -- 동현(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_3.png'   THEN 'SANGDO'       -- 상도
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_4.png'   THEN 'DAESEONG_PRO' -- 대성(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_5.png'   THEN 'RAEWON'       -- 래원
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_6.png'   THEN 'KITAE'        -- 기태
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_7.png'   THEN 'KYUWON'       -- 규원
+    -- 여성 11
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_1.png'  THEN 'HEERA'        -- 희라
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_2.png'  THEN 'ARA_PRO'      -- 아라(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_3.png'  THEN 'MINYOUNG'     -- 민영
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_4.png'  THEN 'YUNA_PRO'     -- 유나(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_5.png'  THEN 'GOEUN_PRO'    -- 고은(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_6.png'  THEN 'SHASHA'       -- 샤샤
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_7.png'  THEN 'YOUNGMI'      -- 영미
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_8.png'  THEN 'SOHYUN'       -- 소현
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_9.png'  THEN 'SUJIN'        -- 수진
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_10.png' THEN 'YEJI'         -- 예지
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_11.png' THEN 'EUNSEO'       -- 은서
+    -- 남성 11
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_1.png'    THEN 'MINSANG'      -- 민상
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_2.png'    THEN 'DONGHYUN_PRO' -- 동현(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_3.png'    THEN 'SANGDO'       -- 상도
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_4.png'    THEN 'DAESEONG_PRO' -- 대성(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_5.png'    THEN 'RAEWON'       -- 래원
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_6.png'    THEN 'KITAE'        -- 기태
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_7.png'    THEN 'KYUWON'       -- 규원
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_8.png'    THEN 'SEONGHOON'    -- 성훈
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_9.png'    THEN 'SIYOON'       -- 시윤
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_10.png'   THEN 'SINU'         -- 신우 (= MALE 폴백 기본값)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_11.png'   THEN 'JIHUN'        -- 지훈
     ELSE voice
 END;
 
--- ⚠ 3단계 전 반드시 확인 — 0건이어야 한다.
---    1건이라도 남으면 URL이 위와 다른 프리셋이 있다는 뜻이다(경로 오타·확장자 차이·신규 추가).
---    그대로 3단계를 돌리면 ALTER가 실패하거나 ''로 채워진다.
---   SELECT preset_image_id, gender, image_url FROM preset_image WHERE voice IS NULL;
+-- ⚠ 3단계 전 반드시 확인 — ⓐ는 0건, ⓑ는 22/22여야 한다.
+--    ⓐ 1건이라도 남으면 URL이 위와 다른 프리셋이 있다는 뜻이다(경로 오타·확장자 차이·신규 추가).
+--       그대로 3단계를 돌리면 ALTER가 실패하거나 ''로 채워진다.
+--    ⓑ 1:1 매핑이 실제로 지켜졌는지 본다. voices_used가 rows_total보다 작으면 어딘가 중복 배정이라
+--       안 쓰이는 화자가 있다(위 CASE를 손댔다면 여기서 걸린다).
+--   ⓐ SELECT preset_image_id, gender, image_url FROM preset_image WHERE voice IS NULL;
+--   ⓑ SELECT COUNT(*) AS rows_total, COUNT(DISTINCT voice) AS voices_used FROM preset_image;
 
 -- ── 3단계: NOT NULL로 조인다 (2단계 확인 후에만) ───────────────────────────────
 ALTER TABLE preset_image
@@ -57,8 +70,11 @@ ALTER TABLE preset_image
 --   SELECT preset_image_id, gender, voice, image_url FROM preset_image ORDER BY gender, preset_image_id;
 --   UPDATE preset_image SET voice = 'SUJIN' WHERE image_url LIKE '%female_3.png';
 --
+-- ⚠ 화자와 프리셋이 1:1이라 <b>둘을 맞바꾸는 식(swap)으로 고치는 게 안전하다</b> — 한쪽만 덮어쓰면
+--    그 화자가 두 프리셋에 붙고 원래 쓰이던 화자 하나가 미아가 된다(위 ⓑ로 확인할 것).
+--
 -- 쓸 수 있는 화자 (TTSVoice enum 이름). ⚠ 성별을 지킬 것 — 코드가 막아주지 않는다.
 -- 여성: HEERA(희라) ARA_PRO(아라Pro) MINYOUNG(민영) YUNA_PRO(유나Pro) GOEUN_PRO(고은Pro)
---       SHASHA(샤샤) YOUNGMI(영미) │ 미사용: SOHYUN(소현) SUJIN(수진) YEJI(예지) EUNSEO(은서)
+--       SHASHA(샤샤) YOUNGMI(영미) SOHYUN(소현) SUJIN(수진) YEJI(예지) EUNSEO(은서)
 -- 남성: MINSANG(민상) DONGHYUN_PRO(동현Pro) SANGDO(상도) DAESEONG_PRO(대성Pro) RAEWON(래원)
---       KITAE(기태) KYUWON(규원) │ 미사용: SEONGHOON(성훈) SIYOON(시윤) SINU(신우) JIHUN(지훈)
+--       KITAE(기태) KYUWON(규원) SEONGHOON(성훈) SIYOON(시윤) SINU(신우) JIHUN(지훈)
