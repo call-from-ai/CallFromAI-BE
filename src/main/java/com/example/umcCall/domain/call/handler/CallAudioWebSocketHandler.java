@@ -74,6 +74,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /** WS 세션 ID → 진행 중인 통화. WS 수신 · gRPC 콜백 · 워커 세 스레드가 만나는 지점이다. */
     private final ConcurrentHashMap<String, ActiveCall> activeCalls = new ConcurrentHashMap<>();
 
+    /**
+     * 끼어들기 통지 전용 스레드(전 통화 공유). 트리거는 gRPC 콜백인데 <b>그 스레드에서 소켓을 쓰면 안 되므로</b>
+     * 여기로 넘긴다 — {@link #sendControl}은 세션 락을 잡아 워커의 wav 송신과 겹치면 잠깐 대기하고,
+     * 그 대기가 콜백 스레드에 걸리면 <b>다른 통화의 STT까지</b> 밀린다.
+     * <p>단일 스레드로 충분하다: 프레임이 작고(수십 바이트) 발화당 한 번뿐이다.
+     */
+    private final ExecutorService controlNotifier = Executors.newSingleThreadExecutor();
+
     public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient,
                                      ClovaVoiceClient clovaVoiceClient,
                                      CallConversationService callConversationService,
@@ -245,7 +253,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // AI 대사를 조각으로 받아(SSE) 문장이 완성될 때마다 합성·송신한다.
                     // 대사 전체를 기다리지 않는 게 핵심 — LLM이 나머지를 만드는 시간이 체감 지연에서 빠진다.
                     SentenceBuffer sentences = new SentenceBuffer();
-                    SpeakingTurn speaking = new SpeakingTurn(session, turnGate, turn, turnStartedAt);
+                    SpeakingTurn speaking = new SpeakingTurn(call, turn, turnStartedAt);
                     try {
                         callConversationService.respondStream(
                                 ticket.characterId(), ticket.relationshipId(), history,
@@ -304,14 +312,31 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     /**
      * 사용자가 말을 시작했다(STT partial) → 진행 중인 AI 턴을 취소로 표시한다 = <b>끼어들기</b>.
      * <p>⚠ 이 메서드는 전 통화가 공유하는 gRPC 콜백 스레드에서 불린다 — 원자 변수 세팅만 하고 즉시 반환한다.
-     * <p>⚠ 막을 수 있는 건 <b>아직 전송 전</b>인 대사뿐이다(LLM 대기 + TTS 합성 = 턴당 5~8초 중 대부분).
-     * 이미 내려보낸 wav는 회수할 수 없다 — 클라이언트가 재생을 멈추게 하려면 제어 메시지가 필요하고,
-     * 그건 별도 단계다(FE 작업이 따라온다). 세션이 없으면 정리 중이라 no-op.
+     * <p>막는 방법이 구간마다 다르다: <b>아직 전송 전</b>인 대사는 워커가 합성·송신을 건너뛰면 되지만
+     * (LLM 대기 + TTS 합성 = 턴 지연의 대부분), <b>이미 내려보낸</b> wav는 회수할 수 없어
+     * 클라이언트가 재생 큐를 비워야 한다. 세션이 없으면 정리 중이라 no-op.
      */
     private void cancelSpeakingTurn(String sessionId) {
         ActiveCall call = activeCalls.get(sessionId);
-        if (call != null) {
-            call.turnGate().cancelCurrent();
+        if (call != null && call.turnGate().cancelCurrent()) {
+            notifySpeechCanceled(call);
+        }
+    }
+
+    /**
+     * 이미 내려보낸 AI 음성의 재생을 멈추라고 클라이언트에 알린다({@link #controlNotifier}가 실제로 보낸다).
+     * <p>보내는 시점엔 <b>다음 턴 오디오가 아직 없어</b>(사용자가 말하는 중 → final → LLM) 클라이언트가
+     * 큐를 통째로 비워도 안전하다 — WebSocket이 프레임 순서를 지킨다.
+     * <p>best-effort다: 통지가 늦거나 유실돼도 통화는 그대로 진행된다(문장 하나가 더 들릴 뿐).
+     */
+    private void notifySpeechCanceled(ActiveCall call) {
+        try {
+            controlNotifier.execute(() -> sendControl(call.session(),
+                    MessageType.AI_SPEECH_CANCELED,
+                    Map.of("callId", call.ticket().callId())));
+        } catch (RejectedExecutionException e) {
+            // 앱 종료로 통지 스레드가 내려간 뒤. 곧 소켓도 닫히므로 통지할 이유가 없다.
+            log.debug("[Call] 통지 스레드 종료됨 → 끼어들기 통지를 버림. session={}", call.session().getId());
         }
     }
 
@@ -323,6 +348,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      */
     private final class SpeakingTurn {
 
+        private final ActiveCall call;
         private final WebSocketSession session;
         private final TurnGate turnGate;
         private final long turn;
@@ -330,9 +356,10 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         private final StringBuilder spoken = new StringBuilder();
         private boolean firstAudioSent;
 
-        private SpeakingTurn(WebSocketSession session, TurnGate turnGate, long turn, long turnStartedAt) {
-            this.session = session;
-            this.turnGate = turnGate;
+        private SpeakingTurn(ActiveCall call, long turn, long turnStartedAt) {
+            this.call = call;
+            this.session = call.session();
+            this.turnGate = call.turnGate();
             this.turn = turn;
             this.turnStartedAt = turnStartedAt;
         }
@@ -364,6 +391,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             stopIfCanceled("끼어들기(송신 전)");
             if (!sendAudio(session, wav)) {
                 throw new TurnStoppedException("소켓 종료");
+            }
+            // 여기부터 회수 불가 구간 — 끼어들면 통지가 나간다.
+            // ⚠ 통지를 콜백에만 맡길 수 없다: 송신 중(=아직 markSpoken 전)에 취소가 들어오면 콜백은
+            // "나간 오디오가 없다"고 보고 통지를 건너뛴다. 그 놓친 경우를 여기서 이어받는다(중복은 TurnGate가 막는다).
+            if (turnGate.markSpoken(turn)) {
+                notifySpeechCanceled(call);
             }
             if (!firstAudioSent) {
                 firstAudioSent = true;
@@ -523,6 +556,9 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      */
     @PreDestroy
     void closeActiveCallsOnShutdown() {
+        // 통지 스레드를 먼저 내린다 — 곧 소켓을 닫으므로 대기 중인 통지는 보낼 곳이 없다.
+        controlNotifier.shutdownNow();
+
         List<ActiveCall> remaining = new ArrayList<>(activeCalls.values());
         if (remaining.isEmpty()) {
             return;
@@ -652,6 +688,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         CALL_READY,
         /** 정상 종료 통지({@code callId}/{@code reason}/{@code callTime}). 뒤이어 소켓이 NORMAL로 닫힌다. */
         CALL_ENDED,
+        /** 끼어들기 — <b>이미 보낸</b> AI 음성의 재생을 멈추라는 신호({@code callId}). 통화는 계속된다. */
+        AI_SPEECH_CANCELED,
         /** 서버 주도 종료 직전 통지. 뒤이어 소켓이 닫힌다. */
         ERROR
     }
@@ -682,6 +720,10 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
         private final AtomicLong current = new AtomicLong();
         private final AtomicLong canceled = new AtomicLong();
+        /** 오디오가 실제로 소켓으로 나간 최신 턴. 나간 게 없으면 클라이언트가 비울 큐도 없다. */
+        private final AtomicLong spoken = new AtomicLong();
+        /** 재생 중단을 통지한 최신 턴. partial은 말하는 내내 도착하므로 턴당 1회로 줄이는 기준이다. */
+        private final AtomicLong notified = new AtomicLong();
 
         /** 새 턴을 열고 그 번호를 준다. 워커(통화당 단일 스레드)만 호출한다. */
         long begin() {
@@ -689,11 +731,38 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
 
         /**
+         * 이 턴의 오디오가 소켓으로 나갔다고 표시한다. 워커만 호출한다.
+         * <p>⚠ 표시를 <b>먼저</b> 하고 취소 여부를 <b>그 뒤에</b> 읽는 순서가 핵심이다. 송신과 이 표시 사이에
+         * {@link #cancelCurrent}가 끼면 콜백 쪽은 {@code spoken}이 아직 옛 값이라 통지를 건너뛰는데,
+         * 원자 변수의 순차 일관성상 그 경우 콜백이 먼저 쓴 {@code canceled}를 여기서 반드시 보게 된다
+         * — 그래서 두 경로 중 <b>정확히 하나</b>가 통지를 맡는다(둘 다 봤더라도 {@code notified}가 중복을 막는다).
+         *
+         * @return 클라이언트에 재생 중단을 통지해야 하면 true(= 나가는 사이에 끼어들기가 있었다)
+         */
+        boolean markSpoken(long turn) {
+            spoken.accumulateAndGet(turn, Math::max);
+            if (canceled.get() < turn) {
+                return false;
+            }
+            return notified.getAndAccumulate(turn, Math::max) < turn;
+        }
+
+        /**
          * 지금 열려 있는 턴을 취소로 표시한다. gRPC 콜백이 호출 — 블로킹 없이 값만 쓴다.
          * <p>진행 중인 턴이 없어도 무해하다(직전 턴 번호를 찍을 뿐, 다음 턴은 번호가 더 커서 안 걸린다).
+         *
+         * @return 클라이언트에 <b>재생 중단을 통지해야</b> 하면 true. 이 턴 오디오가 이미 나갔고({@code spoken})
+         *         아직 통지하지 않았을 때({@code notified})뿐이다 — 두 조건이 각각 왜 필요한지는 그 필드 주석에 있다.
+         *         ⚠ 여기서 false라고 통지가 없는 건 아니다: 지금 <b>송신 중</b>이라 {@code spoken}이 아직
+         *         옛 값이면 {@link #markSpoken}이 이어받는다(통지 경로가 둘인 이유는 그쪽 주석에 있다).
          */
-        void cancelCurrent() {
-            canceled.set(current.get());
+        boolean cancelCurrent() {
+            long turn = current.get();
+            canceled.set(turn);
+            if (spoken.get() < turn) {
+                return false;
+            }
+            return notified.getAndAccumulate(turn, Math::max) < turn;
         }
 
         /**

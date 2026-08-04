@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -33,11 +34,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
 import io.grpc.stub.StreamObserver;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
@@ -487,5 +490,130 @@ class CallAudioWebSocketHandlerTest {
         // 들린 문장은 남긴다 — 안 들린 대사만 빼는 게 원칙이다(둘 다 빼면 AI가 자기 말을 잊는다).
         verify(callHistoryService, timeout(2000))
                 .appendHistory(CALL_ID, CallSpeaker.AI, "응, 나 방금 퇴근했어.");
+    }
+
+    // --- 끼어들기 2단계: 이미 보낸 wav의 재생 중단 통지 -----------------------------------------
+
+    /** 세션에 나간 제어 프레임 중 해당 {@code type}인 것들. 같이 나간 오디오는 captor가 타입으로 걸러낸다. */
+    private List<JsonNode> controlsOfType(WebSocketSession session, String type) throws Exception {
+        ArgumentCaptor<TextMessage> captor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(session, atLeast(0)).sendMessage(captor.capture());
+        List<JsonNode> found = new ArrayList<>();
+        for (TextMessage message : captor.getAllValues()) {
+            JsonNode node = objectMapper.readTree(message.getPayload());
+            if (type.equals(node.get("type").asText())) {
+                found.add(node);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * 통지는 전용 스레드로 나가므로 도착을 기다린다. 하나가 온 뒤에도 잠깐 더 기다리는 건
+     * <b>중복 통지가 있으면 그 사이에 도착하게</b> 하려는 것이다(단일 스레드라 곧바로 뒤따라온다).
+     */
+    private List<JsonNode> awaitControlsOfType(WebSocketSession session, String type) throws Exception {
+        long deadline = System.currentTimeMillis() + 2000;
+        while (controlsOfType(session, type).isEmpty() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        Thread.sleep(100);
+        return controlsOfType(session, type);
+    }
+
+    @Test
+    void 이미_보낸_음성이_있으면_끼어들_때_재생_중단을_통지한다() throws Exception {
+        // 서버는 내보낸 프레임을 회수할 수 없다 — 재생 큐를 비우는 건 클라이언트 몫이라 통지가 필요하다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        doAnswer(invocation -> {
+            Consumer<String> onChunk = invocation.getArgument(3);
+            onChunk.accept("응, 나 방금 퇴근했어. ");   // 이 wav는 이미 나갔다 = 회수 불가 구간
+            stt.onNext(partialResult("아 맞다"));       // 재생 도중 끼어듦
+            onChunk.accept("너는 뭐 하고 있었어?");
+            return null;
+        }).when(callConversationService).respondStream(any(), any(), any(), any());
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("뭐 해?"));
+
+        List<JsonNode> canceled = awaitControlsOfType(session, "AI_SPEECH_CANCELED");
+        assertThat(canceled).hasSize(1);
+        assertThat(canceled.get(0).get("data").get("callId").asLong()).isEqualTo(CALL_ID);
+        // 종료 통지가 아니다 — 통화는 그대로 이어진다.
+        verify(session, never()).close(any());
+    }
+
+    @Test
+    void 말하는_동안_partial이_계속_와도_통지는_한_번뿐이다() throws Exception {
+        // ⚠ partial은 말하는 내내 수십 번 온다. 턴당 1회로 줄이지 않으면 제어 프레임이 폭주한다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        doAnswer(invocation -> {
+            Consumer<String> onChunk = invocation.getArgument(3);
+            onChunk.accept("응, 나 방금 퇴근했어. ");
+            stt.onNext(partialResult("아"));
+            stt.onNext(partialResult("아 맞다"));
+            stt.onNext(partialResult("아 맞다 그거"));
+            onChunk.accept("너는 뭐 하고 있었어?");
+            return null;
+        }).when(callConversationService).respondStream(any(), any(), any(), any());
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("뭐 해?"));
+
+        assertThat(awaitControlsOfType(session, "AI_SPEECH_CANCELED")).hasSize(1);
+    }
+
+    @Test
+    void 송신_도중_끼어들어도_재생_중단을_통지한다() throws Exception {
+        // ⚠ wav를 소켓에 쓰는 동안(= 아직 "나갔다"고 표시하기 전) 끼어들면, 취소를 찍는 콜백은
+        // "나간 오디오가 없다"고 보고 통지를 건너뛴다. 그 경우까지 통지가 나가야 한다 —
+        // 하필 그게 그 발화의 마지막 partial이면 뒤이어 만회할 partial이 없어 통지가 영영 사라진다
+        // (final은 끼어들기 트리거가 아니다) = FE 큐에 남은 AI 음성이 다음 턴 위로 계속 재생된다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        AtomicBoolean interrupted = new AtomicBoolean();
+        // 첫 wav를 쓰는 도중에 partial이 도착한 상황을 재현한다.
+        doAnswer(invocation -> {
+            if (interrupted.compareAndSet(false, true)) {
+                stt.onNext(partialResult("아 맞다"));
+            }
+            return null;
+        }).when(session).sendMessage(any(BinaryMessage.class));
+        givenAiStreams("응, 나 방금 퇴근했어. ", "너는 뭐 하고 있었어?");
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("뭐 해?"));
+
+        List<JsonNode> canceled = awaitControlsOfType(session, "AI_SPEECH_CANCELED");
+        assertThat(canceled).hasSize(1);   // 통지 경로가 둘이어도 중복되지 않는다
+        assertThat(canceled.get(0).get("data").get("callId").asLong()).isEqualTo(CALL_ID);
+        // 뒷문장은 그대로 폐기된다 — 통지 경로가 늘어도 1단계 취소는 그대로다.
+        verify(clovaVoiceClient, never()).synthesize(eq("너는 뭐 하고 있었어?"), any());
+    }
+
+    @Test
+    void 아직_아무것도_안_보냈으면_재생_중단을_통지하지_않는다() throws Exception {
+        // 1단계(서버 측 취소)로 이미 막힌 턴이다 — 클라이언트엔 비울 큐가 없으니 통지할 이유도 없다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        CountDownLatch replyStreamed = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            stt.onNext(partialResult("아니 잠깐만"));   // 첫 문장이 나가기 전에 끼어듦
+            Consumer<String> onChunk = invocation.getArgument(3);
+            try {
+                onChunk.accept("AI가 하려던 말이야.");
+            } finally {
+                replyStreamed.countDown();
+            }
+            return null;
+        }).when(callConversationService).respondStream(any(), any(), any(), any());
+
+        stt.onNext(finalResult("안녕"));
+
+        assertThat(replyStreamed.await(2, TimeUnit.SECONDS)).isTrue();
+        verify(session, after(300).never()).sendMessage(any(BinaryMessage.class)); // 나간 오디오가 없다
+        assertThat(controlsOfType(session, "AI_SPEECH_CANCELED")).isEmpty();
     }
 }
