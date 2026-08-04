@@ -277,12 +277,16 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                     // AI 대사를 조각으로 받아(SSE) 문장이 완성될 때마다 합성·송신한다.
                     // 대사 전체를 기다리지 않는 게 핵심 — LLM이 나머지를 만드는 시간이 체감 지연에서 빠진다.
                     SentenceBuffer sentences = new SentenceBuffer();
-                    SpeakingTurn speaking = new SpeakingTurn(session, turnGate, turn, turnStartedAt,
-                            call.recorder(), call.voice().speakerId());
+                    SpeakingTurn speaking = new SpeakingTurn(call, turn, turnStartedAt);
                     try {
                         callConversationService.respondStream(
                                 ticket.characterId(), ticket.relationshipId(), history,
                                 chunk -> {
+                                    // ⚠ 취소 확인을 speak()에만 두면 <b>문장이 완성돼야</b> 알아챈다 —
+                                    // 종결 부호 없이 흐르는 응답에선 MAX_CHARS(120자)까지 워커가 SSE를 계속
+                                    // 읽고, 그동안 <b>사용자가 방금 끼어들며 만든 다음 턴</b>이 밀린다.
+                                    // 조각 도착마다 보면 스트림 소비 자체가 즉시 멈춘다.
+                                    speaking.stopIfCanceled("끼어들기(스트림 수신 중)");
                                     for (String sentence : sentences.feed(chunk)) {
                                         speaking.speak(sentence);
                                     }
@@ -369,6 +373,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      */
     private final class SpeakingTurn {
 
+        private final ActiveCall call;
         private final WebSocketSession session;
         private final TurnGate turnGate;
         private final long turn;
@@ -379,14 +384,16 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         private final StringBuilder spoken = new StringBuilder();
         private boolean firstAudioSent;
 
-        private SpeakingTurn(WebSocketSession session, TurnGate turnGate, long turn,
-                             long turnStartedAt, CallRecorder recorder, String speaker) {
-            this.speaker = speaker;
-            this.session = session;
-            this.turnGate = turnGate;
+        private SpeakingTurn(ActiveCall call, long turn, long turnStartedAt) {
+            this.call = call;
+            this.session = call.session();
+            this.turnGate = call.turnGate();
             this.turn = turn;
             this.turnStartedAt = turnStartedAt;
-            this.recorder = recorder;
+            this.recorder = call.recorder();
+            // ⚠ 연결 시 한 번 해석해 ActiveCall에 얼려둔 값을 그대로 쓴다 — 문장마다 조회하면 턴당
+            // 문장 수만큼 DB가 나간다(계약 테스트 `화자는_연결_시_한_번만_조회한다`가 고정).
+            this.speaker = call.voice().speakerId();
         }
 
         /**
@@ -400,12 +407,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 턴을 접지 않고 이 조각만 건너뛴다 — 어차피 소리로 나갈 내용이 아니다.
             if (!isSpeakable(sentence)) {
                 log.debug("[Call] 합성할 내용이 없어 건너뜀. session={}, text={}", session.getId(), sentence);
+                // ⚠ 이력·전사에도 남기지 않는다. 통화 전문은 <b>실제로 들린 것</b>의 기록이고,
+                // 이 조각은 소리가 된 적이 없다(2026-08-03 결정 — #122 리뷰에서 보존안을 검토했다가 기각).
                 return;
             }
             // 끼어들기 확인 ①: 합성 전. 어차피 못 내보낼 문장이라 TTS 호출·비용이 통째로 낭비다.
-            if (turnGate.isCanceled(turn)) {
-                throw new TurnStoppedException("끼어들기(합성 전)");
-            }
+            stopIfCanceled("끼어들기(합성 전)");
             long llmMs = firstAudioSent ? -1 : elapsedMs(turnStartedAt);
 
             long ttsStartedAt = System.nanoTime();
@@ -413,23 +420,46 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             long ttsMs = elapsedMs(ttsStartedAt);
 
             // 끼어들기 확인 ②: 합성 중에 말을 시작한 경우. 아직 전송 전이라 사용자에겐 애초에 들리지 않는다.
-            if (turnGate.isCanceled(turn)) {
-                throw new TurnStoppedException("끼어들기(송신 전)");
-            }
+            stopIfCanceled("끼어들기(송신 전)");
             if (!sendAudio(session, wav)) {
                 throw new TurnStoppedException("소켓 종료");
             }
-            turnGate.markSpoken(turn); // 여기부터 회수 불가 구간 — 끼어들면 통지가 나간다
+            // 여기부터 회수 불가 구간 — 끼어들면 통지가 나간다.
+            // ⚠ 통지를 콜백에만 맡길 수 없다: 송신 중(=아직 markSpoken 전)에 취소가 들어오면 콜백은
+            // "나간 오디오가 없다"고 보고 통지를 건너뛴다. 그 놓친 경우를 여기서 이어받는다(중복은 TurnGate가 막는다).
+            // ⚠ 표시는 송신 직후에 한다 — 위 창을 넓히면 콜백이 놓치는 경우가 그만큼 늘어난다.
+            boolean mustNotifyCanceled = turnGate.markSpoken(turn);
             // 실제로 <b>내보낸</b> 소리만 녹음에 남는다 — 이력·전사와 같은 기준이라 셋이 어긋나지 않는다.
+            // ⚠ 통지보다 <b>먼저</b> 써야 한다: notifySpeechCanceled가 resetAiCursor를 동기로 부르므로,
+            // 순서를 뒤집으면 방금 내보낸 이 조각이 되돌린 커서 위에 다시 얹혀 커서를 그 길이만큼 밀어
+            // "다음 대사가 밀리지 않게 한다"는 resetAiCursor의 목적이 사라진다.
             recorder.writeAiWav(wav);
+            if (mustNotifyCanceled) {
+                notifySpeechCanceled(call);
+            }
             if (!firstAudioSent) {
                 firstAudioSent = true;
                 logTurnLatency(session.getId(), turnStartedAt, llmMs, ttsMs);
             }
+            append(sentence);
+        }
+
+        /** 더 말할 수 없는 상태면 이 턴을 접는다. 확인 지점이 여럿이라 한 군데로 모았다. */
+        private void stopIfCanceled(String reason) {
+            if (turnGate.isCanceled(turn)) {
+                throw new TurnStoppedException(reason);
+            }
+        }
+
+        /** 대사 조각을 이어붙인다. 문장 사이는 공백 하나로 구분한다(전사는 턴당 한 줄로 남기므로). */
+        private void append(String fragment) {
+            if (fragment.isEmpty()) {
+                return;
+            }
             if (!spoken.isEmpty()) {
                 spoken.append(' ');
             }
-            spoken.append(sentence);
+            spoken.append(fragment);
         }
 
         /** 이 턴에서 실제로 내보낸 대사 전체. 아무것도 못 내보냈으면 빈 문자열. */
@@ -778,9 +808,21 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             return current.incrementAndGet();
         }
 
-        /** 이 턴의 오디오가 소켓으로 나갔다고 표시한다. 워커만 호출한다. */
-        void markSpoken(long turn) {
+        /**
+         * 이 턴의 오디오가 소켓으로 나갔다고 표시한다. 워커만 호출한다.
+         * <p>⚠ 표시를 <b>먼저</b> 하고 취소 여부를 <b>그 뒤에</b> 읽는 순서가 핵심이다. 송신과 이 표시 사이에
+         * {@link #cancelCurrent}가 끼면 콜백 쪽은 {@code spoken}이 아직 옛 값이라 통지를 건너뛰는데,
+         * 원자 변수의 순차 일관성상 그 경우 콜백이 먼저 쓴 {@code canceled}를 여기서 반드시 보게 된다
+         * — 그래서 두 경로 중 <b>정확히 하나</b>가 통지를 맡는다(둘 다 봤더라도 {@code notified}가 중복을 막는다).
+         *
+         * @return 클라이언트에 재생 중단을 통지해야 하면 true(= 나가는 사이에 끼어들기가 있었다)
+         */
+        boolean markSpoken(long turn) {
             spoken.accumulateAndGet(turn, Math::max);
+            if (canceled.get() < turn) {
+                return false;
+            }
+            return notified.getAndAccumulate(turn, Math::max) < turn;
         }
 
         /**
@@ -789,6 +831,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
          *
          * @return 클라이언트에 <b>재생 중단을 통지해야</b> 하면 true. 이 턴 오디오가 이미 나갔고({@code spoken})
          *         아직 통지하지 않았을 때({@code notified})뿐이다 — 두 조건이 각각 왜 필요한지는 그 필드 주석에 있다.
+         *         ⚠ 여기서 false라고 통지가 없는 건 아니다: 지금 <b>송신 중</b>이라 {@code spoken}이 아직
+         *         옛 값이면 {@link #markSpoken}이 이어받는다(통지 경로가 둘인 이유는 그쪽 주석에 있다).
          */
         boolean cancelCurrent() {
             long turn = current.get();

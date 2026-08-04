@@ -88,6 +88,17 @@ class CallVoiceResolverTest {
     }
 
     @Test
+    void 성별을_아는_상태에서_터지면_그_성별의_기본값으로_말한다() {
+        // 캐릭터는 읽었으니 성별을 아는데, 프리셋 조회만 터진 경우. 여기서 고정 폴백으로 떨어지면
+        // 남성 캐릭터가 여성 목소리로 말한다 — 성별별 폴백을 둔 이유가 사라진다.
+        givenCharacter(Gender.MALE, PRESET_URL);
+        when(presetImageRepository.findByGenderAndImageUrl(Gender.MALE, PRESET_URL))
+                .thenThrow(new RuntimeException("DB down"));
+
+        assertThat(resolver.resolve(CHARACTER_ID)).isEqualTo(TTSVoice.defaultFor(Gender.MALE));
+    }
+
+    @Test
     void 모든_화자는_성별이_지정돼_있다() {
         for (TTSVoice voice : TTSVoice.values()) {
             assertThat(voice.gender()).as(voice.name()).isNotNull();
