@@ -90,6 +90,11 @@ class CallAudioWebSocketHandlerTest {
 
     /** "이만큼도 안 걸린다"의 기준. 정리 경로는 어디서도 산출물을 기다리지 않아야 한다. */
     private static final long ARTIFACT_WAIT_MS = 2000;
+    /**
+     * 끼어들기 감지 설정. 테스트는 <b>임계를 넘는 프레임 하나</b>로 바로 트리거되게 최소값을 쓴다 —
+     * 여기서 검증할 건 감지 알고리즘이 아니라(그건 {@link CallVadTest}) "오디오가 취소를 부르는가"다.
+     */
+    private static final CallBargeInProperties BARGE_IN = new CallBargeInProperties(1_200, 20);
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private CallAudioWebSocketHandler handler;
@@ -106,7 +111,7 @@ class CallAudioWebSocketHandlerTest {
                 callHistoryService,
                 new ClovaSpeechProperties("clovaspeech-gw.ncloud.com", 50051, "secret", 700),
                 callRecordingService, callSummaryService, callVoiceResolver,
-                callArtifactRegistry, objectMapper);
+                callArtifactRegistry, BARGE_IN, objectMapper);
     }
 
     /** 핸드셰이크 인터셉터가 신원을 실어 둔 열린 세션. */
@@ -636,6 +641,65 @@ class CallAudioWebSocketHandlerTest {
         }
         Thread.sleep(100);
         return controlsOfType(session, type);
+    }
+
+    /** 업스트림 오디오 프레임(20ms). {@code amplitude}로 임계 위/아래를 만든다. */
+    private static BinaryMessage upstream(int amplitude) {
+        ByteBuffer buffer = ByteBuffer.allocate(320 * 2).order(ByteOrder.LITTLE_ENDIAN);
+        for (int i = 0; i < 320; i++) {
+            buffer.putShort((short) (i % 2 == 0 ? amplitude : -amplitude));
+        }
+        return new BinaryMessage(buffer.array());
+    }
+
+    @Test
+    void STT_partial_없이_오디오만으로도_끼어들기가_통지된다() throws Exception {
+        // ⚠ #139의 핵심 회귀 방지. 원래 트리거는 STT partial이었는데, CLOVA CONFIG가 partial을 만들어내는
+        // 이벤트를 전부 껐거나 20초로 올려둬(durationThreshold/usePeriodEpd/syllableThreshold) 보통 길이의
+        // 발화에선 partial이 영영 오지 않았다 = 끼어들기가 실통화에서 한 번도 동작하지 않았다.
+        // 그래서 업스트림 오디오 자체로 판정한다 — 이 테스트는 partial을 <b>한 번도 넣지 않는다</b>.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        doAnswer(invocation -> {
+            Consumer<String> onChunk = invocation.getArgument(3);
+            onChunk.accept("응, 나 방금 퇴근했어. ");            // 이 wav는 이미 나갔다 = 회수 불가 구간
+            handler.handleBinaryMessage(session, upstream(5_000));  // 사용자가 말을 시작(오디오만)
+            onChunk.accept("너는 뭐 하고 있었어?");
+            return null;
+        }).when(callConversationService).respondStream(any(), any(), any(), any());
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("뭐 해?"));
+
+        List<JsonNode> canceled = awaitControlsOfType(session, "AI_SPEECH_CANCELED");
+        assertThat(canceled).hasSize(1);
+        assertThat(canceled.get(0).get("data").get("callId").asLong()).isEqualTo(CALL_ID);
+        // 뒷문장은 폐기된다 — 트리거만 바뀌었을 뿐 1단계 취소는 그대로다.
+        verify(clovaVoiceClient, never()).synthesize(eq("너는 뭐 하고 있었어?"), any());
+        // 종료 통지가 아니다 — 통화는 그대로 이어진다.
+        verify(session, never()).close(any());
+    }
+
+    @Test
+    void 임계_미만의_조용한_오디오는_끼어들기가_아니다() throws Exception {
+        // ⚠ 이게 깨지면 <b>침묵 프레임만으로 AI가 끊겨</b> 대사가 영영 안 나간다.
+        //   업스트림은 침묵 구간에도 계속 흐르므로(계약) 이 가드가 없으면 매 통화가 고장난다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        doAnswer(invocation -> {
+            Consumer<String> onChunk = invocation.getArgument(3);
+            onChunk.accept("응, 나 방금 퇴근했어. ");
+            handler.handleBinaryMessage(session, upstream(10));   // 사실상 무음
+            onChunk.accept("너는 뭐 하고 있었어?");
+            return null;
+        }).when(callConversationService).respondStream(any(), any(), any(), any());
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("뭐 해?"));
+
+        assertThat(awaitControlsOfType(session, "AI_SPEECH_CANCELED")).isEmpty();
+        // 대사가 끝까지 나갔다.
+        verify(clovaVoiceClient, timeout(2000)).synthesize(eq("너는 뭐 하고 있었어?"), any());
     }
 
     @Test

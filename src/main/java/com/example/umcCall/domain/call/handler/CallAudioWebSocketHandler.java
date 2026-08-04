@@ -74,6 +74,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final CallSummaryService callSummaryService;
     private final CallVoiceResolver callVoiceResolver;
     private final CallArtifactRegistry callArtifactRegistry;
+    private final CallBargeInProperties bargeInProperties;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -100,9 +101,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                                      CallSummaryService callSummaryService,
                                      CallVoiceResolver callVoiceResolver,
                                      CallArtifactRegistry callArtifactRegistry,
+                                     CallBargeInProperties bargeInProperties,
                                      ObjectMapper objectMapper) {
         this.callSummaryService = callSummaryService;
         this.callArtifactRegistry = callArtifactRegistry;
+        this.bargeInProperties = bargeInProperties;
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
         this.callConversationService = callConversationService;
@@ -169,7 +172,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 문장 하나에 DB가 두 번 나간다. 실패해도 기본 목소리가 돌아올 뿐 통화는 그대로 이어진다.
             TTSVoice voice = callVoiceResolver.resolve(ticket.characterId());
             activeCalls.put(sessionId, new ActiveCall(session, stream, worker, ticket, history,
-                    new TurnGate(), new CallRecorder(), voice));
+                    new TurnGate(), new CallRecorder(), voice, bargeInProperties.newVad()));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
@@ -231,6 +234,15 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         // ⚠ STT 중계 뒤에 녹음한다 — 이 메서드는 WS 수신 스레드라, 녹음을 앞에 두면 그만큼
         // STT 도착이 밀려 턴 감지·끼어들기가 늦어진다. 녹음은 밀려도 되는 쪽이다.
         call.recorder().writeUpstream(chunk);
+
+        // 끼어들기 트리거(#139). ⚠ STT partial이 아니라 <b>이 오디오</b>로 판정한다 — 현재 CLOVA CONFIG는
+        // partial을 만들어내는 이벤트를 전부 껐거나 20초로 올려둬(durationThreshold/usePeriodEpd/
+        // syllableThreshold) 보통 길이의 발화에선 partial이 영영 오지 않고, 그래서 끼어들기가 죽어 있었다.
+        // 그 CONFIG는 턴이 쪼개지는 걸 막는 것이라 되돌릴 수 없어 트리거를 STT에서 떼어냈다.
+        // ⚠ 여기도 중계 뒤다 — 계산은 가볍지만(프레임 RMS) 규칙을 녹음과 같이 둔다.
+        if (call.vad().isSpeechStart(chunk)) {
+            cancelSpeakingTurn(session.getId());
+        }
     }
 
     @Override
@@ -780,10 +792,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * @param recorder 통화 녹음(타임라인 믹스). 세 스레드가 쓰지만 내부에서 직렬화한다.
      * @param voice   이 통화 AI의 목소리. 연결 시 1회 해석해 얼려둔다 — 문장마다 다시 조회하지 않기 위함이자,
      *                통화 도중 캐릭터 이미지가 바뀌어도 말하던 목소리가 중간에 갈리지 않게 하기 위함이다.
+     * @param vad     끼어들기 트리거(발화 시작 감지). <b>WS 수신 스레드만</b> 만진다(스레드 confine).
      */
     private record ActiveCall(WebSocketSession session, SttStream stream, ExecutorService worker,
                               WsTicket ticket, List<AiChatHistoryItem> history, TurnGate turnGate,
-                              CallRecorder recorder, TTSVoice voice) {
+                              CallRecorder recorder, TTSVoice voice, CallVad vad) {
     }
 
     /**
