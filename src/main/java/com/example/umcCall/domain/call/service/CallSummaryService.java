@@ -64,44 +64,61 @@ public class CallSummaryService {
     private final TransactionTemplate transactionTemplate;
 
     /**
-     * 통화 하나의 요약 생성을 시작한다. 호출부(WS 핸들러 정리 경로)를 잡아두지 않는다.
+     * 통화 하나의 요약 생성을 시작한다.
+     *
+     * <p>⚠ 호출 스레드(WS 핸들러 정리 경로)에서 도는 건 <b>상태 갱신 UPDATE 하나뿐</b>이다 —
+     * 느린 LLM 호출은 풀로 넘긴다. 정리 경로를 잡아두지 않는다는 규칙은 그대로고, 이 UPDATE는
+     * 그 규칙이 막으려던 "수 초짜리 대기"가 아니다.
      *
      * @return 생성이 끝나면(성공·실패 무관) 완료되는 future. 호출부는 이걸 상한까지만 기다린다.
      */
     public CompletableFuture<Void> generate(Long callId) {
+        // ⚠ 큐에 "넣기 전에" 찍는다 — 풀(4)이 바쁘면 제출과 실행 사이가 벌어지는데, 그동안 상태가
+        // NONE이면 프론트가 "요약할 대화가 없음"으로 오판한다. 하필 조회 대기(?wait=true)가 상한을
+        // 넘긴 순간이 가장 위험하다 — 실제로는 대기 중인데 "요약 없음"으로 확정해 버린다.
+        updateCall(callId, Call::startSummary);
         try {
             return CompletableFuture.runAsync(() -> summarize(callId), summarizer);
         } catch (RejectedExecutionException e) {
-            // 앱 종료로 풀이 내려간 뒤. 상태는 NONE으로 남는다.
+            // 앱 종료로 풀이 내려간 뒤. ⚠ 요약이 "없는" 게 아니라 "만들지 못한" 것이라 FAILED다.
+            // 이 UPDATE 자체가 실패해도(종료 중이라 DB가 먼저 닫혔을 수 있다) 상태는 PROCESSING으로
+            // 남고 다음 기동의 failStaleSummaries가 걷는다 — 어느 쪽이든 "준비 중"에 갇히지 않는다.
             log.warn("[Summary] 요약 풀 종료됨 → 생성을 건너뛴다. callId={}", callId);
+            updateCall(callId, Call::failSummary);
             return CompletableFuture.completedFuture(null);
         }
     }
 
+    /**
+     * ⚠ <b>전사 조회부터 catch 안에 둔다.</b> 조회 실패(DB 장애)는 "요약할 대화가 없음"이 아니라
+     * <b>요약 생성 실패</b>라 {@code NONE}이 아닌 {@code FAILED}로 남아야 한다 — 그러지 않으면
+     * DB 장애가 프론트에 "대화 없음"으로 표시된다(둘은 프론트 문구가 갈린다).
+     */
     private void summarize(Long callId) {
         long startedAt = System.nanoTime();
-        List<AiSummaryMessage> messages = loadTranscript(callId);
-        // ⚠ 전사가 없으면 LLM을 부르지 않는다 — 미연결·즉시종료 통화까지 요약 비용을 낼 이유가 없다.
-        // FAILED가 아니라 NONE인 이유는 "실패"가 아니라 "요약할 대화가 없음"이라서다(프론트 문구가 갈린다).
-        if (messages.isEmpty()) {
-            log.debug("[Summary] 전사가 없어 요약을 건너뜀. callId={}", callId);
-            updateCall(callId, Call::markSummaryUnavailable);
-            return;
-        }
-
-        // 생성 전에 PROCESSING을 찍는다 — 이 사이에 사용자가 상세를 열면 "요약 없음"으로 오판한다.
-        updateCall(callId, Call::startSummary);
+        int transcriptSize = 0;
         try {
+            List<AiSummaryMessage> messages = loadTranscript(callId);
+            transcriptSize = messages.size();
+            // ⚠ 전사가 없으면 LLM을 부르지 않는다 — 미연결·즉시종료 통화까지 요약 비용을 낼 이유가 없다.
+            // NONE인 이유는 "실패"가 아니라 "요약할 대화가 없음"이라서다.
+            // (PROCESSING은 generate에서 이미 찍혔다 — 여기서 NONE으로 되돌린다)
+            if (messages.isEmpty()) {
+                log.debug("[Summary] 전사가 없어 요약을 건너뜀. callId={}", callId);
+                updateCall(callId, Call::markSummaryUnavailable);
+                return;
+            }
+
             String topic = aiServerClient
                     .summarizeCallTopic(new AiCallTopicRequest(callId, messages, MAX_TOPIC_CHARACTERS))
                     .topic()
                     .strip();
             updateCall(callId, call -> call.completeSummary(topic));
             log.info("[Summary] 요약 완료. callId={}, messages={}, topic={}, totalMs={}",
-                    callId, messages.size(), topic, elapsedMs(startedAt));
+                    callId, transcriptSize, topic, elapsedMs(startedAt));
         } catch (RuntimeException e) {
             log.error("[Summary] 요약 실패. callId={}, messages={}, totalMs={}",
-                    callId, messages.size(), elapsedMs(startedAt), e);
+                    callId, transcriptSize, elapsedMs(startedAt), e);
             updateCall(callId, Call::failSummary);
         }
     }
@@ -115,17 +132,16 @@ public class CallSummaryService {
      * <p>⚠ <b>마지막 턴이 빠질 수 있다.</b> 정리 경로가 워커를 {@code shutdownNow()}로 끊고 오므로,
      * 그 순간 송신 중이던 AI 문장은 전사에 안 남는다. 요약은 주제 라벨이라 한 문장이 빠져도 결과가
      * 크게 달라지지 않아 감수한다 — 정확히 맞추려면 워커 종료를 기다려야 하고 그만큼 끊기가 느려진다.
+     *
+     * <p>⚠ <b>조회 예외를 여기서 삼키지 않는다.</b> 빈 리스트로 바꿔 돌려주면 호출부가 "전사 없음"으로
+     * 읽어 {@code NONE}으로 마감해 버린다 — DB 장애가 "요약할 대화가 없음"으로 둔갑한다.
+     * 예외는 {@link #summarize}가 받아 {@code FAILED}로 남긴다.
      */
     private List<AiSummaryMessage> loadTranscript(Long callId) {
-        try {
-            return callHistoryRepository.findByCallIdOrderByIdAsc(callId).stream()
-                    .filter(history -> history.getContent() != null && !history.getContent().isBlank())
-                    .map(history -> new AiSummaryMessage(toRole(history.getSpeaker()), history.getContent()))
-                    .toList();
-        } catch (RuntimeException e) {
-            log.error("[Summary] 전사 조회 실패. callId={}", callId, e);
-            return List.of();
-        }
+        return callHistoryRepository.findByCallIdOrderByIdAsc(callId).stream()
+                .filter(history -> history.getContent() != null && !history.getContent().isBlank())
+                .map(history -> new AiSummaryMessage(toRole(history.getSpeaker()), history.getContent()))
+                .toList();
     }
 
     /** AI 계약의 role 값은 소문자 {@code user}/{@code assistant}다(채팅·통화 공통). */

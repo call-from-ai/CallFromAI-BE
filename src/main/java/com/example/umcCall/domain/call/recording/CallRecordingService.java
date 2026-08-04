@@ -57,26 +57,35 @@ public class CallRecordingService {
     private final ExecutorService uploader = Executors.newFixedThreadPool(4);
 
     /**
-     * 마감된 녹음 하나를 보관 대기열에 넣는다. 호출부(WS 핸들러)를 잡아두지 않는다.
+     * 마감된 녹음 하나를 보관 대기열에 넣는다.
+     *
+     * <p>⚠ 호출 스레드(WS 수신 · 사용자 종료 REST)에서 도는 건 <b>상태 갱신 UPDATE 하나뿐</b>이다 —
+     * 느린 S3 호출은 풀로 넘긴다. 정리 경로를 잡아두지 않는다는 규칙은 그대로고, 이 UPDATE는
+     * 그 규칙이 막으려던 "수 초짜리 대기"가 아니다.
      *
      * @return 업로드가 끝나면(성공·실패 무관) 완료되는 future. 통화 종료 응답이 상한까지만 이걸 기다린다 —
      *         상한을 넘겨도 <b>취소하지 않는다</b>(기다리기를 포기할 뿐 업로드는 계속된다).
      */
     public CompletableFuture<Void> save(Long callId, byte[] wav) {
         long queuedAt = System.nanoTime();
+        // ⚠ 큐에 "넣기 전에" 찍는다 — 풀(4)이 바쁘면 제출과 실행 사이가 벌어지는데, 그동안 상태가
+        // NONE이면 프론트가 "녹음 없음"으로 오판한다. 하필 조회 대기(?wait=true)가 상한을 넘긴
+        // 순간이 가장 위험하다 — 실제로는 업로드 대기 중인데 "녹음 없음"으로 확정해 버린다.
+        updateCall(callId, Call::startRecordingUpload);
         try {
             return CompletableFuture.runAsync(() -> upload(callId, wav, queuedAt), uploader);
         } catch (RejectedExecutionException e) {
-            // 앱 종료로 업로더가 내려간 뒤. 상태는 NONE으로 남는다(녹음 없음과 구별할 방법이 없다).
+            // 앱 종료로 업로더가 내려간 뒤. ⚠ 녹음이 "없는" 게 아니라 "보관하지 못한" 것이라 FAILED다.
+            // 이 UPDATE 자체가 실패해도(종료 중이라 DB가 먼저 닫혔을 수 있다) 상태는 PROCESSING으로
+            // 남고 다음 기동의 failStaleUploads가 걷는다 — 어느 쪽이든 "준비 중"에 갇히지 않는다.
             log.warn("[Recording] 업로더 종료됨 → 녹음을 버린다. callId={}", callId);
+            updateCall(callId, Call::failRecording);
             return CompletableFuture.completedFuture(null);
         }
     }
 
     private void upload(Long callId, byte[] wav, long queuedAt) {
         long queueMs = elapsedMs(queuedAt);
-        // 올리기 전에 PROCESSING을 찍는다 — 이 사이에 사용자가 상세를 열면 "녹음 없음"으로 오판한다.
-        updateCall(callId, Call::startRecordingUpload);
         try {
             long uploadStartedAt = System.nanoTime();
             String audioUrl = s3Uploader.upload(wav, RECORDING_DIR, EXTENSION, CONTENT_TYPE);

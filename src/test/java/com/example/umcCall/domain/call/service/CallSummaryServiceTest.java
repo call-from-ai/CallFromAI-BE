@@ -20,6 +20,8 @@ import com.example.umcCall.domain.call.repository.CallHistoryRepository;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 class CallSummaryServiceTest {
 
     private static final Long CALL_ID = 7L;
+    /** 풀이 꽉 찬 동안 큐에서 대기하는 <b>다른</b> 통화. */
+    private static final Long QUEUED_CALL_ID = 8L;
+    /** {@code CallSummaryService}의 요약 풀 크기. 이만큼 채우면 다음 제출은 큐에서 대기만 한다. */
+    private static final int SUMMARIZER_THREADS = 4;
 
     @Mock private AiServerClient aiServerClient;
     @Mock private CallRepository callRepository;
@@ -50,12 +56,15 @@ class CallSummaryServiceTest {
 
     private CallSummaryService service;
     private Call call;
+    private Call queuedCall;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         call = Call.builder().sender(CallSender.AI).build();
+        queuedCall = Call.builder().sender(CallSender.AI).build();
         when(callRepository.findById(CALL_ID)).thenReturn(Optional.of(call));
+        when(callRepository.findById(QUEUED_CALL_ID)).thenReturn(Optional.of(queuedCall));
         // 트랜잭션 경계는 검증 대상이 아니라 그 자리에서 바로 실행한다.
         doAnswer(invocation -> {
             ((Consumer<TransactionStatus>) invocation.getArgument(0)).accept(null);
@@ -146,14 +155,16 @@ class CallSummaryServiceTest {
     }
 
     @Test
-    void 전사_조회가_실패해도_통화를_망가뜨리지_않는다() {
+    void 전사_조회가_실패하면_NONE이_아니라_FAILED로_남긴다() {
+        // ⚠ NONE은 "요약할 대화가 없음"이다 — DB 장애를 NONE으로 남기면 프론트에 "대화 없음"으로
+        // 잘못 표시된다. 조회 실패는 요약을 "만들지 못한" 것이므로 FAILED다.
         when(callHistoryRepository.findByCallIdOrderByIdAsc(CALL_ID))
                 .thenThrow(new RuntimeException("DB 오류"));
 
         assertThatCode(this::awaitGenerate).doesNotThrowAnyException();
 
         verify(aiServerClient, never()).summarizeCallTopic(any());
-        assertThat(call.getSummaryStatus()).isEqualTo(CallSummaryStatus.NONE);
+        assertThat(call.getSummaryStatus()).isEqualTo(CallSummaryStatus.FAILED);
     }
 
     @Test
@@ -168,6 +179,46 @@ class CallSummaryServiceTest {
         awaitGenerate();
 
         assertThat(call.getSummaryStatus()).isEqualTo(CallSummaryStatus.READY);
+    }
+
+    @Test
+    void 큐에서_대기하는_동안에도_PROCESSING이다() throws InterruptedException {
+        // ⚠ PROCESSING을 작업 "안"에서 찍으면 풀이 바쁠 때 큐 대기 구간이 통째로 NONE이라,
+        // 프론트는 실제로는 생성 대기 중인 통화를 "요약할 대화가 없음"으로 확정해 버린다.
+        // 하필 조회 대기(?wait=true)가 상한을 넘긴 순간이 가장 위험하다.
+        CountDownLatch started = new CountDownLatch(SUMMARIZER_THREADS);
+        CountDownLatch release = new CountDownLatch(1);
+        when(callHistoryRepository.findByCallIdOrderByIdAsc(CALL_ID)).thenAnswer(invocation -> {
+            started.countDown();
+            release.await();
+            return List.of(history(CallSpeaker.USER, "안녕"));
+        });
+        when(aiServerClient.summarizeCallTopic(any())).thenReturn(new AiCallTopicResponse("인사"));
+
+        try {
+            for (int i = 0; i < SUMMARIZER_THREADS; i++) {
+                service.generate(CALL_ID);
+            }
+            assertThat(started.await(2, TimeUnit.SECONDS)).as("풀이 꽉 찼다").isTrue();
+
+            // 이 통화의 생성 작업은 큐에 들어가기만 하고 한 번도 실행되지 않는다.
+            service.generate(QUEUED_CALL_ID);
+
+            assertThat(queuedCall.getSummaryStatus()).isEqualTo(CallSummaryStatus.PROCESSING);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void 풀이_내려간_뒤의_제출은_NONE이_아니라_FAILED다() {
+        // 앱 종료로 풀이 내려간 뒤. 요약이 "없는" 게 아니라 "만들지 못한" 것이다.
+        service.drainSummaries();
+
+        assertThatCode(() -> service.generate(CALL_ID)).doesNotThrowAnyException();
+
+        verify(aiServerClient, never()).summarizeCallTopic(any());
+        assertThat(call.getSummaryStatus()).isEqualTo(CallSummaryStatus.FAILED);
     }
 
     @Test
