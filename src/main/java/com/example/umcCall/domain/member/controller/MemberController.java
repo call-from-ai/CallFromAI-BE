@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.member.controller;
 
 import com.example.umcCall.domain.member.dto.request.DoNotDisturbUpdateRequest;
+import com.example.umcCall.domain.member.dto.request.MemberCreateRequest;
 import com.example.umcCall.domain.member.dto.request.NotificationSettingUpdateRequest;
 import com.example.umcCall.domain.member.dto.response.MemberResponse;
 import com.example.umcCall.domain.member.dto.request.MemberUpdateRequest;
@@ -36,11 +37,20 @@ public class MemberController {
     }
 
     @Operation(
-            summary = "내 정보 입력 및 수정",
-            description = """
-                    인증된 회원의 프로필 정보를 입력/수정한다.
-                    요청에 포함된 이름, 프로필 이미지, 성별, 생년월일, MBTI, 직업의 정보를 갱신한다.
-                    """
+            summary = "내 정보 최초 입력 (온보딩)",
+            description = "온보딩 시 회원 정보를 최초로 입력한다. 모든 필드가 필수다."
+    )
+    @PostMapping("/me")
+    public ResponseEntity<ApiResponse<MemberResponse>> createMyInfo(
+            @AuthenticationPrincipal Long memberId,
+            @Valid @RequestBody MemberCreateRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.onSuccess(memberService.updateMyInfo(memberId, request.toUpdateRequest())));
+    }
+
+    @Operation(
+            summary = "내 정보 수정",
+            description = "인증된 회원의 프로필 정보 중 일부를 수정한다. 값을 보내지 않은 필드는 기존 값이 유지된다."
     )
     @PatchMapping("/me")
     public ResponseEntity<ApiResponse<MemberResponse>> updateMyInfo(
