@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -420,9 +421,53 @@ class CallAudioWebSocketHandlerTest {
 
         verify(clovaVoiceClient, timeout(2000)).synthesize(eq("응, 오늘은 그냥 집에 있었어."), any());
         verify(clovaVoiceClient, never()).synthesize(eq("🙂"), any());
-        // 이모지는 소리로 안 나갔으니 이력에도 안 남는다.
+        // ⚠ 이모지는 소리로 안 나갔으니 이력·전사에도 안 남는다. 통화 전문은 <b>실제로 들린 것</b>의
+        // 기록이다 — #122 리뷰에서 "원문 보존" 안을 검토했다가 이 이유로 기각했다(2026-08-03).
         verify(callHistoryService, timeout(2000))
                 .appendHistory(CALL_ID, CallSpeaker.AI, "응, 오늘은 그냥 집에 있었어.");
+    }
+
+    @Test
+    void 이모지만_있는_대사는_assistant를_아예_안_남긴다() throws Exception {
+        // 위 규칙의 경계. 소리가 한 번도 안 나갔으면 assistant 자체를 안 남긴다 —
+        // 이모지 하나가 "AI가 말했다"로 둔갑하면 다음 턴이 사용자 모르는 맥락 위에서 나온다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        givenAiStreams("🙂");
+
+        stt.onNext(finalResult("뭐 해?"));
+
+        verify(session, after(500).never()).sendMessage(any(BinaryMessage.class));
+        verify(callHistoryService, never()).appendHistory(eq(CALL_ID), eq(CallSpeaker.AI), any());
+    }
+
+    @Test
+    void 끼어들면_문장이_완성되기_전에도_스트림_소비를_멈춘다() throws Exception {
+        // ⚠ 취소 확인이 speak()에만 있으면 <b>문장이 완성돼야</b> 알아챈다 — 종결 부호 없이 흐르는
+        // 응답에선 MAX_CHARS(120자)까지 워커가 SSE를 계속 읽고, 그동안 사용자가 방금 끼어들며 만든
+        // 다음 턴이 밀린다. 조각 도착마다 확인해야 소비가 즉시 멈춘다(PR #122 리뷰).
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        AtomicInteger consumed = new AtomicInteger();
+        doAnswer(invocation -> {
+            Consumer<String> onChunk = invocation.getArgument(3);
+            stt.onNext(partialResult("아 맞다")); // 첫 조각이 오기도 전에 끼어들었다
+            try {
+                for (int i = 0; i < 5; i++) {
+                    onChunk.accept("종결 부호 없이 계속 이어지는 말 "); // 문장이 완성되지 않는다
+                    consumed.incrementAndGet();
+                }
+            } catch (RuntimeException expected) {
+                // 턴이 접히면 여기로 온다 = 스트림 소비가 멈췄다는 뜻
+            }
+            return null;
+        }).when(callConversationService).respondStream(any(), any(), any(), any());
+
+        stt.onNext(finalResult("뭐 해?"));
+
+        verify(clovaVoiceClient, after(500).never()).synthesize(any(), any());
+        // 확인이 speak()에만 있었다면 5조각을 전부 읽고 나서야 멈춘다.
+        assertThat(consumed.get()).isZero();
     }
 
     @Test

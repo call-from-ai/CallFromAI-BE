@@ -27,7 +27,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -50,10 +49,18 @@ class CallConversationServiceTest {
     @Mock private AiRelationshipSnapshotMapper relationshipSnapshotMapper;
     @Mock private AiConversationService aiConversationService;
 
-    @InjectMocks private CallConversationService service;
+    private CallConversationService service;
 
     @BeforeEach
     void loadEntities() {
+        // 조립은 실제 구현(CallAiRequestAssembler)을 쓴다 — 이 테스트가 고정하려는 게 조립 결과라서다.
+        // @Transactional은 프록시 없는 단위 테스트에선 무해하게 무시된다.
+        CallAiRequestAssembler assembler = new CallAiRequestAssembler(
+                characterRepository, characterAiProfileRepository,
+                relationshipRepository, relationshipStatusRepository,
+                characterSnapshotMapper, relationshipSnapshotMapper);
+        service = new CallConversationService(assembler, aiConversationService);
+
         when(characterRepository.findById(CHARACTER_ID))
                 .thenReturn(Optional.of(mock(Character.class)));
         when(characterAiProfileRepository.findById(CHARACTER_ID))
