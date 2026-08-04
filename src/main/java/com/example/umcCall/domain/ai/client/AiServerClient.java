@@ -43,20 +43,34 @@ public class AiServerClient {
     private static final String ERROR_EVENT = "error";
 
     private final RestClient restClient;
+    /**
+     * 스트리밍({@code /chat/stream}) 전용. 단발과 <b>read timeout만</b> 다르다.
+     * <p>⚠ 분리한 이유: 스트리밍의 read timeout은 <b>조각 사이 침묵</b>의 상한인데, 단발용 값(운영 60초)을
+     * 그대로 쓰면 half-open 연결 하나가 그 통화의 워커를 60초간 붙잡는다(통화가 그동안 벙어리가 된다).
+     * <p>커넥션 풀은 공유하지 않는다 — {@link SimpleClientHttpRequestFactory}(JDK {@code HttpURLConnection})라
+     * 풀 자체가 없다. 풀 기반 팩토리로 바꾸면 <b>스트림이 채팅 요청을 굶기지 않도록</b> 풀도 갈라야 한다.
+     */
+    private final RestClient streamRestClient;
     private final ObjectMapper objectMapper;
 
     public AiServerClient(RestClient.Builder builder, AiServerProperties properties,
                           ObjectMapper objectMapper) {
+        this.restClient = buildClient(builder, properties, properties.readTimeoutMs());
+        this.streamRestClient = buildClient(builder, properties, properties.streamReadTimeoutMs());
+        this.objectMapper = objectMapper;
+    }
+
+    private static RestClient buildClient(RestClient.Builder builder, AiServerProperties properties,
+                                          int readTimeoutMs) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofMillis(properties.connectTimeoutMs()));
-        requestFactory.setReadTimeout(Duration.ofMillis(properties.readTimeoutMs()));
+        requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
 
-        this.restClient = builder
+        return builder.clone()
                 .baseUrl(properties.baseUrl())
                 .requestFactory(requestFactory)
                 .defaultHeader(INTERNAL_TOKEN_HEADER, properties.internalToken())
                 .build();
-        this.objectMapper = objectMapper;
     }
 
     public AiChatResponse chat(AiChatRequest request) {
@@ -100,7 +114,7 @@ public class AiServerClient {
      */
     public void chatStream(AiChatRequest request, Consumer<String> onChunk) {
         try {
-            restClient.post()
+            streamRestClient.post()
                     .uri("/chat/stream")
                     .accept(MediaType.TEXT_EVENT_STREAM)
                     .body(request)
