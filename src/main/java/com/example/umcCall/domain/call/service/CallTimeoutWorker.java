@@ -45,7 +45,7 @@ public class CallTimeoutWorker {
                              @Value("${call.timeout.ring-seconds:30}") long ringTimeoutSeconds,
                              @Value("${call.timeout.pending-seconds:60}") long pendingTimeoutSeconds,
                              @Value("${call.timeout.dial-seconds:60}") long dialTimeoutSeconds,
-                             @Value("${call.timeout.max-call-minutes:60}") long maxCallMinutes) {
+                             @Value("${call.timeout.max-call-minutes:5}") long maxCallMinutes) {
         this.callRepository = callRepository;
         this.callService = callService;
         this.ringTimeoutSeconds = ringTimeoutSeconds;

@@ -25,6 +25,8 @@ import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.enums.CallEndReason;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
+import com.example.umcCall.domain.call.recording.CallRecordingService;
+import com.example.umcCall.domain.call.recording.WavCodec;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
@@ -34,6 +36,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
 import io.grpc.stub.StreamObserver;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -71,6 +76,7 @@ class CallAudioWebSocketHandlerTest {
     @Mock private CallConversationService callConversationService;
     @Mock private CallService callService;
     @Mock private CallHistoryService callHistoryService;
+    @Mock private CallRecordingService callRecordingService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private CallAudioWebSocketHandler handler;
@@ -81,6 +87,7 @@ class CallAudioWebSocketHandlerTest {
                 clovaSpeechClient, clovaVoiceClient, callConversationService, callService,
                 callHistoryService,
                 new ClovaSpeechProperties("clovaspeech-gw.ncloud.com", 50051, "secret", 700),
+                callRecordingService,
                 objectMapper);
     }
 
@@ -615,5 +622,77 @@ class CallAudioWebSocketHandlerTest {
         assertThat(replyStreamed.await(2, TimeUnit.SECONDS)).isTrue();
         verify(session, after(300).never()).sendMessage(any(BinaryMessage.class)); // 나간 오디오가 없다
         assertThat(controlsOfType(session, "AI_SPEECH_CANCELED")).isEmpty();
+    }
+
+    // --- 통화 녹음 배선 -------------------------------------------------------------------
+
+    /** 5초짜리 사용자 업스트림(16kHz raw PCM). AI 조각이 이 구간 안에 확실히 들어오도록 길게 잡는다. */
+    private static byte[] pcm(short value, int samples) {
+        ByteBuffer buffer = ByteBuffer.allocate(samples * 2).order(ByteOrder.LITTLE_ENDIAN);
+        for (int i = 0; i < samples; i++) {
+            buffer.putShort(value);
+        }
+        return buffer.array();
+    }
+
+    /** CLOVA Voice가 주는 모양의 wav(24kHz 모노 16-bit). */
+    private static byte[] aiWav(short value, int samples) {
+        byte[] header = WavCodec.header(samples * 2, 24_000);
+        return ByteBuffer.allocate(header.length + samples * 2)
+                .put(header).put(pcm(value, samples)).array();
+    }
+
+    /** 통화 마감 때 보관으로 넘어간 녹음의 샘플 전체. */
+    private short[] recordedSamples() {
+        ArgumentCaptor<byte[]> captor = ArgumentCaptor.forClass(byte[].class);
+        verify(callRecordingService).save(eq(CALL_ID), captor.capture());
+        return WavCodec.decode(captor.getValue()).samples();
+    }
+
+    @Test
+    void 통화가_끝나면_두_목소리가_섞인_녹음이_보관된다() throws Exception {
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        givenAiStreams("응, 나 방금 퇴근했어.");
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(aiWav((short) 3000, 24_000));
+
+        handler.handleBinaryMessage(session, new BinaryMessage(pcm((short) 1000, 80_000)));
+        stt.onNext(finalResult("뭐 해?"));
+        verify(session, timeout(2000)).sendMessage(any(BinaryMessage.class));
+
+        handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+
+        // 사용자 5초가 통째로 담겼고(침묵 포함), AI 조각이 그 위 어딘가에 얹혀 섞였다.
+        short[] samples = recordedSamples();
+        assertThat(samples.length).isGreaterThanOrEqualTo(80_000);
+        assertThat(samples).contains((short) 4000);
+    }
+
+    @Test
+    void 전송하지_못한_AI_음성은_녹음에도_남지_않는다() throws Exception {
+        // 녹음 기준은 이력·전사와 같다 — 실제로 내보낸 소리만 남긴다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        givenAiStreams("이 대사는 전송에 실패한다.");
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(aiWav((short) 3000, 24_000));
+        doThrow(new IOException("소켓 끊김")).when(session).sendMessage(any(BinaryMessage.class));
+
+        handler.handleBinaryMessage(session, new BinaryMessage(pcm((short) 1000, 80_000)));
+        stt.onNext(finalResult("뭐 해?"));
+
+        // 송신 실패는 곧 소켓 종료라 핸들러가 스스로 녹음을 마감한다.
+        // 3000 = AI 단독, 4000 = 섞인 구간 — 둘 다 없어야 한다.
+        verify(callRecordingService, timeout(2000)).save(eq(CALL_ID), any());
+        assertThat(recordedSamples()).contains((short) 1000).doesNotContain((short) 3000, (short) 4000);
+    }
+
+    @Test
+    void 소리가_없던_통화는_보관하지_않는다() {
+        // 연결만 되고 아무도 말하지 않은 통화 — 빈 wav를 올릴 이유가 없다.
+        WebSocketSession session = givenConnectedCall();
+
+        handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+
+        verifyNoInteractions(callRecordingService);
     }
 }

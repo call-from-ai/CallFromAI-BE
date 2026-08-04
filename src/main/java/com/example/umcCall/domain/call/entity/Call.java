@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.call.entity;
 
+import com.example.umcCall.domain.call.enums.CallRecordingStatus;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.relationship.entity.Relationship;
@@ -34,6 +35,14 @@ public class Call extends BaseTimeEntity {
 
     @Column(name="audio_url")
     private String audioUrl;
+
+    /**
+     * 녹음(다시듣기) 준비 상태. 업로드가 통화 종료 후 비동기라 {@code audioUrl}만으로는
+     * "준비 중"과 "녹음 없음"을 구별할 수 없다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name="recording_status", nullable = false, length = 20)
+    private CallRecordingStatus recordingStatus = CallRecordingStatus.NONE;
 
     @Column(name="call_time")
     private Integer callTime;
@@ -117,6 +126,26 @@ public class Call extends BaseTimeEntity {
             throw new IllegalStateException("착신 대기 중인 통화만 부재중 처리할 수 있습니다. 현재 상태=" + status);
         }
         this.status = CallStatus.MISSED;
+    }
+
+    /**
+     * 녹음 업로드를 시작했다. → {@code PROCESSING}.
+     * <p>통화가 끝난 뒤라 상태 검증이 없다 — 녹음은 통화 상태 머신과 독립이고,
+     * 어떤 사유로 끝났든(정상·시간 상한) 그때까지 들린 소리는 남길 가치가 있다.
+     */
+    public void startRecordingUpload() {
+        this.recordingStatus = CallRecordingStatus.PROCESSING;
+    }
+
+    /** 녹음이 올라갔다. → {@code READY} + 다시듣기 URL. */
+    public void completeRecording(String audioUrl) {
+        this.audioUrl = audioUrl;
+        this.recordingStatus = CallRecordingStatus.READY;
+    }
+
+    /** 녹음·업로드가 실패했다. → {@code FAILED}. 통화·전사는 그대로다(fail-open). */
+    public void failRecording() {
+        this.recordingStatus = CallRecordingStatus.FAILED;
     }
 
     /** 사용자가 착신을 거절함(AI 발신). RINGING → REJECTED. */

@@ -6,6 +6,8 @@ import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.call.client.ClovaVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
+import com.example.umcCall.domain.call.recording.CallRecorder;
+import com.example.umcCall.domain.call.recording.CallRecordingService;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
@@ -66,6 +68,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final CallConversationService callConversationService;
     private final CallService callService;
     private final CallHistoryService callHistoryService;
+    private final CallRecordingService callRecordingService;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -88,12 +91,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                                      CallService callService,
                                      CallHistoryService callHistoryService,
                                      ClovaSpeechProperties speechProperties,
+                                     CallRecordingService callRecordingService,
                                      ObjectMapper objectMapper) {
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
         this.callConversationService = callConversationService;
         this.callService = callService;
         this.callHistoryService = callHistoryService;
+        this.callRecordingService = callRecordingService;
         this.objectMapper = objectMapper;
         this.configJson = buildConfigJson(objectMapper, speechProperties.gapThresholdMs());
         log.info("[Clova] recognize CONFIG = {}", configJson);
@@ -149,7 +154,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 우선하기 때문이다 — 시딩해봐야 무시되고, 이어받기 깊이는 이제 AI 서버가 정한다.
             List<AiChatHistoryItem> history = new ArrayList<>();
             ExecutorService worker = Executors.newSingleThreadExecutor();
-            activeCalls.put(sessionId, new ActiveCall(session, stream, worker, ticket, history, new TurnGate()));
+            activeCalls.put(sessionId, new ActiveCall(session, stream, worker, ticket, history,
+                    new TurnGate(), new CallRecorder()));
 
             // CONFIG 1회 → 이후 오디오는 DATA로. (CLOVA recognize 스트림 규약)
             stream.send(NestRequest.newBuilder()
@@ -206,7 +212,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         } catch (RuntimeException e) {
             log.error("[Call] 오디오 중계 실패 → WebSocket 종료. session={}", session.getId(), e);
             terminateCall(session, CloseStatus.SERVER_ERROR);
+            return;
         }
+        // ⚠ STT 중계 뒤에 녹음한다 — 이 메서드는 WS 수신 스레드라, 녹음을 앞에 두면 그만큼
+        // STT 도착이 밀려 턴 감지·끼어들기가 늦어진다. 녹음은 밀려도 되는 쪽이다.
+        call.recorder().writeUpstream(chunk);
     }
 
     @Override
@@ -330,6 +340,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * <p>best-effort다: 통지가 늦거나 유실돼도 통화는 그대로 진행된다(문장 하나가 더 들릴 뿐).
      */
     private void notifySpeechCanceled(ActiveCall call) {
+        call.recorder().resetAiCursor(); // 녹음 타임라인도 같이 맞춘다 — 이유는 resetAiCursor 참고
         try {
             controlNotifier.execute(() -> sendControl(call.session(),
                     MessageType.AI_SPEECH_CANCELED,
@@ -353,6 +364,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         private final TurnGate turnGate;
         private final long turn;
         private final long turnStartedAt;
+        private final CallRecorder recorder;
         private final StringBuilder spoken = new StringBuilder();
         private boolean firstAudioSent;
 
@@ -362,6 +374,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             this.turnGate = call.turnGate();
             this.turn = turn;
             this.turnStartedAt = turnStartedAt;
+            this.recorder = call.recorder();
         }
 
         /**
@@ -395,7 +408,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 여기부터 회수 불가 구간 — 끼어들면 통지가 나간다.
             // ⚠ 통지를 콜백에만 맡길 수 없다: 송신 중(=아직 markSpoken 전)에 취소가 들어오면 콜백은
             // "나간 오디오가 없다"고 보고 통지를 건너뛴다. 그 놓친 경우를 여기서 이어받는다(중복은 TurnGate가 막는다).
-            if (turnGate.markSpoken(turn)) {
+            // ⚠ 표시는 송신 직후에 한다 — 위 창을 넓히면 콜백이 놓치는 경우가 그만큼 늘어난다.
+            boolean mustNotifyCanceled = turnGate.markSpoken(turn);
+            // 실제로 <b>내보낸</b> 소리만 녹음에 남는다 — 이력·전사와 같은 기준이라 셋이 어긋나지 않는다.
+            // ⚠ 통지보다 <b>먼저</b> 써야 한다: notifySpeechCanceled가 resetAiCursor를 동기로 부르므로,
+            // 순서를 뒤집으면 방금 내보낸 이 조각이 되돌린 커서 위에 다시 얹혀 커서를 그 길이만큼 밀어
+            // "다음 대사가 밀리지 않게 한다"는 resetAiCursor의 목적이 사라진다.
+            recorder.writeAiWav(wav);
+            if (mustNotifyCanceled) {
                 notifySpeechCanceled(call);
             }
             if (!firstAudioSent) {
@@ -579,7 +599,19 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         } catch (RuntimeException e) {
             log.warn("[Call] CLOVA 스트림 종료 실패. session={}", sessionId, e);
         }
+        finishRecording(call);
         finishCall(call.ticket().callId());
+    }
+
+    /**
+     * 이 통화의 녹음을 마감한다. 정리 경로(정상 종료·서버 주도 종료·앱 종료)가 공유하며,
+     * 맵의 원자 remove로 상호배타라 <b>정확히 한 번</b>만 불린다(워커·스트림 정리와 같은 보증).
+     * <p>⚠ {@code finish()}엔 멱등 가드가 없다 — 두 번 부르면 S3에 객체가 둘 생긴다.
+     * 1회 보장은 <b>전적으로 위 원자 remove에 달려 있으니</b> 다른 곳에서 부르지 말 것.
+     */
+    private void finishRecording(ActiveCall call) {
+        call.recorder().finish()
+                .ifPresent(wav -> callRecordingService.save(call.ticket().callId(), wav));
     }
 
     /**
@@ -615,6 +647,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 자기 자신에게 인터럽트 플래그만 서고 그대로 진행된다 — 교착은 없다.
             call.worker().shutdownNow();
             call.stream().terminate(); // 이후 send()는 무시됨
+            finishRecording(call);
         }
         // 마감은 ActiveCall이 아니라 세션 티켓 기준 — 스트림 개설이 activeCalls.put 전에 실패해도(call==null)
         // 티켓의 callId로 DIALING을 CANCELED로 닫는다. (put 후 실패 경로도 동일하게 여기서 1회 마감)
@@ -703,9 +736,11 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * @param ticket  핸드셰이크에서 검증된 신원(callId/relationshipId/characterId). AI 배선·전사 저장의 기준.
      * @param history 세션 스코프 대화 이력. <b>워커 스레드만</b> 읽고 쓴다(스레드 confine → 동기화 불필요).
      * @param turnGate 끼어들기 판정. history와 달리 <b>두 스레드가 만진다</b>(워커가 열고, gRPC 콜백이 취소).
+     * @param recorder 통화 녹음(타임라인 믹스). 세 스레드가 쓰지만 내부에서 직렬화한다.
      */
     private record ActiveCall(WebSocketSession session, SttStream stream, ExecutorService worker,
-                              WsTicket ticket, List<AiChatHistoryItem> history, TurnGate turnGate) {
+                              WsTicket ticket, List<AiChatHistoryItem> history, TurnGate turnGate,
+                              CallRecorder recorder) {
     }
 
     /**

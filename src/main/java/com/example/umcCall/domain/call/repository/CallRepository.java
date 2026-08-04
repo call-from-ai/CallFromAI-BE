@@ -163,4 +163,18 @@ public interface CallRepository extends JpaRepository<Call, Long> {
             order by c.endedAt desc
             """)
     List<LocalDateTime> findCompletedCallTimes(@Param("relationshipId") Long relationshipId);
+
+    /**
+     * 녹음 업로드 중({@code PROCESSING})을 전부 실패로 내린다. 기동 시 1회 —
+     * 부르는 쪽({@code CallRecordingService.failStaleUploads})에 왜 그래도 되는지가 적혀 있다.
+     *
+     * @return 마감한 건수
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("""
+            update Call c
+            set c.recordingStatus = com.example.umcCall.domain.call.enums.CallRecordingStatus.FAILED
+            where c.recordingStatus = com.example.umcCall.domain.call.enums.CallRecordingStatus.PROCESSING
+            """)
+    int failStaleRecordings();
 }
