@@ -45,7 +45,7 @@ public class MemberController {
     @PatchMapping("/me")
     public ResponseEntity<ApiResponse<MemberResponse>> updateMyInfo(
             @AuthenticationPrincipal Long memberId,
-            @RequestBody MemberUpdateRequest request
+            @Valid @RequestBody MemberUpdateRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.onSuccess(memberService.updateMyInfo(memberId, request)));
     }
