@@ -18,6 +18,9 @@ ai:
     base-url: ${AI_SERVER_BASE_URL:http://localhost:8081}
     connect-timeout-ms: ${AI_SERVER_CONNECT_TIMEOUT_MS:2000}
     read-timeout-ms: ${AI_SERVER_READ_TIMEOUT_MS:60000}
+    # 스트리밍(/chat/stream)은 "조각 사이 침묵"의 상한이라 단발보다 짧다. 통화 워커가 통화당 단일
+    # 스레드라, 죽은 스트림을 오래 붙잡으면 그 통화가 그동안 벙어리가 된다.
+    stream-read-timeout-ms: ${AI_SERVER_STREAM_READ_TIMEOUT_MS:15000}
     internal-token: ${AI_INTERNAL_TOKEN}
 
 logging:

@@ -2,81 +2,44 @@ package com.example.umcCall.domain.call.service;
 
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
-import com.example.umcCall.domain.ai.dto.AiChatResponse;
-import com.example.umcCall.domain.ai.enums.AiConversationChannel;
-import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
-import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
 import com.example.umcCall.domain.ai.service.AiConversationService;
-import com.example.umcCall.domain.character.entity.Character;
-import com.example.umcCall.domain.character.entity.CharacterAiProfile;
-import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
-import com.example.umcCall.domain.character.repository.CharacterRepository;
-import com.example.umcCall.domain.relationship.entity.Relationship;
-import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
-import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
-import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import java.util.List;
-import java.util.UUID;
+import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * 통화 한 턴의 AI 대화 오케스트레이션. STT final 텍스트 → AI 요청 조립 → chat() 호출.
- * <p>AI 경계 호출은 {@link AiConversationService}(client + stale 가드)에 맡기고, 여기선 통화 신원으로
- * 최신 스냅샷을 조립한다. <b>전사 DB 저장(후순위)이 나중에 이 서비스에 붙는다</b> — 그 자리가 여기다.
- * <p>조립엔 트랜잭션이 불필요하다: {@code findById}가 scalar 컬럼을 로드하고, 매퍼가 lazy 연관을 타지 않는다.
+ * 통화 한 턴의 AI 대화 오케스트레이션. STT final 텍스트 → AI 요청 조립 → chatStream() 호출.
+ *
+ * <p>AI 경계 호출은 {@link AiConversationService}(client + stale 가드)에, 스냅샷 조립은
+ * {@link CallAiRequestAssembler}에 맡긴다. 여긴 <b>순서만</b> 정한다.
+ *
+ * <p>⚠ <b>이 메서드에 트랜잭션을 걸면 안 된다.</b> 아래 스트림은 수 초간 열려 있어, 감싸는 순간 그동안
+ * DB 커넥션을 붙잡아 풀이 고갈된다. 조립에 필요한 트랜잭션은 {@link CallAiRequestAssembler} 안에서
+ * 시작하고 <b>끝난다</b> — 스트림이 열릴 땐 이미 커밋·반납된 뒤다.
  */
 @Service
 @RequiredArgsConstructor
 public class CallConversationService {
 
-    /** AI에 보낼 맥락(history) 최대 개수. 채팅 {@code HISTORY_SIZE}와 동일하게 맞춰 일관성·지연·비용을 잡는다. */
-    private static final int CONTEXT_HISTORY_SIZE = 20;
-
-    private final CharacterRepository characterRepository;
-    private final CharacterAiProfileRepository characterAiProfileRepository;
-    private final RelationshipRepository relationshipRepository;
-    private final RelationshipStatusRepository relationshipStatusRepository;
-    private final AiCharacterSnapshotMapper characterSnapshotMapper;
-    private final AiRelationshipSnapshotMapper relationshipSnapshotMapper;
+    private final CallAiRequestAssembler requestAssembler;
     private final AiConversationService aiConversationService;
 
     /**
-     * 통화 대화 로그를 AI로 넘겨 응답을 받는다.
+     * 통화 대화 로그를 AI로 넘겨 대사 조각을 <b>스트리밍</b>으로 받는다. 조각이 도착할 때마다 {@code onChunk}가 불린다.
      * <p>로그는 <b>이번 사용자 발화까지 포함</b>한 append-only 이벤트 로그다(호출부가 STT final 시 append).
-     * AI 서버 계약은 {@code message}(이번 발화)와 {@code history}(이전 턴)를 분리해 받으므로,
-     * 로그의 <b>마지막 항목을 message</b>로, 그 앞을 history로 파생해 보낸다 — 쪼개는 지점만 여기로 옮긴 것.
+     *
+     * <p>첫 문장이 나오는 즉시 합성·송신할 수 있어야 체감 지연(TTFA)이 줄어든다. 조각을 문장으로 묶는 건
+     * 호출부({@code SentenceBuffer})가 하고, 여긴 순서만 맡는다.
+     *
+     * <p>⚠ {@code onChunk}는 <b>이 메서드를 호출한 스레드에서 동기로</b> 불린다(통화 워커). 그래서 안에서
+     * 합성·송신을 해도 턴 순서가 그대로 지켜진다.
      *
      * @param conversation 이번 발화를 마지막에 포함한 대화 로그(비어 있으면 안 된다)
-     * @return AI 응답. stale/AI 오류 시 {@code AiServerException}이 던져진다(호출부가 그 턴을 폐기).
      */
-    public AiChatResponse respond(Long characterId, Long relationshipId,
-                                  List<AiChatHistoryItem> conversation) {
-        Character character = characterRepository.findById(characterId)
-                .orElseThrow(() -> new IllegalStateException("Character not found: " + characterId));
-        CharacterAiProfile profile = characterAiProfileRepository.findById(characterId)
-                .orElseThrow(() -> new IllegalStateException("Character AI profile not found: " + characterId));
-        Relationship relationship = relationshipRepository.findById(relationshipId)
-                .orElseThrow(() -> new IllegalStateException("Relationship not found: " + relationshipId));
-        RelationshipStatus status = relationshipStatusRepository.findByRelationshipId(relationshipId)
-                .orElseThrow(() -> new IllegalStateException("Relationship status not found: " + relationshipId));
-
-        int last = conversation.size() - 1;
-        String message = conversation.get(last).content();
-        // 맥락은 최근 CONTEXT_HISTORY_SIZE개로 윈도잉한다 — 채팅 시드 + 통화 턴이 쌓여도 매 턴 보낼 양을 상한한다
-        // (지연·비용). subList는 뷰지만 AiChatRequest 생성자가 List.copyOf로 복사하므로 안전하다.
-        int from = Math.max(0, last - CONTEXT_HISTORY_SIZE);
-        List<AiChatHistoryItem> history = conversation.subList(from, last);
-
-        AiChatRequest request = new AiChatRequest(
-                UUID.randomUUID().toString(), // 멱등성 키. 턴마다 고유값(같은 값 재전송 시 409).
-                characterId,
-                AiConversationChannel.CALL,
-                message,
-                characterSnapshotMapper.toSnapshot(character, profile, relationship),
-                relationshipSnapshotMapper.toSnapshot(relationship, status),
-                history);
-
-        return aiConversationService.chat(request);
+    public void respondStream(Long characterId, Long relationshipId,
+                              List<AiChatHistoryItem> conversation, Consumer<String> onChunk) {
+        AiChatRequest request = requestAssembler.assemble(characterId, relationshipId, conversation);
+        aiConversationService.chatStream(request, onChunk);
     }
 }
