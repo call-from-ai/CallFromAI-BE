@@ -2,6 +2,7 @@ package com.example.umcCall.domain.member.service;
 
 import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
 import com.example.umcCall.domain.character.service.CharacterService;
+import com.example.umcCall.domain.image.repository.PresetImageRepository;
 import com.example.umcCall.domain.member.dto.request.DoNotDisturbUpdateRequest;
 import com.example.umcCall.domain.member.dto.request.NotificationSettingUpdateRequest;
 import com.example.umcCall.domain.member.dto.response.MemberResponse;
@@ -23,6 +24,7 @@ public class MemberService {
     private final MemberRepository memberRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final CharacterService characterService;
+    private final PresetImageRepository presetImageRepository;
 
     public MemberResponse getMyInfo(Long memberId) {
         Member member = findMember(memberId);
@@ -32,6 +34,12 @@ public class MemberService {
     @Transactional
     public MemberResponse updateMyInfo(Long memberId, MemberUpdateRequest request) {
         Member member = findMember(memberId);
+
+        if (request.imageUrl() != null && request.gender() != null
+                && !presetImageRepository.existsByGenderAndImageUrl(request.gender(), request.imageUrl())) {
+            throw new BaseException(MemberErrorCode.INVALID_PRESET_IMAGE);
+        }
+
         member.updateProfile(
                 request.lastName(), request.firstName(), request.imageUrl(),
                 request.gender(), request.birth(), request.mbti(), request.job()

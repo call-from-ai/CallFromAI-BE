@@ -27,7 +27,7 @@ public class CharacterCreateRequest {
 
     @Schema(example = "김")
     @NotBlank
-    @Size(max = 5)
+    @Size(max = 2)
     private String lastName;
 
     @Schema(example = "유나")
