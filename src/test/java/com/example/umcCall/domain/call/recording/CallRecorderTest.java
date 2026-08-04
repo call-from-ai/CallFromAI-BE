@@ -102,7 +102,43 @@ class CallRecorderTest {
         recorder.writeAiWav(wav(16_000, (short) 7));
 
         // 커서를 그대로 두면 다음 대사가 150ms 뒤로 밀려, 녹음에서만 AI가 늦게 대답하는 것처럼 들린다.
-        assertThat(samples()[50 * FRAMES_PER_MS]).isEqualTo((short) 1007);
+        // ⚠ 값이 1007이 아니라 7인 건 아직 들리지 않은 잔여 음성(1000)이 잘려나갔기 때문이다
+        //   — 아래 테스트가 그 규칙을 따로 고정한다.
+        assertThat(samples()[50 * FRAMES_PER_MS]).isEqualTo((short) 7);
+    }
+
+    @Test
+    void 끼어들면_아직_들리지_않은_AI_음성은_잘려나간다() {
+        // ⚠ TTS wav는 재생 속도보다 훨씬 빨리 도착해(실측: 24초 분량이 0.26초에) 커서가 "지금"보다
+        //   수십 초 앞선다. 이걸 남겨두면 다음 대사가 그 위에 <b>더해져</b>(mixAt은 덮어쓰기가 아니다)
+        //   녹음에서 AI 목소리 둘이 겹쳐 들린다.
+        short[] longSpeech = new short[3200]; // 200ms 분량
+        Arrays.fill(longSpeech, (short) 1000);
+        recorder.writeAiWav(wav(16_000, longSpeech));
+
+        elapse(50);          // 사용자는 50ms까지만 들었다
+        recorder.resetAiCursor();
+
+        // 들린 만큼만 남는다 — 뒤쪽 150ms는 사라진다.
+        assertThat(samples()).hasSize(50 * FRAMES_PER_MS);
+        assertThat(samples()[50 * FRAMES_PER_MS - 1]).isEqualTo((short) 1000);
+    }
+
+    @Test
+    void 끼어들어도_사용자_소리는_자르지_않는다() {
+        // ⚠ 잘라내는 기준이 "지금"뿐이면, 바로 직전에 도착한 사용자 프레임이 한 프레임 차이로 날아간다.
+        //   사용자 발화는 끼어들기의 <b>원인</b>이라 녹음에 반드시 남아야 한다.
+        short[] longSpeech = new short[3200];
+        Arrays.fill(longSpeech, (short) 1000);
+        recorder.writeAiWav(wav(16_000, longSpeech));
+
+        elapse(50);
+        recorder.writeUpstream(pcm((short) 500, (short) 500));   // 끼어드는 목소리
+        recorder.resetAiCursor();
+
+        assertThat(samples()).hasSize(50 * FRAMES_PER_MS + 2);
+        // AI(1000) + 사용자(500)가 섞인 채 살아 있다.
+        assertThat(samples()[50 * FRAMES_PER_MS]).isEqualTo((short) 1500);
     }
 
     @Test
