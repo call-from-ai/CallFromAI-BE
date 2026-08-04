@@ -40,3 +40,6 @@ bin/
 
 ### CLAUDE ###
 CLAUDE.local.md
+# 로컬 전용: 개인 설정(settings.local.json)과 작업용 git worktree 체크아웃(worktrees/).
+# 특히 worktrees/ 아래는 레포 전체 사본이라 커밋되면 안 된다.
+.claude/

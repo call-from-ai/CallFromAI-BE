@@ -8,9 +8,11 @@ import com.example.umcCall.domain.call.dto.NestRecognizeResult;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.recording.CallRecorder;
 import com.example.umcCall.domain.call.recording.CallRecordingService;
+import com.example.umcCall.domain.call.service.CallArtifactRegistry;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
+import com.example.umcCall.domain.call.service.CallSummaryService;
 import com.example.umcCall.domain.call.service.CallVoiceResolver;
 import com.example.umcCall.domain.call.service.SentenceBuffer;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
@@ -34,6 +36,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -68,7 +71,9 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final CallService callService;
     private final CallHistoryService callHistoryService;
     private final CallRecordingService callRecordingService;
+    private final CallSummaryService callSummaryService;
     private final CallVoiceResolver callVoiceResolver;
+    private final CallArtifactRegistry callArtifactRegistry;
     private final ObjectMapper objectMapper;
 
     /** CLOVA 인식 설정(JSON). 한국어 + 침묵(gap) 기반 턴 끝 감지. gapThreshold는 yml에서 온다. */
@@ -92,8 +97,12 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                                      CallHistoryService callHistoryService,
                                      ClovaSpeechProperties speechProperties,
                                      CallRecordingService callRecordingService,
+                                     CallSummaryService callSummaryService,
                                      CallVoiceResolver callVoiceResolver,
+                                     CallArtifactRegistry callArtifactRegistry,
                                      ObjectMapper objectMapper) {
+        this.callSummaryService = callSummaryService;
+        this.callArtifactRegistry = callArtifactRegistry;
         this.clovaSpeechClient = clovaSpeechClient;
         this.clovaVoiceClient = clovaVoiceClient;
         this.callConversationService = callConversationService;
@@ -555,6 +564,10 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      * <p>맵이 sessionId 키라 callId는 순회로 찾는다 — 역색인 맵은 동기화 문제가 생기고, 종료는 드문 이벤트다.
      * <p>정상 종료라 {@link CloseStatus#NORMAL}로 닫고, 에러 대신 {@code CALL_ENDED}로 사유를 통지한다.
      * 상태가 이미 종결이라 {@code terminateCall} 안의 마감 호출은 no-op으로 지나간다.
+     * <p>⚠ <b>산출물(녹음·요약)을 기다리지 않는다.</b> 이 리스너는 {@code PATCH /calls/{id}/end}의
+     * 요청 스레드에서 응답 직전에 돌기 때문에, 여기서 기다리면 <b>끊기 버튼이 그만큼 멈춘다</b>.
+     * 기다리는 건 프론트의 종료 화면 조회({@code GET /calls/{callId}?wait=true})가 맡는다 —
+     * 그쪽은 이 경로뿐 아니라 <b>소켓이 죽어 끝난 통화까지</b> 덮는다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCallEnded(CallEndedEvent event) {
@@ -609,19 +622,10 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         } catch (RuntimeException e) {
             log.warn("[Call] CLOVA 스트림 종료 실패. session={}", sessionId, e);
         }
-        finishRecording(call);
+        // 클라이언트가 먼저 끊은 경로다 — 기다려 줄 요청 스레드가 없으니 시작만 하고 버린다.
+        // (이 통화는 프론트가 나중에 조회할 때 PROCESSING일 수 있다)
+        finishArtifacts(call);
         finishCall(call.ticket().callId());
-    }
-
-    /**
-     * 이 통화의 녹음을 마감한다. 정리 경로(정상 종료·서버 주도 종료·앱 종료)가 공유하며,
-     * 맵의 원자 remove로 상호배타라 <b>정확히 한 번</b>만 불린다(워커·스트림 정리와 같은 보증).
-     * <p>⚠ {@code finish()}엔 멱등 가드가 없다 — 두 번 부르면 S3에 객체가 둘 생긴다.
-     * 1회 보장은 <b>전적으로 위 원자 remove에 달려 있으니</b> 다른 곳에서 부르지 말 것.
-     */
-    private void finishRecording(ActiveCall call) {
-        call.recorder().finish()
-                .ifPresent(wav -> callRecordingService.save(call.ticket().callId(), wav));
     }
 
     /**
@@ -642,6 +646,30 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     /**
+     * 통화 마감 후 만들어지는 산출물(녹음·요약) 생성을 <b>시작</b>하고, 기다릴 수 있도록 등록해 둔다.
+     *
+     * <p>⚠ <b>여기가 모든 종료 경로가 지나는 하나뿐인 지점</b>이다(끊기 버튼 · 시간 상한 스위퍼 · 소켓 끊김 ·
+     * 서버 오류 · 앱 종료). 그래서 {@link CallArtifactRegistry} 등록도 여기서 한다 — 이 한 줄 덕에
+     * 프론트는 <b>통화가 어떻게 끝났든</b> 상세 조회({@code ?wait=true})로 산출물을 기다릴 수 있다.
+     *
+     * <p>⚠ <b>여기서 기다리지 않는다.</b> 이 메서드는 WS 수신 스레드·gRPC 오류 경로·앱 종료·사용자 REST
+     * 종료가 모두 지난다 — 기다리면 각각 <b>오디오 수신이 멈추거나, 끊기 버튼이 멈춘다</b>. 기다리는 주체는
+     * 통화가 아니라 <b>프론트의 조회 요청</b>이다.
+     *
+     * <p>⚠ <b>녹음·요약은 병렬이어야 한다</b> — 직렬이면 준비 시간이 업로드 + LLM의 <b>합</b>이 된다.
+     * 서로 다른 풀에서 돌기 때문에 {@code allOf}로 묶기만 하면 병렬이다.
+     * 둘 다 fail-open이라 이 future는 사실상 실패하지 않는다(내부에서 삼키고 상태만 남긴다).
+     */
+    private void finishArtifacts(ActiveCall call) {
+        Long callId = call.ticket().callId();
+        CompletableFuture<Void> recording = call.recorder().finish()
+                .map(wav -> callRecordingService.save(callId, wav))
+                .orElseGet(() -> CompletableFuture.completedFuture(null));
+        CompletableFuture<Void> summary = callSummaryService.generate(callId);
+        callArtifactRegistry.register(callId, CompletableFuture.allOf(recording, summary));
+    }
+
+    /**
      * <b>서버가 먼저</b> 통화를 끝낸다 — {@link #completeCall}과 달리 소켓이 살아 있어 우리가 닫고,
      * CLOVA엔 half-close 없이 스트림을 버린다. 원인/로그는 호출부에서 남긴다.
      * 재개설(투명 복원)은 범위 밖 — 닫아서 클라이언트가 재연결하게 둔다.
@@ -650,14 +678,17 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      *                  앱 종료 경로가 그렇다(마감을 여기서 하므로 {@code callTime}을 알 방법이 없고,
      *                  그 직후 서버가 죽어 클라이언트가 할 수 있는 일도 없다).
      */
-    private void terminateCall(WebSocketSession session, CloseStatus status, CallEndedEvent endNotice) {
+    private void terminateCall(WebSocketSession session, CloseStatus status,
+                               CallEndedEvent endNotice) {
         ActiveCall call = activeCalls.remove(session.getId());
         if (call != null) {
             // 워커 스레드 자신이 부를 수도 있다(AI 턴 TTS 송신 실패 경로). shutdownNow는 기다리지 않으므로
             // 자기 자신에게 인터럽트 플래그만 서고 그대로 진행된다 — 교착은 없다.
             call.worker().shutdownNow();
             call.stream().terminate(); // 이후 send()는 무시됨
-            finishRecording(call);
+            // ⚠ 시작만 하고 기다리지 않는다 — 이 메서드는 WS 수신 스레드·사용자 REST 종료도 부른다.
+            // 기다리는 건 프론트의 조회 요청(GET /calls/{callId}?wait=true)이다.
+            finishArtifacts(call);
         }
         // 마감은 ActiveCall이 아니라 세션 티켓 기준 — 스트림 개설이 activeCalls.put 전에 실패해도(call==null)
         // 티켓의 callId로 DIALING을 CANCELED로 닫는다. (put 후 실패 경로도 동일하게 여기서 1회 마감)

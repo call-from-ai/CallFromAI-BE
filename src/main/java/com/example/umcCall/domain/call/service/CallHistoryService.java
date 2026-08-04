@@ -16,7 +16,9 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 통화 전사(transcript) 저장·조회 담당. 저장은 통화 중 워커가, 조회는 통화 종료 후 클라이언트가 부른다.
@@ -28,6 +30,8 @@ public class CallHistoryService {
 
     private final CallRepository callRepository;
     private final CallHistoryRepository callHistoryRepository;
+    private final CallArtifactRegistry callArtifactRegistry;
+    private final TransactionTemplate transactionTemplate;
 
     /** 목록에 노출할 통화 상태 = 종료된 것만. 진행 중(DIALING/RINGING/IN_PROGRESS)은 아직 기록이 아니라 제외한다. */
     private static final Set<CallStatus> TERMINAL_STATUSES = EnumSet.of(
@@ -66,12 +70,40 @@ public class CallHistoryService {
      * 통화 기록 상세(요약/시작시각/오디오)를 조회한다. 통화 목록에서 탭해 들어오는 화면용 메타데이터.
      * <p>검증 계단은 {@link #getScript}와 동일하다 — 존재({@code CALL_NOT_FOUND}) → 본인 소유
      * ({@code CALL_ACCESS_DENIED}) → 완료({@code CALL_NOT_COMPLETED}). 상세도 <b>완료된 통화의
-     * 완결된 기록</b>이라는 계약을 전문과 공유한다. {@code aiSummary}는 생성 로직 미구현이라 현재 항상
-     * null(응답에서 키 생략)이고, 녹음은 {@code recordingStatus}와 짝으로 읽어야 한다(비동기 업로드).
+     * 완결된 기록</b>이라는 계약을 전문과 공유한다. {@code aiSummary}·{@code audioUrl}은 각각
+     * {@code summaryStatus}·{@code recordingStatus}와 짝으로 읽어야 한다(둘 다 종료 후 비동기 생성).
+     *
+     * <p><b>{@code wait}=true면 산출물이 준비될 때까지 상한까지 기다렸다가 응답한다</b> — 프론트가
+     * 종료 화면에서 폴링 없이 <b>조회 한 번</b>으로 요약·녹음을 받게 하려는 것이다. 기다리는 주체가
+     * 통화 소켓이 아니라 <b>이 HTTP 요청</b>이라, 통화가 어떤 경로로 끝났든(끊기 버튼 · 시간 상한 ·
+     * 소켓 끊김) 똑같이 동작한다.
+     *
+     * <p>⚠ <b>대기는 트랜잭션 밖에서 한다</b>({@code NOT_SUPPORTED} + {@link TransactionTemplate}).
+     * 트랜잭션 안에서 기다리면 대기 내내 DB 커넥션을 잡아, 동시에 끝난 통화 몇 건만 겹쳐도 풀이 마른다.
+     *
+     * <p>⚠ 검증(존재·소유·완료)을 <b>기다리기 전에</b> 먼저 한다 — 남의 통화 ID로 요청 스레드를
+     * 붙잡을 수 없게 하려는 것이자, 기존 "소유를 상태보다 먼저 본다"는 계단과 같은 순서다.
+     *
+     * <p>⚠ 상한을 넘겨도 실패가 아니라 <b>그 시점의 상태</b>({@code PROCESSING})로 응답한다. 산출물은
+     * 백그라운드에서 계속 만들어지므로 프론트는 그 상태를 보고 다시 조회하면 된다.
      */
-    @Transactional(readOnly = true)
-    public CallDetailResponse getCallDetail(Long memberId, Long callId) {
-        return CallDetailResponse.of(loadCompletedOwnedCall(memberId, callId));
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public CallDetailResponse getCallDetail(Long memberId, Long callId, boolean wait) {
+        CallDetailResponse detail = readCallDetail(memberId, callId);
+        if (!wait || !callArtifactRegistry.await(callId)) {
+            // 기다릴 대상이 없었으면(이미 끝났거나 산출물이 없는 통화) 다시 읽어봐야 같은 값이다.
+            return detail;
+        }
+        return readCallDetail(memberId, callId);
+    }
+
+    /**
+     * 상세 조회 본체. <b>짧은 트랜잭션 하나</b>로 검증·조회·DTO 변환까지 끝낸다 —
+     * 지연 로딩(관계→회원)이 트랜잭션 안에서 끝나야 하고, 대기 구간과는 분리돼야 한다.
+     */
+    private CallDetailResponse readCallDetail(Long memberId, Long callId) {
+        return transactionTemplate.execute(status ->
+                CallDetailResponse.of(loadCompletedOwnedCall(memberId, callId)));
     }
 
     /**

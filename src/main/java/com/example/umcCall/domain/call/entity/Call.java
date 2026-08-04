@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.call.entity;
 
 import com.example.umcCall.domain.call.enums.CallRecordingStatus;
+import com.example.umcCall.domain.call.enums.CallSummaryStatus;
 import com.example.umcCall.domain.call.enums.CallSender;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.relationship.entity.Relationship;
@@ -30,8 +31,20 @@ public class Call extends BaseTimeEntity {
     @Column(name="status",nullable = false)
     private CallStatus status;
 
+    /**
+     * 통화 한 건의 주제 라벨(한 문장). ⚠ 채팅의 관계 누적 요약과 다른 물건이다 —
+     * 이건 "무엇을 이야기했는가"고 이름·성격·관계 분위기가 들어가지 않는다.
+     */
     @Column(name="ai_summary", length = 150)
     private String aiSummary;
+
+    /**
+     * 요약 준비 상태. 생성이 통화 종료 후라 {@code aiSummary}만으로는
+     * "준비 중"과 "요약 없음"을 구별할 수 없다({@code recordingStatus}와 같은 이유).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name="summary_status", nullable = false, length = 20)
+    private CallSummaryStatus summaryStatus = CallSummaryStatus.NONE;
 
     @Column(name="audio_url")
     private String audioUrl;
@@ -146,6 +159,32 @@ public class Call extends BaseTimeEntity {
     /** 녹음·업로드가 실패했다. → {@code FAILED}. 통화·전사는 그대로다(fail-open). */
     public void failRecording() {
         this.recordingStatus = CallRecordingStatus.FAILED;
+    }
+
+    /** 요약 생성을 시작했다. → {@code PROCESSING}. (녹음과 같이 통화 상태 머신과 독립이다) */
+    public void startSummary() {
+        this.summaryStatus = CallSummaryStatus.PROCESSING;
+    }
+
+    /** 요약이 만들어졌다. → {@code READY} + 주제 라벨. */
+    public void completeSummary(String aiSummary) {
+        this.aiSummary = aiSummary;
+        this.summaryStatus = CallSummaryStatus.READY;
+    }
+
+    /** 요약 생성이 실패했다. → {@code FAILED}. 통화·전사·녹음은 그대로다(fail-open). */
+    public void failSummary() {
+        this.summaryStatus = CallSummaryStatus.FAILED;
+    }
+
+    /**
+     * 요약할 대화가 없다. → {@code NONE}.
+     * <p>전사가 한 줄도 없는 통화(미연결·즉시 종료)다 — <b>LLM을 부르지 않는다</b>.
+     * {@code FAILED}와 구별하는 이유는 프론트의 재시도 판단이 갈리기 때문이다(둘 다 재시도는 무의미하나
+     * 문구가 다르다: "대화 없음" vs "요약 실패").
+     */
+    public void markSummaryUnavailable() {
+        this.summaryStatus = CallSummaryStatus.NONE;
     }
 
     /** 사용자가 착신을 거절함(AI 발신). RINGING → REJECTED. */

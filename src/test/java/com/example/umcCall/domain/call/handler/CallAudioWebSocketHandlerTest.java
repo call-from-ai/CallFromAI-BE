@@ -27,9 +27,11 @@ import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
 import com.example.umcCall.domain.call.recording.CallRecordingService;
 import com.example.umcCall.domain.call.recording.WavCodec;
+import com.example.umcCall.domain.call.service.CallArtifactRegistry;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
+import com.example.umcCall.domain.call.service.CallSummaryService;
 import com.example.umcCall.domain.call.service.CallVoiceResolver;
 import com.example.umcCall.domain.call.ticket.WsTicket;
 import com.example.umcCall.domain.image.enums.TTSVoice;
@@ -45,6 +47,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -81,7 +84,12 @@ class CallAudioWebSocketHandlerTest {
     @Mock private CallService callService;
     @Mock private CallHistoryService callHistoryService;
     @Mock private CallRecordingService callRecordingService;
+    @Mock private CallSummaryService callSummaryService;
     @Mock private CallVoiceResolver callVoiceResolver;
+    @Mock private CallArtifactRegistry callArtifactRegistry;
+
+    /** "이만큼도 안 걸린다"의 기준. 정리 경로는 어디서도 산출물을 기다리지 않아야 한다. */
+    private static final long ARTIFACT_WAIT_MS = 2000;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private CallAudioWebSocketHandler handler;
@@ -89,12 +97,16 @@ class CallAudioWebSocketHandlerTest {
     @BeforeEach
     void setUp() {
         lenient().when(callVoiceResolver.resolve(CHARACTER_ID)).thenReturn(CHARACTER_VOICE);
+        lenient().when(callRecordingService.save(any(), any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        lenient().when(callSummaryService.generate(any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
         handler = new CallAudioWebSocketHandler(
                 clovaSpeechClient, clovaVoiceClient, callConversationService, callService,
                 callHistoryService,
                 new ClovaSpeechProperties("clovaspeech-gw.ncloud.com", 50051, "secret", 700),
-                callRecordingService, callVoiceResolver,
-                objectMapper);
+                callRecordingService, callSummaryService, callVoiceResolver,
+                callArtifactRegistry, objectMapper);
     }
 
     /** 핸드셰이크 인터셉터가 신원을 실어 둔 열린 세션. */
@@ -209,6 +221,68 @@ class CallAudioWebSocketHandlerTest {
         InOrder inOrder = inOrder(session);
         inOrder.verify(session).sendMessage(controlOfType("CALL_ENDED"));
         inOrder.verify(session).close(CloseStatus.NORMAL);
+    }
+
+    // --- 종료 시 산출물 준비 (녹음·요약) ---------------------------------------------------------
+
+    @Test
+    void 통화_종료_응답은_산출물을_기다리지_않는다() {
+        // ⚠ 이 리스너는 PATCH /calls/{id}/end의 요청 스레드에서 응답 직전에 돈다 —
+        // 여기서 기다리면 사용자가 끊기를 눌렀는데 화면이 그만큼 멈춘다.
+        // 기다리는 건 프론트의 종료 화면 조회(GET /calls/{callId}?wait=true)가 맡는다.
+        WebSocketSession session = givenConnectedCall();
+        handler.handleBinaryMessage(session, new BinaryMessage(ByteBuffer.wrap(pcm((short) 100, 160))));
+        // 영원히 안 끝나는 산출물 — S3·AI가 hang한 상황을 흉내낸다.
+        when(callRecordingService.save(any(), any())).thenReturn(new CompletableFuture<>());
+        when(callSummaryService.generate(CALL_ID)).thenReturn(new CompletableFuture<>());
+
+        long startedAt = System.nanoTime();
+        handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42));
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
+
+        assertThat(elapsedMs).isLessThan(ARTIFACT_WAIT_MS);
+        // 그래도 기다릴 수 있게 등록은 해 둔다.
+        verify(callArtifactRegistry).register(eq(CALL_ID), any());
+    }
+
+    @Test
+    void 종료되면_녹음과_요약을_모두_시작한다() {
+        givenConnectedCall();
+
+        handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42));
+
+        // 녹음은 소리가 있어야 저장되므로(이 통화는 무음) save는 안 불릴 수 있지만, 요약은 항상 시도한다
+        // — 전사가 없으면 요약 서비스가 스스로 NONE으로 끝낸다.
+        verify(callSummaryService).generate(CALL_ID);
+    }
+
+    @Test
+    void 클라이언트가_먼저_끊은_경로도_산출물을_레지스트리에_등록한다() {
+        // ⚠ 이 경로가 등록의 존재 이유다 — 기다려 줄 요청 스레드가 없어서 종료 시점엔 아무도 못 기다린다.
+        // 등록해 두면 나중에 프론트가 종료 화면에서 조회(?wait=true)로 붙어 기다릴 수 있다.
+        // 다른 종료 경로도 전부 finishArtifacts를 지나므로 여기가 서면 나머지도 선다.
+        WebSocketSession session = givenConnectedCall();
+
+        handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+
+        verify(callArtifactRegistry).register(eq(CALL_ID), any());
+    }
+
+    @Test
+    void 클라이언트가_먼저_끊은_경로는_산출물을_기다리지_않는다() {
+        // ⚠ 정리 경로는 onCallEnded 말고도 여럿이 공유한다(소켓 종료·WS 수신 스레드·gRPC 오류·앱 종료).
+        // 거기서도 기다리면 기다려 줄 요청도 없이 그 스레드만 묶인다 — 대기는 onCallEnded에서만이다.
+        WebSocketSession session = givenConnectedCall();
+        when(callSummaryService.generate(CALL_ID)).thenReturn(new CompletableFuture<>());
+
+        long startedAt = System.nanoTime();
+        handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L;
+
+        // 산출물이 영원히 안 끝나는데도 즉시 돌아와야 한다.
+        assertThat(elapsedMs).isLessThan(ARTIFACT_WAIT_MS);
+        // 그래도 시작은 한다 — 이 통화는 나중에 조회될 때 PROCESSING일 수 있다.
+        verify(callSummaryService).generate(CALL_ID);
     }
 
     @Test

@@ -42,6 +42,14 @@ clova:
     read-timeout-ms: 10000
 
 call:
+  artifact:
+    # 통화 종료 후 만들어지는 산출물(녹음 업로드·요약 생성)을 기다리는 상한(ms).
+    # 쓰는 곳 둘: ⓐ 통화 상세 조회 GET /calls/{id}?wait=true ⓑ 통화 종료 응답 PATCH /calls/{id}/end.
+    # 덕분에 프론트가 폴링 없이 한 번의 조회로 audioUrl·aiSummary를 받는다.
+    # ⚠ 상한을 넘겨도 취소하지 않는다 — 기다리기를 포기할 뿐 산출물은 백그라운드에서 계속 만들어진다.
+    # ⚠ 너무 크게 두면 S3·AI 서버가 느릴 때 요청 스레드가 그만큼 묶인다(ⓑ는 "전화가 안 끊긴다"가 된다).
+    # ⚠ 환경마다 다르다 — 로컬→S3는 EC2→S3보다 느리므로 배포 서버 로그(uploadMs/elapsedMs)로 정할 것.
+    wait-ms: 5000
   timeout:
     # 연결되지 못한 통화를 걷는 주기(ms). 벨 타임아웃보다 촘촘해야 판정이 제시간에 떨어진다.
     scheduler-delay-ms: 10000
