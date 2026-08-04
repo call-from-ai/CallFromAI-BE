@@ -30,7 +30,9 @@ import com.example.umcCall.domain.call.recording.WavCodec;
 import com.example.umcCall.domain.call.service.CallConversationService;
 import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
+import com.example.umcCall.domain.call.service.CallVoiceResolver;
 import com.example.umcCall.domain.call.ticket.WsTicket;
+import com.example.umcCall.domain.image.enums.TTSVoice;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -70,6 +72,8 @@ class CallAudioWebSocketHandlerTest {
     private static final Long CALL_ID = 7L;
     private static final Long RELATIONSHIP_ID = 30L;
     private static final Long CHARACTER_ID = 20L;
+    /** 이 캐릭터의 목소리. 기본값(defaultFor)과 <b>다른</b> 값이라야 "해석 결과를 쓴다"가 증명된다. */
+    private static final TTSVoice CHARACTER_VOICE = TTSVoice.YEJI;
 
     @Mock private ClovaSpeechClient clovaSpeechClient;
     @Mock private ClovaVoiceClient clovaVoiceClient;
@@ -77,17 +81,19 @@ class CallAudioWebSocketHandlerTest {
     @Mock private CallService callService;
     @Mock private CallHistoryService callHistoryService;
     @Mock private CallRecordingService callRecordingService;
+    @Mock private CallVoiceResolver callVoiceResolver;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private CallAudioWebSocketHandler handler;
 
     @BeforeEach
     void setUp() {
+        lenient().when(callVoiceResolver.resolve(CHARACTER_ID)).thenReturn(CHARACTER_VOICE);
         handler = new CallAudioWebSocketHandler(
                 clovaSpeechClient, clovaVoiceClient, callConversationService, callService,
                 callHistoryService,
                 new ClovaSpeechProperties("clovaspeech-gw.ncloud.com", 50051, "secret", 700),
-                callRecordingService,
+                callRecordingService, callVoiceResolver,
                 objectMapper);
     }
 
@@ -413,6 +419,36 @@ class CallAudioWebSocketHandlerTest {
         // 전사·이력은 턴당 한 줄로 합친다(문장별로 쪼개면 통화 전문 화면이 잘게 갈라진다).
         verify(callHistoryService, timeout(2000))
                 .appendHistory(CALL_ID, CallSpeaker.AI, "응, 나 방금 퇴근했어. 너는 뭐 하고 있었어?");
+    }
+
+    // --- 캐릭터별 음성 --------------------------------------------------------------------------
+
+    @Test
+    void 캐릭터에_매핑된_목소리로_합성한다() throws Exception {
+        givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        givenAiStreams("응, 나 여기 있어.");
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("어디야?"));
+
+        // enum 이름이 아니라 CLOVA 화자 ID가 나가야 한다.
+        verify(clovaVoiceClient, timeout(2000)).synthesize(any(), eq(CHARACTER_VOICE.speakerId()));
+    }
+
+    @Test
+    void 화자는_연결_시_한_번만_조회한다() throws Exception {
+        // ⚠ TTS는 문장 수만큼 불린다 — 합성할 때마다 해석하면 문장 하나에 DB가 두 방씩 나간다.
+        givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        givenAiStreams("응, 나 방금 퇴근했어. ", "너는 뭐 하고 있었어?");
+        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+
+        stt.onNext(finalResult("뭐 해?"));
+        stt.onNext(finalResult("그렇구나?"));
+
+        verify(clovaVoiceClient, timeout(2000).atLeast(3)).synthesize(any(), any());
+        verify(callVoiceResolver, times(1)).resolve(CHARACTER_ID);
     }
 
     @Test
