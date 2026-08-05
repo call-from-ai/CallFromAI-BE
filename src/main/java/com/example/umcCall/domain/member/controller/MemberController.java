@@ -37,7 +37,7 @@ public class MemberController {
     }
 
     @Operation(
-            summary = "내 정보 최초 입력 (온보딩)",
+            summary = "내 정보 입력",
             description = "온보딩 시 회원 정보를 최초로 입력한다. 모든 필드가 필수다."
     )
     @PostMapping("/me")
