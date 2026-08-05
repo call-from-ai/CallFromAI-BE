@@ -36,7 +36,7 @@ class DefaultCharacterAiProfileCalculatorTest {
 
     @Test
     void clampsScoresToPolicyRange() {
-        Character character = Character.builder().job(Job.UNEMPLOYED).mbti(null).build();
+        Character character = Character.builder().job(Job.OTHER).mbti(null).build();
         List<CharacterTrait> traits = List.of(
                 trait(character, Trait.JEALOUS, 1),
                 trait(character, Trait.POSSESSIVE, 2),
