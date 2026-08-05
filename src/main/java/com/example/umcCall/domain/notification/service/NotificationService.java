@@ -53,13 +53,6 @@ public class NotificationService {
         notification.markAsRead();
     }
 
-    // 전체 읽음 처리
-    @Transactional
-    public void markAllAsRead(Long memberId) {
-        List<ActivityNotification> unread = notificationRepository.findByMemberIdAndReadFalse(memberId);
-        unread.forEach(ActivityNotification::markAsRead);
-    }
-
     // 기념일 알림 생성 (매일 자정 스케줄러)
     @Scheduled(cron = "0 0 0 * * *")
     @Transactional
