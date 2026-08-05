@@ -43,7 +43,7 @@ public record CallListItem(
                 example = "READY", allowableValues = {"NONE", "PROCESSING", "READY", "FAILED"})
         CallSummaryStatus summaryStatus,
 
-        @Schema(description = "통화 발신 시각(표시용). startedAt이 아니라 이 값을 쓴다 — 연결되지 못한 통화에도 항상 존재한다",
+        @Schema(description = "통화 발신 시각(표시용). 연결되지 못한 통화에도 항상 존재한다",
                 example = "2026-08-06T20:30:00")
         LocalDateTime createdAt,
 
