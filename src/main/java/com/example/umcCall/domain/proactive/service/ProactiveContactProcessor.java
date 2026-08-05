@@ -150,14 +150,28 @@ public class ProactiveContactProcessor {
      */
     @Transactional
     public Claim forceClaimForDebug(Long scheduleId) {
+        return forceClaimForDebug(scheduleId, ProactiveAction.CHAT, "proactive-debug-", "DEBUG_FORCE_SEND");
+    }
+
+    /**
+     * local Swagger 테스트 전용 통화 claim. 스케줄 정책과 통화 선택 확률은 우회한다.
+     */
+    @Transactional
+    public Claim forceCallClaimForDebug(Long scheduleId) {
+        return forceClaimForDebug(scheduleId, ProactiveAction.CALL,
+                "proactive-debug-call-", "DEBUG_FORCE_CALL");
+    }
+
+    private Claim forceClaimForDebug(Long scheduleId, ProactiveAction action,
+                                     String requestIdPrefix, String contactReason) {
         ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(scheduleId).orElse(null);
         if (schedule == null || !schedule.isEnabled()) return null;
         if (schedule.getPendingRequestId() != null) return null;
         Relationship relationship = schedule.getRelationship();
-        if (relationship.getCharacter().getDeletedAt() != null) return null;
-        String requestId = "proactive-debug-" + UUID.randomUUID();
-        schedule.claim(requestId, ProactiveAction.CHAT, "DEBUG_FORCE_SEND");
-        return new Claim(schedule.getId(), requestId, ProactiveAction.CHAT);
+        if (!relationship.isMain() || relationship.getCharacter().getDeletedAt() != null) return null;
+        String requestId = requestIdPrefix + UUID.randomUUID();
+        schedule.claim(requestId, action, contactReason);
+        return new Claim(schedule.getId(), requestId, action);
     }
 
     @Transactional(readOnly = true)
