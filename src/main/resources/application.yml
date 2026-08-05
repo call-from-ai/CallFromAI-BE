@@ -42,6 +42,24 @@ clova:
     read-timeout-ms: 10000
 
 call:
+  barge-in:
+    # 사용자가 끼어들었는지 판정하는 값 둘. 업스트림 PCM 에너지만 본다(STT와 무관 — #139).
+    # ⚠ CLOVA 설정(clova.speech.*) 아래에 두지 않는다: 트리거를 STT에서 떼어낸 게 이 기능의 핵심이라,
+    #    같은 자리에 두면 다음 사람이 다시 엮는다.
+    # 이 RMS 진폭(0~32767)을 넘겨야 "소리 있음".
+    # 올리면 잡음에 둔감해지지만 작게 말하는 사용자의 끼어들기를 놓친다.
+    rms-threshold: 1200
+    # 그 소리가 연속으로 이만큼(ms) 이어져야 "말 시작". 클릭·기침 같은 짧은 잡음을 걸러낸다.
+    # ⚠ 크게 잡으면 그만큼 AI가 늦게 멈춘다 — 끼어들기는 200~300ms 안에 멈춰야 자연스럽다.
+    min-speech-ms: 60
+  artifact:
+    # 통화 종료 후 만들어지는 산출물(녹음 업로드·요약 생성)을 기다리는 상한(ms).
+    # 쓰는 곳 둘: ⓐ 통화 상세 조회 GET /calls/{id}?wait=true ⓑ 통화 종료 응답 PATCH /calls/{id}/end.
+    # 덕분에 프론트가 폴링 없이 한 번의 조회로 audioUrl·aiSummary를 받는다.
+    # ⚠ 상한을 넘겨도 취소하지 않는다 — 기다리기를 포기할 뿐 산출물은 백그라운드에서 계속 만들어진다.
+    # ⚠ 너무 크게 두면 S3·AI 서버가 느릴 때 요청 스레드가 그만큼 묶인다(ⓑ는 "전화가 안 끊긴다"가 된다).
+    # ⚠ 환경마다 다르다 — 로컬→S3는 EC2→S3보다 느리므로 배포 서버 로그(uploadMs/elapsedMs)로 정할 것.
+    wait-ms: 5000
   timeout:
     # 연결되지 못한 통화를 걷는 주기(ms). 벨 타임아웃보다 촘촘해야 판정이 제시간에 떨어진다.
     scheduler-delay-ms: 10000
@@ -53,8 +71,9 @@ call:
     # 발신했지만(DIALING) 이 초 안에 WebSocket을 열지 않으면 CANCELED. 기준 시각은 Call.createdAt.
     dial-seconds: 60
     # 이 분을 넘겨 진행 중인 통화는 COMPLETED로 마감하고 세션도 정리한다. 기준 시각은 Call.startedAt.
-    # 크래시·SIGKILL·half-open으로 남은 통화를 걷는 안전망이라 정상 통화를 자르지 않게 넉넉히 잡는다.
-    max-call-minutes: 60
+    # 크래시·SIGKILL·half-open으로 남은 통화를 걷는 안전망이자 통화 시간 상한이다.
+    # 폴링 주기(scheduler-delay-ms)만큼 늦게 걷히므로 실제 마감은 상한보다 최대 10초 뒤다.
+    max-call-minutes: 5
 
 proactive:
   # 선제 연락은 시간 단위 간격이라 10분 단위 폴링이면 충분하다.

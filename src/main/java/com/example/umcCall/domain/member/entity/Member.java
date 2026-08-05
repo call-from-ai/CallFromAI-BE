@@ -26,7 +26,7 @@ public class Member extends BaseTimeEntity {
     @Column(name = "member_id")
     private Long id;
 
-    @Column(name = "last_name", length = 5)
+    @Column(name = "last_name", length = 2)
     private String lastName;
 
     @Column(name = "first_name", length = 5)
@@ -97,7 +97,16 @@ public class Member extends BaseTimeEntity {
     }
 
     public boolean isOnboardingCompleted() {
-        return this.lastName != null;
+        return lastName != null
+                && !lastName.isBlank()
+                && firstName != null
+                && !firstName.isBlank()
+                && imageUrl != null
+                && !imageUrl.isBlank()
+                && gender != null
+                && birth != null
+                && mbti != null
+                && job != null;
     }
 
     public void updateProfile(String lastName, String firstName, String imageUrl,

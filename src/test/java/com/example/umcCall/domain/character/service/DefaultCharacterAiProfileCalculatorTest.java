@@ -13,7 +13,7 @@ class DefaultCharacterAiProfileCalculatorTest {
 
     @Test
     void calculatesTraitsLifeTypeAndMbtiAdjustments() {
-        Character character = Character.builder().job(Job.EMPLOYED).mbti("ENFP").build();
+        Character character = Character.builder().job(Job.EMPLOYEE).mbti("ENFP").build();
         List<CharacterTrait> traits = List.of(
                 trait(character, Trait.HUMOROUS, 1),
                 trait(character, Trait.AFFECTIONATE, 2),
@@ -36,7 +36,7 @@ class DefaultCharacterAiProfileCalculatorTest {
 
     @Test
     void clampsScoresToPolicyRange() {
-        Character character = Character.builder().job(Job.UNEMPLOYED).mbti(null).build();
+        Character character = Character.builder().job(Job.OTHER).mbti(null).build();
         List<CharacterTrait> traits = List.of(
                 trait(character, Trait.JEALOUS, 1),
                 trait(character, Trait.POSSESSIVE, 2),

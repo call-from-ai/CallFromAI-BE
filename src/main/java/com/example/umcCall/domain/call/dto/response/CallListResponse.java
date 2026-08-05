@@ -1,5 +1,7 @@
 package com.example.umcCall.domain.call.dto.response;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 /**
@@ -8,7 +10,10 @@ import java.util.List;
  *
  * @param content 통화 목록(최신순, 최대 20)
  */
+@Schema(description = "내 통화 목록 응답. 페이지네이션 없이 최근 20건 고정이라 page/size/hasNext가 없다.")
 public record CallListResponse(
+        @ArraySchema(arraySchema = @Schema(
+                description = "종료된 통화 목록(최신순, 최대 20건). 통화 기록이 없으면 빈 배열"))
         List<CallListItem> content
 ) {
     public static CallListResponse of(List<CallListItem> content) {

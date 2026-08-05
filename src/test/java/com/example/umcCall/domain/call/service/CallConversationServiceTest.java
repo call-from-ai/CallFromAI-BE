@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
-import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
 import com.example.umcCall.domain.ai.service.AiConversationService;
@@ -28,7 +27,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -51,10 +49,18 @@ class CallConversationServiceTest {
     @Mock private AiRelationshipSnapshotMapper relationshipSnapshotMapper;
     @Mock private AiConversationService aiConversationService;
 
-    @InjectMocks private CallConversationService service;
+    private CallConversationService service;
 
     @BeforeEach
     void loadEntities() {
+        // 조립은 실제 구현(CallAiRequestAssembler)을 쓴다 — 이 테스트가 고정하려는 게 조립 결과라서다.
+        // @Transactional은 프록시 없는 단위 테스트에선 무해하게 무시된다.
+        CallAiRequestAssembler assembler = new CallAiRequestAssembler(
+                characterRepository, characterAiProfileRepository,
+                relationshipRepository, relationshipStatusRepository,
+                characterSnapshotMapper, relationshipSnapshotMapper);
+        service = new CallConversationService(assembler, aiConversationService);
+
         when(characterRepository.findById(CHARACTER_ID))
                 .thenReturn(Optional.of(mock(Character.class)));
         when(characterAiProfileRepository.findById(CHARACTER_ID))
@@ -63,13 +69,14 @@ class CallConversationServiceTest {
                 .thenReturn(Optional.of(mock(Relationship.class)));
         when(relationshipStatusRepository.findByRelationshipId(RELATIONSHIP_ID))
                 .thenReturn(Optional.of(mock(RelationshipStatus.class)));
-        when(aiConversationService.chat(any()))
-                .thenReturn(new AiChatResponse("응답", null, null, null, null));
     }
 
-    private AiChatRequest captureRequest() {
+    /** 통화가 실제로 쓰는 경로는 스트리밍뿐이다. 조각 소비는 이 검증의 관심사가 아니라 빈 소비자를 넘긴다. */
+    private AiChatRequest requestSentFor(List<AiChatHistoryItem> conversation) {
+        service.respondStream(CHARACTER_ID, RELATIONSHIP_ID, conversation, chunk -> { });
+
         ArgumentCaptor<AiChatRequest> captor = ArgumentCaptor.forClass(AiChatRequest.class);
-        verify(aiConversationService).chat(captor.capture());
+        verify(aiConversationService).chatStream(captor.capture(), any());
         return captor.getValue();
     }
 
@@ -80,9 +87,7 @@ class CallConversationServiceTest {
                 new AiChatHistoryItem("assistant", "안녕하세요", T),
                 new AiChatHistoryItem("user", "뭐해?", T)));
 
-        service.respond(CHARACTER_ID, RELATIONSHIP_ID, log);
-
-        AiChatRequest sent = captureRequest();
+        AiChatRequest sent = requestSentFor(log);
         assertThat(sent.message()).isEqualTo("뭐해?");
         assertThat(sent.history())
                 .extracting(AiChatHistoryItem::content)
@@ -99,9 +104,7 @@ class CallConversationServiceTest {
             log.add(new AiChatHistoryItem("user", "m" + i, T));
         }
 
-        service.respond(CHARACTER_ID, RELATIONSHIP_ID, log);
-
-        AiChatRequest sent = captureRequest();
+        AiChatRequest sent = requestSentFor(log);
         assertThat(sent.message()).isEqualTo("m21");
         assertThat(sent.history()).hasSize(20);
         assertThat(sent.history()).extracting(AiChatHistoryItem::content)
@@ -115,10 +118,9 @@ class CallConversationServiceTest {
         List<AiChatHistoryItem> log = new ArrayList<>(List.of(
                 new AiChatHistoryItem("user", "혼잣말", T)));
 
-        service.respond(CHARACTER_ID, RELATIONSHIP_ID, log);
-
-        AiChatRequest sent = captureRequest();
+        AiChatRequest sent = requestSentFor(log);
         assertThat(sent.message()).isEqualTo("혼잣말");
         assertThat(sent.history()).isEmpty();
     }
+
 }

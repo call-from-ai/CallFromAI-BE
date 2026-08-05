@@ -11,6 +11,7 @@ import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -56,6 +58,7 @@ public class CallController {
     @PatchMapping("/{callId}/accept")
     public ApiResponse<CallTicketResponse> accept(
             @AuthenticationPrincipal Long memberId,
+            @Parameter(description = "받을 통화 ID. `GET /calls/incoming` 응답의 callId", example = "12")
             @PathVariable Long callId) {
         return ApiResponse.onSuccess(callService.accept(memberId, callId));
     }
@@ -65,6 +68,7 @@ public class CallController {
     @PatchMapping("/{callId}/reject")
     public ApiResponse<Void> reject(
             @AuthenticationPrincipal Long memberId,
+            @Parameter(description = "거절할 통화 ID. `GET /calls/incoming` 응답의 callId", example = "12")
             @PathVariable Long callId) {
         callService.reject(memberId, callId);
         return ApiResponse.onSuccess();
@@ -75,6 +79,8 @@ public class CallController {
     @PatchMapping("/{callId}/end")
     public ApiResponse<CallEndResponse> end(
             @AuthenticationPrincipal Long memberId,
+            @Parameter(description = "종료할 통화 ID. `POST /calls`(발신) 또는 `PATCH /calls/{callId}/accept`(수락) 응답의 callId",
+                    example = "12")
             @PathVariable Long callId) {
         return ApiResponse.onSuccess(callService.end(memberId, callId));
     }
@@ -87,12 +93,24 @@ public class CallController {
     }
 
     @Operation(summary = "통화 기록 상세 조회",
-            description = "통화 한 건의 상세(요약/시작시각/오디오)를 반환한다. 완료된 본인 소유 통화만 조회할 수 있다.")
+            description = """
+                    통화 한 건의 상세(요약/시작시각/오디오)를 반환한다. 완료된 본인 소유 통화만 조회할 수 있다.
+                    wait=true면 요약·녹음이 준비될 때까지 서버가 상한(서버 설정)까지 기다렸다가 응답한다 —
+                    통화 종료 화면에서 폴링 없이 한 번의 조회로 받기 위한 옵션이다.
+                    상한을 넘기면 그 시점 상태(summaryStatus/recordingStatus = PROCESSING)로 응답하며,
+                    산출물은 백그라운드에서 계속 만들어지므로 그때만 다시 조회하면 된다.""")
     @GetMapping("/{callId}")
     public ApiResponse<CallDetailResponse> getCallDetail(
             @AuthenticationPrincipal Long memberId,
-            @PathVariable Long callId) {
-        return ApiResponse.onSuccess(callHistoryService.getCallDetail(memberId, callId));
+            @Parameter(description = "조회할 통화 ID. `GET /calls` 목록 응답의 callId", example = "12")
+            @PathVariable Long callId,
+            @Parameter(description = """
+                    true면 요약·녹음이 준비될 때까지 서버가 상한(서버 설정)까지 기다렸다가 응답한다 —
+                    통화 종료 직후 화면에서 폴링 없이 한 번의 조회로 받기 위한 옵션이다.
+                    산출물 생성이 진행 중이 아니면 기다리지 않고 바로 응답하므로, 지난 통화를 다시 조회할 때는 영향이 없다.""",
+                    example = "false")
+            @RequestParam(defaultValue = "false") boolean wait) {
+        return ApiResponse.onSuccess(callHistoryService.getCallDetail(memberId, callId, wait));
     }
 
     @Operation(summary = "통화 전사(script) 조회",
@@ -100,6 +118,7 @@ public class CallController {
     @GetMapping("/{callId}/script")
     public ApiResponse<CallScriptResponse> getScript(
             @AuthenticationPrincipal Long memberId,
+            @Parameter(description = "전사를 조회할 통화 ID. `GET /calls` 목록 응답의 callId", example = "12")
             @PathVariable Long callId) {
         return ApiResponse.onSuccess(callHistoryService.getScript(memberId, callId));
     }
