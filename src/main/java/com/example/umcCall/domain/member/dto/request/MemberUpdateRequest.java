@@ -20,7 +20,7 @@ public record MemberUpdateRequest(
         @Pattern(regexp = ".*\\S.*", message = "이름은 비어 있거나 공백으로만 구성될 수 없습니다.")
         String firstName,
 
-        @Schema(example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_1.png",
+        @Schema(example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_1.png",
                 description = "프로필 사진 URL. GET /preset-images로 조회한 프리셋 이미지 URL 중 하나여야 함")
         String imageUrl,
         @Schema(example = "MALE", description = "성별: MALE(남성) 또는 FEMALE(여성)") Gender gender,

@@ -21,7 +21,7 @@ public record MemberCreateRequest(
         @Size(max = 5, message = "이름은 5자 이내로 입력해주세요.")
         String firstName,
 
-        @Schema(example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_1.png",
+        @Schema(example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_1.png",
                 description = "프로필 사진 URL. GET /preset-images로 조회한 프리셋 이미지 URL 중 하나여야 함")
         @NotBlank(message = "프로필 사진은 필수입니다.")
         String imageUrl,

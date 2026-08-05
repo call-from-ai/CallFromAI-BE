@@ -50,7 +50,7 @@ public class CharacterCreateRequest {
     @NotNull
     private Job job;
 
-    @Schema(example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/female_2.png",
+    @Schema(example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_2.png",
             description = "프로필 사진 URL. GET /preset-images로 조회한 프리셋 이미지 URL 중 하나여야 함")
     @Size(max = 2048)
     @Pattern(regexp = "https://.+", message = "이미지 URL은 https 형식이어야 합니다.")
