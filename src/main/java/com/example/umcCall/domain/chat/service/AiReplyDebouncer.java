@@ -186,9 +186,11 @@ public class AiReplyDebouncer {
                 answeredWatermark.put(roomId, chunk.lastId());
             } catch (S3ObjectNotFoundException | AiImageRequestRejectedException e) {
                 log.error("AI 답장 조각 스킵(영구 실패). roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);
+                chatMessageNotifier.notifyError(room);           // 로딩 표시 걷기
                 answeredWatermark.put(roomId, chunk.lastId());   // 영구 실패 → 전진(스킵)
             } catch (Exception e) {
                 log.error("AI 답장 조각 처리 실패(재시도 예정). roomId={}, chunkLastId={}", roomId, chunk.lastId(), e);
+                chatMessageNotifier.notifyError(room);           // 로딩 표시 걷기(연결실패·타임아웃·5xx 등)
                 break;   // 일시 실패 → 전진 안 함, 다음 활동 때 이 조각부터 다시
             }
         }
@@ -196,6 +198,19 @@ public class AiReplyDebouncer {
 
     /** 조각 하나를 AI에 보내 답장을 만든다(이미지 있으면 multipart, 없으면 JSON). */
     private void processChunk(ChatRoom room, Chunk chunk) {
+        // 조각 내 텍스트를 하나로 합친다(이미지만 있는 조각이면 빈 문자열).
+        String message = chunk.messages().stream()
+                .map(ChatMessage::getContent)
+                .filter(content -> content != null && !content.isBlank())
+                .collect(Collectors.joining(MESSAGE_JOINER));
+        if (message.isBlank() && chunk.imageUrl() == null) {
+            return;   // 텍스트도 이미지도 없으면 보낼 게 없다(방어적). 로딩 표시를 켜기 전이라 걷을 것도 없다.
+        }
+
+        // 여기서부터 실제 AI 작업 시작 → "…" 입력중 표시 켜기.
+        // 이 아래에서 무슨 일이 생기든(사진 못 받음/AI 실패/빈 답장) 반드시 message 또는 chat-error로 이 표시를 닫는다.
+        chatMessageNotifier.notifyLoading(room);
+
         // 이미지가 있으면 S3에서 원본 바이트를 다시 받아온다(전송 시점의 원본은 이미 사라졌다).
         byte[] imageBytes = null;
         String imageContentType = null;
@@ -203,15 +218,6 @@ public class AiReplyDebouncer {
             S3DownloadedFile file = s3Uploader.download(chunk.imageUrl());
             imageBytes = file.bytes();
             imageContentType = file.contentType();
-        }
-
-        // 조각 내 텍스트를 하나로 합친다(이미지만 있는 조각이면 빈 문자열).
-        String message = chunk.messages().stream()
-                .map(ChatMessage::getContent)
-                .filter(content -> content != null && !content.isBlank())
-                .collect(Collectors.joining(MESSAGE_JOINER));
-        if (message.isBlank() && imageBytes == null) {
-            return;   // 텍스트도 이미지도 없으면 보낼 게 없다(방어적)
         }
 
         List<AiChatHistoryItem> history = buildHistory(room.getId(), chunk.firstId());
@@ -223,7 +229,8 @@ public class AiReplyDebouncer {
                 : aiConversationService.chat(request);
         String reply = response.reply();
         if (reply == null || reply.isBlank()) {
-            return;   // AI가 답을 안 줬으면 저장하지 않는다(워터마크는 상위 finally에서 전진).
+            chatMessageNotifier.notifyError(room);   // 연결은 됐지만 내용이 없음 → 로딩 표시 걷기
+            return;   // AI가 답을 안 줬으면 저장하지 않는다(워터마크는 상위에서 전진).
         }
 
         ChatMessage aiMessage = chatMessageService.saveAiMessage(room.getId(), reply);

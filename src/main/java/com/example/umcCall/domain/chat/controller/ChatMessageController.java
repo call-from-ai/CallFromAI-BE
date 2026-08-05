@@ -6,6 +6,7 @@ import com.example.umcCall.domain.chat.service.ChatMessageService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import com.example.umcCall.global.apiPayload.code.GeneralSuccessCode;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -37,7 +38,10 @@ public class ChatMessageController {
     public ApiResponse<ChatMessageCursorResponse> getMessages(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long chatRoomId,
+            @Parameter(description = "이 값보다 과거의 메시지를 조회한다(직전 응답의 nextCursor). 처음 조회 시 생략하면 최신부터.",
+                    example = "1234")
             @RequestParam(required = false) Long cursor,
+            @Parameter(description = "한 번에 가져올 개수. 기본 30, 최대 50.", example = "20")
             @RequestParam(required = false) Integer size) {
         return ApiResponse.onSuccess(
                 chatMessageService.getMessages(memberId, chatRoomId, cursor, size));
@@ -52,7 +56,9 @@ public class ChatMessageController {
     public ApiResponse<ChatMessageResponse> sendMessage(
             @AuthenticationPrincipal Long memberId,
             @PathVariable Long chatRoomId,
+            @Parameter(description = "텍스트 내용. content·image 중 최소 하나는 있어야 한다.", example = "안녕!")
             @RequestParam(required = false) String content,
+            @Parameter(description = "첨부 이미지(JPEG/PNG, 최대 10MB). content·image 중 최소 하나는 있어야 한다.")
             @RequestParam(required = false) MultipartFile image) {
         return ApiResponse.onSuccess(
                 GeneralSuccessCode.CREATED,

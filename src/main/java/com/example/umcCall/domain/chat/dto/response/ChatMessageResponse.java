@@ -12,6 +12,7 @@ import lombok.Builder;
  */
 @Builder
 public record ChatMessageResponse(
+        Long chatRoomId,
         Long chatMessageId,
         SenderType senderType,
         String content,
@@ -27,6 +28,7 @@ public record ChatMessageResponse(
     /** 사진 URL을 함께 담는다(전송 응답·조회에서 chat_photo 조인 결과 전달용). */
     public static ChatMessageResponse from(ChatMessage message, String photoUrl) {
         return ChatMessageResponse.builder()
+                .chatRoomId(message.getChatRoom().getId())
                 .chatMessageId(message.getId())
                 .senderType(message.getSenderType())
                 .content(message.getContent())
