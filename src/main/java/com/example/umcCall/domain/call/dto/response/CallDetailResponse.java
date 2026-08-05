@@ -35,13 +35,17 @@ public record CallDetailResponse(
         String audioUrl,
         CallRecordingStatus recordingStatus
 ) {
-    public static CallDetailResponse of(Call call) {
+    /**
+     * 응답을 만든다. {@code audioUrl}은 저장된 객체 key가 아니라 <b>presigned URL</b>이라야 하므로
+     * 호출부(서비스)가 발급해 넘긴다(녹음이 없으면 null).
+     */
+    public static CallDetailResponse of(Call call, String audioUrl) {
         return new CallDetailResponse(
                 call.getRelationship().getCharacter().getFirstName(),
                 call.getAiSummary(),
                 call.getSummaryStatus(),
                 call.getCreatedAt(),
-                call.getAudioUrl(),
+                audioUrl,
                 call.getRecordingStatus());
     }
 }

@@ -36,7 +36,9 @@ public class ChatPhoto extends BaseTimeEntity {
     @JoinColumn(name = "chat_message_id", nullable = false, unique = true)
     private ChatMessage chatMessage;
 
-    /** S3에 저장된 사진 URL. */
+    /**
+     * S3에 저장된 사진의 객체 key</b>(공개 URL이 아님) 유저에게 내려줄 땐 presigned URL로 발급한다.
+     */
     @Column(name = "photo_url", nullable = false, length = 512)
     private String photoUrl;
 
