@@ -23,9 +23,13 @@ public record ProactiveScheduleResponse(
         String contactMode,
         @Schema(description = "스케줄 활성화 여부. false이면 자동 실행 및 강제 실행 claim이 생성되지 않는다.", example = "true")
         boolean enabled,
-        @Schema(description = "캐릭터의 선호 연락 시간대", example = "EVENING")
+        @Schema(description = "캐릭터의 선호 연락 시간대", example = "LATE_EVENING")
         PreferTime preferTime,
-        @Schema(description = "AI 프로필의 애착도 원본 값. 값이 없으면 null일 수 있다.", example = "72.5")
+        @Schema(
+                description = "AI 프로필의 애착도 원본 값. 0~10 범위이며 값이 없으면 null일 수 있다.",
+                example = "7.5",
+                minimum = "0",
+                maximum = "10")
         Double attachment,
         @Schema(description = "애착도를 정책 구간으로 변환한 값", example = "HIGH", allowableValues = {"LOW", "NORMAL", "HIGH"})
         AttachmentLevel attachmentLevel,

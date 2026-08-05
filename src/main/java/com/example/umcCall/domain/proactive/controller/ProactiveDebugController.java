@@ -106,7 +106,8 @@ public class ProactiveDebugController {
                     통화 착신 경로만 빠르게 검증한다. 연락 간격, 선호 시간, 일일 한도, 관계 상태, 미응답 상태와
                     통화 선택 확률을 우회해 CALL claim을 만든다. 성공하면 AI 발신 RINGING 통화와 착신 푸시를 생성한다.
                     enabled, 메인 관계, 캐릭터 삭제 여부, 기존 pending 요청 및 진행 중인 통화는 검증한다.
-                    성공 후 착신 대기 통화 조회 API에서 생성된 통화를 확인할 수 있다.
+                    실패하면 테스트 전 nextCheckAt을 복구한다. 성공하면 실제 완료 경로와 동일하게 dailyContactCount와
+                    dailyCallCount를 증가시키고 다음 nextCheckAt을 계산한다. 착신 대기 통화 조회 API에서 생성된 통화를 확인할 수 있다.
                     """)
     @PostMapping("/{memberId}/force-call")
     public ApiResponse<ProactiveProcessResponse> forceCall(

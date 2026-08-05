@@ -284,6 +284,13 @@ public class ProactiveContactProcessor {
         return true;
     }
 
+    /** local 강제 통화가 생성되지 않았을 때 디버그 호출 전 스케줄 시각을 복구한다. */
+    @Transactional
+    public void restoreAfterDebugCallFailure(Long scheduleId, LocalDateTime previousNextCheckAt) {
+        scheduleRepository.findByIdForUpdate(scheduleId)
+                .ifPresent(schedule -> schedule.restoreAfterDebugCallFailure(previousNextCheckAt));
+    }
+
     @Transactional
     public void fail(Claim claim, RuntimeException exception, LocalDateTime now) {
         ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(claim.scheduleId()).orElse(null);

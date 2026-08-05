@@ -98,11 +98,22 @@ public class ProactiveDebugService {
         coordinator.create(relationship);
         ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
                 .orElseThrow(() -> new IllegalStateException("Proactive schedule not found"));
+        LocalDateTime previousNextCheckAt = schedule.getNextCheckAt();
         ProactiveContactProcessor.Claim claim = processor.forceCallClaimForDebug(schedule.getId());
         if (claim == null) {
             return ProactiveProcessResponse.skipped("DISABLED_INACTIVE_OR_PENDING");
         }
-        return executeClaim(claim);
+        try {
+            if (processor.completeCall(claim, LocalDateTime.now())) {
+                return ProactiveProcessResponse.callRinging(claim.requestId());
+            }
+            processor.restoreAfterDebugCallFailure(schedule.getId(), previousNextCheckAt);
+            return ProactiveProcessResponse.skipped("CALL_NOT_CREATED");
+        } catch (RuntimeException exception) {
+            processor.fail(claim, exception, LocalDateTime.now());
+            processor.restoreAfterDebugCallFailure(schedule.getId(), previousNextCheckAt);
+            throw exception;
+        }
     }
 
     private ProactiveProcessResponse executeClaim(ProactiveContactProcessor.Claim claim) {

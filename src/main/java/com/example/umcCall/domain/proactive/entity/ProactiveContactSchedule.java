@@ -156,6 +156,11 @@ public class ProactiveContactSchedule extends BaseTimeEntity {
         this.nextCheckAt = enabled ? nextCheckAt : null;
     }
 
+    public void restoreAfterDebugCallFailure(LocalDateTime nextCheckAt) {
+        clearPending();
+        this.nextCheckAt = enabled ? nextCheckAt : null;
+    }
+
     public void retry(RuntimeException exception, LocalDateTime now) {
         pendingAttempts++;
         long delayMinutes = Math.min(60, 1L << Math.min(pendingAttempts - 1, 6));
