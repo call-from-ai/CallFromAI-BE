@@ -45,7 +45,7 @@ public class MemberController {
             @AuthenticationPrincipal Long memberId,
             @Valid @RequestBody MemberCreateRequest request
     ) {
-        return ResponseEntity.ok(ApiResponse.onSuccess(memberService.updateMyInfo(memberId, request.toUpdateRequest())));
+        return ResponseEntity.ok(ApiResponse.onSuccess(memberService.createMyInfo(memberId, request)));
     }
 
     @Operation(

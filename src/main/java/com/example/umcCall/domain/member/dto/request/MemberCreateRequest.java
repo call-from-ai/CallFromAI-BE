@@ -41,8 +41,4 @@ public record MemberCreateRequest(
         @Schema(example = "UNIVERSITY_STUDENT", description = "직업: UNIVERSITY_STUDENT(대학생), EMPLOYEE(직장인), OTHER(기타)")
         @NotNull(message = "직업은 필수입니다.")
         Job job
-) {
-    public MemberUpdateRequest toUpdateRequest() {
-        return new MemberUpdateRequest(lastName, firstName, imageUrl, gender, birth, mbti, job);
-    }
-}
+) {}

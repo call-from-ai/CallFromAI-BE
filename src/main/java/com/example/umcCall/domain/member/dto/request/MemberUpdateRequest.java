@@ -4,6 +4,7 @@ import com.example.umcCall.domain.image.enums.Gender;
 import com.example.umcCall.domain.member.enums.Job;
 import com.example.umcCall.domain.member.enums.Mbti;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
@@ -11,10 +12,12 @@ import java.time.LocalDate;
 public record MemberUpdateRequest(
         @Schema(example = "김", description = "성(2자 이내)")
         @Size(max = 2, message = "성은 2자 이내로 입력해주세요.")
+        @Pattern(regexp = ".*\\S.*", message = "성은 비어 있거나 공백으로만 구성될 수 없습니다.")
         String lastName,
 
         @Schema(example = "민준", description = "이름(5자 이내)")
         @Size(max = 5, message = "이름은 5자 이내로 입력해주세요.")
+        @Pattern(regexp = ".*\\S.*", message = "이름은 비어 있거나 공백으로만 구성될 수 없습니다.")
         String firstName,
 
         @Schema(example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/male_1.png",

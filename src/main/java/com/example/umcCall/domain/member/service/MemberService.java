@@ -2,8 +2,10 @@ package com.example.umcCall.domain.member.service;
 
 import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
 import com.example.umcCall.domain.character.service.CharacterService;
+import com.example.umcCall.domain.image.enums.Gender;
 import com.example.umcCall.domain.image.repository.PresetImageRepository;
 import com.example.umcCall.domain.member.dto.request.DoNotDisturbUpdateRequest;
+import com.example.umcCall.domain.member.dto.request.MemberCreateRequest;
 import com.example.umcCall.domain.member.dto.request.NotificationSettingUpdateRequest;
 import com.example.umcCall.domain.member.dto.response.MemberResponse;
 import com.example.umcCall.domain.member.dto.request.MemberUpdateRequest;
@@ -32,14 +34,49 @@ public class MemberService {
     }
 
     @Transactional
-    public MemberResponse updateMyInfo(Long memberId, MemberUpdateRequest request) {
+    public MemberResponse createMyInfo(Long memberId, MemberCreateRequest request) {
         Member member = findMember(memberId);
 
-        if (request.imageUrl() != null && request.gender() != null
+        if (member.isOnboardingCompleted()) {
+            throw new BaseException(MemberErrorCode.MEMBER_INFO_ALREADY_REGISTERED);
+        }
+
+        if (request.gender() != null && request.imageUrl() != null
                 && !presetImageRepository.existsByGenderAndImageUrl(request.gender(), request.imageUrl())) {
             throw new BaseException(MemberErrorCode.INVALID_PRESET_IMAGE);
         }
 
+        member.updateProfile(
+                request.lastName(), request.firstName(), request.imageUrl(),
+                request.gender(), request.birth(), request.mbti(), request.job()
+        );
+
+        return MemberResponse.from(member);
+    }
+
+    @Transactional
+    public MemberResponse updateMyInfo(Long memberId, MemberUpdateRequest request) {
+        Member member = findMember(memberId);
+
+        // 생성 전 수정 호출 금지
+        if (!member.isOnboardingCompleted()) {
+            throw new BaseException(MemberErrorCode.MEMBER_INFO_NOT_REGISTERED);
+        }
+
+        // 부분 업데이트라 요청에 없는 필드는 기존 값을 같이 고려해서 검증
+
+        boolean imageOrGenderChanged =
+                request.imageUrl() != null || request.gender() != null;
+
+        if (imageOrGenderChanged) {
+            Gender genderToValidate = request.gender() != null ? request.gender() : member.getGender();
+            String imageUrlToValidate = request.imageUrl() != null ? request.imageUrl() : member.getImageUrl();
+
+            if (genderToValidate != null && imageUrlToValidate != null
+                    && !presetImageRepository.existsByGenderAndImageUrl(genderToValidate, imageUrlToValidate)) {
+                throw new BaseException(MemberErrorCode.INVALID_PRESET_IMAGE);
+            }
+        }
         member.updateProfile(
                 request.lastName(), request.firstName(), request.imageUrl(),
                 request.gender(), request.birth(), request.mbti(), request.job()
