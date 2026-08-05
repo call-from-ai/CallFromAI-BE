@@ -29,9 +29,8 @@ import java.time.LocalDateTime;
  * @param recordingStatus 녹음 준비 상태. <b>항상 내려간다</b>(값이 없으면 {@code NONE})
  */
 @Schema(description = """
-        통화 기록 상세. 전문(script)은 별도 엔드포인트(GET /calls/{callId}/script)라 여기엔 없다.
-        aiSummary·audioUrl은 각각 summaryStatus·recordingStatus와 **짝지어** 읽어야 한다 —
-        둘 다 통화 종료 후 비동기로 만들어져, 값이 없다고 해서 없는 게 아니라 준비 중일 수 있다.""")
+        통화 기록 상세. 전문(script)은 별도 엔드포인트(GET /calls/{callId}/script)에 있다.
+        aiSummary·audioUrl은 각각 summaryStatus·recordingStatus와 **짝지어** 읽어야 한다""")
 public record CallDetailResponse(
         @Schema(description = "상대 캐릭터 이름(firstName만 — 목록·채팅과 동일 규약)", example = "유나")
         String characterName,
@@ -48,7 +47,7 @@ public record CallDetailResponse(
                 example = "READY", allowableValues = {"NONE", "PROCESSING", "READY", "FAILED"})
         CallSummaryStatus summaryStatus,
 
-        @Schema(description = "통화 발신 시각(표시용). startedAt이 아니라 이 값을 쓴다 — 연결되지 못한 통화에도 항상 존재한다",
+        @Schema(description = "통화 발신 시각(표시용). — 연결되지 못한 통화에도 항상 존재한다",
                 example = "2026-08-06T20:30:00")
         LocalDateTime createdAt,
 
@@ -62,7 +61,6 @@ public record CallDetailResponse(
 
         @Schema(description = """
                 녹음 준비 상태. 값이 없으면 NONE으로 **항상 내려간다**.
-                audioUrl 유무만 보고 "녹음 없음"으로 그리면, 잠시 뒤 준비될 다시듣기를 사용자가 못 본다.
                 NONE(녹음 없음) / PROCESSING(업로드 중) / READY(재생 가능) / FAILED(녹음·업로드 실패)""",
                 example = "READY", allowableValues = {"NONE", "PROCESSING", "READY", "FAILED"})
         CallRecordingStatus recordingStatus

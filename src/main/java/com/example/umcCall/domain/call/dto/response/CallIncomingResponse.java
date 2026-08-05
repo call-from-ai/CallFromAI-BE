@@ -26,7 +26,7 @@ public record CallIncomingResponse(
         @Schema(description = "캐릭터 이름(firstName만 — 목록·채팅과 동일 규약)", example = "유나")
         String characterName,
 
-        @Schema(description = "캐릭터 이미지 URL. 미설정이면 응답에서 키가 생략된다",
+        @Schema(description = "캐릭터 이미지 URL. 미설정이면 응답에서 생략된다",
                 example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_2.png",
                 requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String characterImage,
