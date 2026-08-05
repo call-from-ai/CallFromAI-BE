@@ -27,17 +27,29 @@ public final class CallVad {
     /** 업스트림 오디오 계약(16kHz 모노 16-bit raw PCM). 이 값이 아니면 지속시간 계산이 어긋난다. */
     private static final int SAMPLE_RATE = 16_000;
 
-    private final int rmsThreshold;
-    private final int minSpeechMs;
+    private static final int MS_PER_SECOND = 1_000;
 
-    /** 임계를 <b>연속으로</b> 넘긴 시간. 중간에 한 프레임이라도 조용하면 0으로 돌아간다. */
-    private int voicedMs;
+    private final int rmsThreshold;
+    /**
+     * 발화로 인정할 최소 누적 <b>샘플 수</b>.
+     *
+     * <p>⚠ <b>프레임마다 ms로 환산해 더하지 않는다</b>(PR #142 리뷰 지적). 정수 나눗셈이라
+     * 16샘플(=1ms) 미만인 프레임은 환산값이 <b>0</b>이 되어, 사용자가 계속 말해도 누적이 영영
+     * 안 늘어난다 — 그 통화에선 끼어들기가 통째로 죽는다. 그보다 큰 프레임도 프레임마다 소수부를
+     * 버려 실제보다 늦게 감지된다. 프레임 크기는 <b>프론트가 정하는 값</b>이라 20ms라고 가정할 수
+     * 없으므로, 환산은 여기서 <b>한 번만</b> 하고 누적은 샘플 단위로 한다.
+     * (16000은 1000으로 나누어떨어져 이 환산 자체엔 오차가 없다.)
+     */
+    private final int minSpeechSamples;
+
+    /** 임계를 <b>연속으로</b> 넘긴 샘플 수. 중간에 한 프레임이라도 조용하면 0으로 돌아간다. */
+    private int voicedSamples;
     /** 이번 발화를 이미 알렸는가. 말하는 내내 매 프레임 알리지 않으려고 둔다. */
     private boolean notified;
 
     public CallVad(int rmsThreshold, int minSpeechMs) {
         this.rmsThreshold = rmsThreshold;
-        this.minSpeechMs = minSpeechMs;
+        this.minSpeechSamples = minSpeechMs * SAMPLE_RATE / MS_PER_SECOND;
     }
 
     /**
@@ -60,12 +72,12 @@ public final class CallVad {
         }
         if (rms(pcm16le, samples) < rmsThreshold) {
             // 조용해졌다 → 누적을 버리고 다음 발화를 다시 알릴 수 있게 무장한다.
-            voicedMs = 0;
+            voicedSamples = 0;
             notified = false;
             return false;
         }
-        voicedMs += samples * 1000 / SAMPLE_RATE;
-        if (notified || voicedMs < minSpeechMs) {
+        voicedSamples += samples;
+        if (notified || voicedSamples < minSpeechSamples) {
             return false;
         }
         notified = true;

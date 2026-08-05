@@ -115,6 +115,20 @@ class CallVadTest {
     }
 
     @Test
+    void 아주_작은_프레임도_이어지면_최소시간을_채운다() {
+        // ⚠ 회귀 방어(PR #142 리뷰 지적): 프레임마다 ms로 환산해 더하면 1ms(=16샘플) 미만 프레임은
+        // 환산값이 0이라 아무리 말해도 누적이 안 늘고 끼어들기가 통째로 죽는다.
+        CallVad vad = vad();
+        byte[] tiny = frame(5_000, 8);                     // 0.5ms — 환산하면 0이 되는 크기
+        int framesToFill = MIN_SPEECH_MS * 16 / 8;         // 60ms = 960샘플 → 8샘플 프레임 120개
+
+        for (int i = 0; i < framesToFill - 1; i++) {
+            assertThat(vad.isSpeechStart(tiny)).isFalse();
+        }
+        assertThat(vad.isSpeechStart(tiny)).isTrue();
+    }
+
+    @Test
     void 빈_프레임은_상태를_건드리지_않는다() {
         // 빈 프레임에 초기화까지 해버리면 정상 발화가 끊겨 감지가 늦어진다.
         CallVad vad = vad();
