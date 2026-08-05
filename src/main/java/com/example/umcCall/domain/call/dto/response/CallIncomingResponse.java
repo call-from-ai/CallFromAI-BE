@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.call.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
 /**
@@ -14,11 +15,24 @@ import java.time.LocalDateTime;
  * @param characterImage 캐릭터 이미지 URL. 미설정이면 null → 키 생략
  * @param createdAt      벨이 울리기 시작한 시각. 부재중 스위퍼도 같은 값을 기준으로 삼는다
  */
+@Schema(description = "착신 대기(RINGING) 통화 단건. 걸려온 전화가 없으면 result 자체가 내려가지 않는다.")
 public record CallIncomingResponse(
+        @Schema(description = "받기(accept)·거절(reject)에 쓸 통화 ID", example = "12")
         Long callId,
+
+        @Schema(description = "전화를 건 캐릭터 ID", example = "3")
         Long characterId,
+
+        @Schema(description = "캐릭터 이름(firstName만 — 목록·채팅과 동일 규약)", example = "유나")
         String characterName,
+
+        @Schema(description = "캐릭터 이미지 URL. 미설정이면 응답에서 키가 생략된다",
+                example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_2.png",
+                requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String characterImage,
+
+        @Schema(description = "벨이 울리기 시작한 시각. 부재중(MISSED) 판정도 이 시각을 기준으로 한다",
+                example = "2026-08-06T20:30:00")
         LocalDateTime createdAt
 ) {
 }

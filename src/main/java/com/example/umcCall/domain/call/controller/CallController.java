@@ -11,6 +11,7 @@ import com.example.umcCall.domain.call.service.CallHistoryService;
 import com.example.umcCall.domain.call.service.CallService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +58,7 @@ public class CallController {
     @PatchMapping("/{callId}/accept")
     public ApiResponse<CallTicketResponse> accept(
             @AuthenticationPrincipal Long memberId,
+            @Parameter(description = "받을 통화 ID. `GET /calls/incoming` 응답의 callId", example = "12")
             @PathVariable Long callId) {
         return ApiResponse.onSuccess(callService.accept(memberId, callId));
     }
@@ -66,6 +68,7 @@ public class CallController {
     @PatchMapping("/{callId}/reject")
     public ApiResponse<Void> reject(
             @AuthenticationPrincipal Long memberId,
+            @Parameter(description = "거절할 통화 ID. `GET /calls/incoming` 응답의 callId", example = "12")
             @PathVariable Long callId) {
         callService.reject(memberId, callId);
         return ApiResponse.onSuccess();
@@ -76,6 +79,8 @@ public class CallController {
     @PatchMapping("/{callId}/end")
     public ApiResponse<CallEndResponse> end(
             @AuthenticationPrincipal Long memberId,
+            @Parameter(description = "종료할 통화 ID. `POST /calls`(발신) 또는 `PATCH /calls/{callId}/accept`(수락) 응답의 callId",
+                    example = "12")
             @PathVariable Long callId) {
         return ApiResponse.onSuccess(callService.end(memberId, callId));
     }
@@ -97,7 +102,13 @@ public class CallController {
     @GetMapping("/{callId}")
     public ApiResponse<CallDetailResponse> getCallDetail(
             @AuthenticationPrincipal Long memberId,
+            @Parameter(description = "조회할 통화 ID. `GET /calls` 목록 응답의 callId", example = "12")
             @PathVariable Long callId,
+            @Parameter(description = """
+                    true면 요약·녹음이 준비될 때까지 서버가 상한(서버 설정)까지 기다렸다가 응답한다 —
+                    통화 종료 직후 화면에서 폴링 없이 한 번의 조회로 받기 위한 옵션이다.
+                    산출물 생성이 진행 중이 아니면 기다리지 않고 바로 응답하므로, 지난 통화를 다시 조회할 때는 영향이 없다.""",
+                    example = "false")
             @RequestParam(defaultValue = "false") boolean wait) {
         return ApiResponse.onSuccess(callHistoryService.getCallDetail(memberId, callId, wait));
     }
@@ -107,6 +118,7 @@ public class CallController {
     @GetMapping("/{callId}/script")
     public ApiResponse<CallScriptResponse> getScript(
             @AuthenticationPrincipal Long memberId,
+            @Parameter(description = "전사를 조회할 통화 ID. `GET /calls` 목록 응답의 callId", example = "12")
             @PathVariable Long callId) {
         return ApiResponse.onSuccess(callHistoryService.getScript(memberId, callId));
     }
