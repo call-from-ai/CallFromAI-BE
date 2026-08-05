@@ -25,29 +25,29 @@ ALTER TABLE preset_image
 UPDATE preset_image
 SET voice = CASE image_url
     -- 여성 11
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_1.png'  THEN 'HEERA'        -- 희라
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_2.png'  THEN 'ARA_PRO'      -- 아라(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_3.png'  THEN 'MINYOUNG'     -- 민영
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_4.png'  THEN 'YUNA_PRO'     -- 유나(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_5.png'  THEN 'GOEUN_PRO'    -- 고은(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_6.png'  THEN 'SHASHA'       -- 샤샤
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_7.png'  THEN 'YOUNGMI'      -- 영미
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_8.png'  THEN 'SOHYUN'       -- 소현
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_9.png'  THEN 'SUJIN'        -- 수진
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_10.png' THEN 'YEJI'         -- 예지
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/female_11.png' THEN 'EUNSEO'       -- 은서
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_1.png'  THEN 'HEERA'        -- 희라
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_2.png'  THEN 'ARA_PRO'      -- 아라(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_3.png'  THEN 'MINYOUNG'     -- 민영
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_4.png'  THEN 'YUNA_PRO'     -- 유나(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_5.png'  THEN 'GOEUN_PRO'    -- 고은(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_6.png'  THEN 'SHASHA'       -- 샤샤
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_7.png'  THEN 'YOUNGMI'      -- 영미
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_8.png'  THEN 'SOHYUN'       -- 소현
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_9.png'  THEN 'SUJIN'        -- 수진
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_10.png' THEN 'YEJI'         -- 예지
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/female_11.png' THEN 'EUNSEO'       -- 은서
     -- 남성 11
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_1.png'    THEN 'MINSANG'      -- 민상
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_2.png'    THEN 'DONGHYUN_PRO' -- 동현(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_3.png'    THEN 'SANGDO'       -- 상도
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_4.png'    THEN 'DAESEONG_PRO' -- 대성(Pro)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_5.png'    THEN 'RAEWON'       -- 래원
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_6.png'    THEN 'KITAE'        -- 기태
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_7.png'    THEN 'KYUWON'       -- 규원
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_8.png'    THEN 'SEONGHOON'    -- 성훈
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_9.png'    THEN 'SIYOON'       -- 시윤
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_10.png'   THEN 'SINU'         -- 신우 (= MALE 폴백 기본값)
-    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/preset-images/male_11.png'   THEN 'JIHUN'        -- 지훈
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_1.png'    THEN 'MINSANG'      -- 민상
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_2.png'    THEN 'DONGHYUN_PRO' -- 동현(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_3.png'    THEN 'SANGDO'       -- 상도
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_4.png'    THEN 'DAESEONG_PRO' -- 대성(Pro)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_5.png'    THEN 'RAEWON'       -- 래원
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_6.png'    THEN 'KITAE'        -- 기태
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_7.png'    THEN 'KYUWON'       -- 규원
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_8.png'    THEN 'SEONGHOON'    -- 성훈
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_9.png'    THEN 'SIYOON'       -- 시윤
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_10.png'   THEN 'SINU'         -- 신우 (= MALE 폴백 기본값)
+    WHEN 'https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_11.png'   THEN 'JIHUN'        -- 지훈
     ELSE voice
 END;
 
