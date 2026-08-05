@@ -264,6 +264,18 @@ public class ProactiveContactProcessor {
 
     @Transactional
     public boolean completeCall(Claim claim, LocalDateTime now) {
+        return completeCall(claim, now, now.plusMinutes(10));
+    }
+
+    /** local 강제 통화 처리. 생성 실패 시 같은 트랜잭션에서 디버그 호출 전 시각을 복구한다. */
+    @Transactional
+    public boolean completeCallForDebug(Claim claim, LocalDateTime now,
+                                        LocalDateTime previousNextCheckAt) {
+        return completeCall(claim, now, previousNextCheckAt);
+    }
+
+    private boolean completeCall(Claim claim, LocalDateTime now,
+                                 LocalDateTime nextCheckAtOnFailure) {
         ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(claim.scheduleId()).orElseThrow();
         if (!claim.requestId().equals(schedule.getPendingRequestId())
                 || schedule.getPendingAction() != ProactiveAction.CALL) {
@@ -272,7 +284,7 @@ public class ProactiveContactProcessor {
 
         Relationship relationship = schedule.getRelationship();
         if (!immediateAiCallService.ring(relationship.getId())) {
-            schedule.releaseClaim(now.plusMinutes(10));
+            schedule.releaseClaim(nextCheckAtOnFailure);
             return false;
         }
 
@@ -284,11 +296,14 @@ public class ProactiveContactProcessor {
         return true;
     }
 
-    /** local 강제 통화가 생성되지 않았을 때 디버그 호출 전 스케줄 시각을 복구한다. */
+    /** local 강제 통화 예외를 기록하고 디버그 호출 전 스케줄 시각을 한 트랜잭션에서 복구한다. */
     @Transactional
-    public void restoreAfterDebugCallFailure(Long scheduleId, LocalDateTime previousNextCheckAt) {
-        scheduleRepository.findByIdForUpdate(scheduleId)
-                .ifPresent(schedule -> schedule.restoreAfterDebugCallFailure(previousNextCheckAt));
+    public void recordDebugCallFailure(Claim claim, RuntimeException exception,
+                                       LocalDateTime previousNextCheckAt) {
+        ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(claim.scheduleId()).orElse(null);
+        if (schedule != null && claim.requestId().equals(schedule.getPendingRequestId())) {
+            schedule.recordDebugCallFailure(exception, previousNextCheckAt);
+        }
     }
 
     @Transactional

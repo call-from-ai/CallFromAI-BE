@@ -104,14 +104,12 @@ public class ProactiveDebugService {
             return ProactiveProcessResponse.skipped("DISABLED_INACTIVE_OR_PENDING");
         }
         try {
-            if (processor.completeCall(claim, LocalDateTime.now())) {
+            if (processor.completeCallForDebug(claim, LocalDateTime.now(), previousNextCheckAt)) {
                 return ProactiveProcessResponse.callRinging(claim.requestId());
             }
-            processor.restoreAfterDebugCallFailure(schedule.getId(), previousNextCheckAt);
             return ProactiveProcessResponse.skipped("CALL_NOT_CREATED");
         } catch (RuntimeException exception) {
-            processor.fail(claim, exception, LocalDateTime.now());
-            processor.restoreAfterDebugCallFailure(schedule.getId(), previousNextCheckAt);
+            processor.recordDebugCallFailure(claim, exception, previousNextCheckAt);
             throw exception;
         }
     }
