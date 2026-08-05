@@ -9,6 +9,7 @@ import com.example.umcCall.domain.chat.enums.SenderType;
 import com.example.umcCall.domain.chat.event.UserMessageSentEvent;
 import com.example.umcCall.domain.chat.repository.ChatMessageRepository;
 import com.example.umcCall.domain.chat.repository.ChatPhotoRepository;
+import com.example.umcCall.global.infra.s3.S3Uploader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
@@ -27,17 +28,19 @@ public class ChatMessageWriter {
     private final ChatMessageRepository chatMessageRepository;
     private final ChatPhotoRepository chatPhotoRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final S3Uploader s3Uploader;
 
     /**
-     * 유저 메시지(+사진 URL)를 저장한다. photoUrl이 있으면 사진 메시지로 취급한다.
+     * 유저 메시지(+사진)를 저장한다. photoKey가 있으면 사진 메시지로 취급한다.
+     * 사진은 DB에 <b>객체 key</b>로 저장하고, 응답에는 유저가 볼 수 있는 presigned URL을 담아 돌려준다.
      * 방은 이 트랜잭션 안에서 다시 조회해 managed 상태로 만든다(updateLastMessageAt 변경 감지용).
      */
     @Transactional
-    public ChatMessageResponse saveUserMessage(Long chatRoomId, Long memberId, String content, String photoUrl) {
+    public ChatMessageResponse saveUserMessage(Long chatRoomId, Long memberId, String content, String photoKey) {
         ChatRoom room = chatRoomFinder.getOwnedRoom(chatRoomId, memberId);
 
         boolean hasText = content != null && !content.isBlank();
-        boolean hasImage = photoUrl != null;
+        boolean hasImage = photoKey != null;
 
         ChatMessage message = chatMessageRepository.save(
                 ChatMessage.builder()
@@ -51,7 +54,7 @@ public class ChatMessageWriter {
 
         if (hasImage) {
             chatPhotoRepository.save(
-                    ChatPhoto.builder().chatMessage(message).photoUrl(photoUrl).build());
+                    ChatPhoto.builder().chatMessage(message).photoUrl(photoKey).build());
         }
 
         room.updateLastMessageAt(message.getCreatedAt());
@@ -61,6 +64,7 @@ public class ChatMessageWriter {
             eventPublisher.publishEvent(new UserMessageSentEvent(chatRoomId));
         }
 
+        String photoUrl = hasImage ? s3Uploader.presignedGetUrl(photoKey) : null;
         return ChatMessageResponse.from(message, photoUrl);
     }
 

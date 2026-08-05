@@ -7,6 +7,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /**
  * AWS S3 클라이언트 설정.
@@ -28,6 +29,19 @@ public class S3Config {
     @Bean
     public S3Client s3Client() {
         return S3Client.builder()
+                .region(Region.of(region))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(accessKey, secretKey)))
+                .build();
+    }
+
+    /**
+     * presigned URL 발급기. 비공개 S3 객체를 유저에게 한시적으로 열어주는 서명 URL을 만든다.
+     * S3Client와 같은 자격증명/리전을 쓴다.
+     */
+    @Bean
+    public S3Presigner s3Presigner() {
+        return S3Presigner.builder()
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
