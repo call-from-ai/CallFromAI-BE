@@ -22,37 +22,37 @@ package com.example.umcCall.domain.image.enums;
  */
 public enum TTSVoice {
 
-    // 여성                Typecast voiceId   CLOVA speakerId(롤백 전용)
-    HEERA("", "nheera", Gender.FEMALE),
-    ARA_PRO("", "vara", Gender.FEMALE),
-    MINYOUNG("", "nminyoung", Gender.FEMALE),
-    YUNA_PRO("", "vyuna", Gender.FEMALE),
-    GOEUN_PRO("", "vgoeun", Gender.FEMALE),
-    SHASHA("", "nshasha", Gender.FEMALE),
-    YOUNGMI("", "nyoungmi", Gender.FEMALE),
-    SOHYUN("", "nes_c_sohyun", Gender.FEMALE),
-    SUJIN("", "nsujin", Gender.FEMALE),
-    YEJI("", "nyeji", Gender.FEMALE),
-    EUNSEO("", "neunseo", Gender.FEMALE),
+    // ⚠ enum 이름은 CLOVA 시절 화자명이라 Typecast 목소리와 다르다(DB에 이 이름이 저장돼 못 바꾼다).
+    //   실제 목소리는 줄 끝 주석을 볼 것.
+    // 여성                        Typecast voiceId        CLOVA speakerId(롤백 전용)
+    HEERA("tc_69f2e455ea79fd197aa0476f", "nheera", Gender.FEMALE),          // 서현
+    ARA_PRO("tc_68785db8ba9cd7503f27d921", "vara", Gender.FEMALE),          // 고운
+    MINYOUNG("tc_68537c9420b646f2176890ba", "nminyoung", Gender.FEMALE),    // 서진
+    YUNA_PRO("tc_68413e12459cfdf27b481183", "vyuna", Gender.FEMALE),        // 라연
+    GOEUN_PRO("tc_6837dec48fc46637a9272b88", "vgoeun", Gender.FEMALE),      // 소예
+    SHASHA("tc_67c90ad544cf859417f2fc3a", "nshasha", Gender.FEMALE),        // 예진
+    YOUNGMI("tc_6788847e9939d48aeb8642d2", "nyoungmi", Gender.FEMALE),      // 해랑
+    SOHYUN("tc_6731b307df12333201d12b94", "nes_c_sohyun", Gender.FEMALE),   // 설화
+    SUJIN("tc_65e96ab52564d1136ecb1d67", "nsujin", Gender.FEMALE),          // 유미
+    YEJI("tc_66d91cac31a58a718f750a49", "nyeji", Gender.FEMALE),            // 서희
+    EUNSEO("tc_63aaec0d34ca719d00798a97", "neunseo", Gender.FEMALE),        // 수빈
 
     // 남성
-    MINSANG("", "nminsang", Gender.MALE),
-    DONGHYUN_PRO("", "vdonghyun", Gender.MALE),
-    SANGDO("", "nsangdo", Gender.MALE),
-    DAESEONG_PRO("", "vdaeseong", Gender.MALE),
-    RAEWON("", "nraewon", Gender.MALE),
-    KITAE("", "nkitae", Gender.MALE),
-    KYUWON("", "nkyuwon", Gender.MALE),
-    SEONGHOON("", "nseonghoon", Gender.MALE),
-    SIYOON("", "nsiyoon", Gender.MALE),
-    SINU("", "nsinu", Gender.MALE),
-    JIHUN("", "njihun", Gender.MALE);
+    MINSANG("tc_63aaec04428dd87af3757d72", "nminsang", Gender.MALE),        // 서준
+    DONGHYUN_PRO("tc_68662745779b66ba84fc4d84", "vdonghyun", Gender.MALE),  // 세헌
+    SANGDO("tc_682e8798603b4e9ed84074f5", "nsangdo", Gender.MALE),          // 형진
+    DAESEONG_PRO("tc_662a05b17419f60500ac5630", "vdaeseong", Gender.MALE),  // 이준
+    RAEWON("tc_64d5cd4c35618dd3797c20ed", "nraewon", Gender.MALE),          // 평화
+    KITAE("tc_6731b2e0855f351b98d30c48", "nkitae", Gender.MALE),            // 건석
+    KYUWON("tc_61f0859907085fc68561c9a1", "nkyuwon", Gender.MALE),          // 지훈
+    SEONGHOON("tc_68f0727fd62a5934102f7ec0", "nseonghoon", Gender.MALE),    // 민욱
+    SIYOON("tc_686dc43ebd6351e06ee64d74", "nsiyoon", Gender.MALE),          // 원우
+    SINU("tc_678884b481dfbfa3e4075a18", "nsinu", Gender.MALE),              // 장운
+    JIHUN("tc_68257f68bc6e3c161ab5078d", "njihun", Gender.MALE);            // 필재
 
     /**
      * Typecast에 그대로 넘기는 화자 ID({@code tc_} 접두사). 통화가 실제로 쓰는 값.
-     * <p>⚠ <b>TODO: 아직 비어 있다.</b> Typecast {@code GET /v2/voices}로 성별당 11종을 골라 채워야 한다 —
-     * 비어 있으면 합성이 404로 떨어져 그 턴이 통째로 버려진다. 배포 전 반드시 채울 것.
-     * ({@code TTSVoiceTest.모든_화자에_voiceId가_있다}가 빈 값을 막는다)
+     * <p>⚠ 비면 합성이 404로 떨어져 그 턴이 통째로 버려진다({@code TTSVoiceTest.모든_화자에_voiceId가_있다}가 막는다).
      */
     private final String voiceId;
     /** ⚠ CLOVA Voice 화자 ID. <b>현재 쓰이지 않는다</b> — 위 javadoc의 롤백 경로 전용이다. */
