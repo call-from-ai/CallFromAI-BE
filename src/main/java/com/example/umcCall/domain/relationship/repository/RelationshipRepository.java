@@ -4,6 +4,7 @@ import com.example.umcCall.domain.relationship.entity.Relationship;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -31,6 +32,12 @@ public interface RelationshipRepository extends JpaRepository<Relationship, Long
 
     Optional<Relationship> findByMemberIdAndMainTrue(Long memberId);
     Optional<Relationship> findByMemberIdAndMainTrueAndCharacterDeletedAtIsNull(Long memberId);
+    /**
+     * AI 요약 요청 조립 시 트랜잭션 밖에서도 캐릭터 이름을 읽을 수 있도록 캐릭터를 함께 조회한다.
+     * 서비스에 트랜잭션을 거는 대신 필요한 연관관계만 초기화해 외부 AI 호출 동안 DB 트랜잭션이
+     * 유지되지 않게 한다.
+     */
+    @EntityGraph(attributePaths = "character")
     Optional<Relationship> findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(
             Long characterId, Long memberId);
 
