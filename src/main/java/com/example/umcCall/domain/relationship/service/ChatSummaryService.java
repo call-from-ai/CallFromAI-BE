@@ -19,8 +19,6 @@ import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.ChatSummaryRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.global.exception.BaseException;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -57,10 +55,8 @@ public class ChatSummaryService {
         ChatRoom room = chatRoomRepository.findByRelationshipId(relationshipId)
                 .orElseThrow(() -> new BaseException(ChatErrorCode.CHATROOM_NOT_FOUND));
 
-        LocalDateTime todayStartedAt = LocalDate.now().atStartOfDay();
         ChatMessage lastMessage = chatMessageRepository
-                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
-                        room.getId(), todayStartedAt)
+                .findTopByChatRoomIdOrderByIdDesc(room.getId())
                 .orElse(null);
         if (lastMessage == null) {
             return new ChatSummaryResponse(EMPTY_CONVERSATION_SUMMARY);
@@ -69,7 +65,7 @@ public class ChatSummaryService {
         // 동일 관계의 캐시 미스가 겹쳐 중복 AI 호출/INSERT가 발생하지 않도록 직렬화한다.
         synchronized (summaryLock(relationshipId)) {
             return getOrCreateSummary(
-                    memberId, relationship, relationshipId, room, lastMessage, todayStartedAt);
+                    memberId, relationship, relationshipId, room, lastMessage);
         }
     }
 
@@ -78,8 +74,7 @@ public class ChatSummaryService {
             Relationship relationship,
             Long relationshipId,
             ChatRoom room,
-            ChatMessage lastMessage,
-            LocalDateTime todayStartedAt) {
+            ChatMessage lastMessage) {
         ChatSummary cached = chatSummaryRepository.findByRelationshipId(relationshipId)
                 .orElse(null);
         if (cached != null
@@ -94,13 +89,12 @@ public class ChatSummaryService {
         boolean canIncrement = cached != null
                 && Integer.valueOf(SUMMARY_CACHE_VERSION).equals(cached.getCacheVersion());
         List<ChatMessage> recent = new ArrayList<>(canIncrement
-                ? chatMessageRepository.findRecentAfterAndBefore(
+                ? chatMessageRepository.findRecentAfter(
                         room.getId(),
                         cached.getLastMessageId(),
-                        todayStartedAt,
                         PageRequest.of(0, MAX_MESSAGES))
-                : chatMessageRepository.findRecentBefore(
-                        room.getId(), todayStartedAt, PageRequest.of(0, MAX_MESSAGES)));
+                : chatMessageRepository.findRecent(
+                        room.getId(), PageRequest.of(0, MAX_MESSAGES)));
         Collections.reverse(recent);
 
         List<AiSummaryMessage> messages = recent.stream()

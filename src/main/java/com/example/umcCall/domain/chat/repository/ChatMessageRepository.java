@@ -40,6 +40,16 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Query("""
             select m from ChatMessage m
             where m.chatRoom.id = :roomId
+              and m.id > :afterId
+            order by m.id desc
+            """)
+    List<ChatMessage> findRecentAfter(@Param("roomId") Long roomId,
+                                      @Param("afterId") Long afterId,
+                                      Pageable pageable);
+
+    @Query("""
+            select m from ChatMessage m
+            where m.chatRoom.id = :roomId
               and m.createdAt < :before
             order by m.id desc
             """)
