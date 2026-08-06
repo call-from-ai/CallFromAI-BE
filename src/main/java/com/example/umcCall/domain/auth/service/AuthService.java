@@ -56,12 +56,6 @@ public class AuthService {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
 
-
-        // 탈퇴한 회원은 재발급 못 받게 하기
-        if (member.getIsInactive()) {
-            throw new BaseException(AuthErrorCode.INACTIVE_MEMBER);
-        }
-
         return issueTokens(member);
     }
 

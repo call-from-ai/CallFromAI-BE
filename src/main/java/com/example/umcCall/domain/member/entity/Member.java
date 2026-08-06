@@ -64,9 +64,6 @@ public class Member extends BaseTimeEntity {
     @Column(name = "character_created_at")
     private LocalDateTime characterCreatedAt;
 
-    @Column(name = "is_inactive", nullable = false)
-    private Boolean isInactive;
-
     @Column(name = "all_notification_enabled", nullable = false)
     private boolean allNotificationEnabled;
 
@@ -84,7 +81,6 @@ public class Member extends BaseTimeEntity {
         this.socialUid = socialUid;
         this.socialType = socialType;
         this.callTicketBalance = 0;
-        this.isInactive = false;
         this.allNotificationEnabled = true;
         this.nightCallAllowed = true;
     }
@@ -119,17 +115,6 @@ public class Member extends BaseTimeEntity {
         if (mbti != null) this.mbti = mbti;
         if (job != null) this.job = job;
     }
-
-public void deactivate() {
-    this.isInactive = true;
-    this.lastName = null;
-    this.firstName = null;
-    this.imageUrl = null;
-    this.gender = null;
-    this.birth = null;
-    this.mbti = null;
-    this.job = null;
-}
 
     public void markCharacterCreated() {
         this.characterCreatedAt = LocalDateTime.now();
