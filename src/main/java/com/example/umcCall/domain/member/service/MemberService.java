@@ -13,6 +13,8 @@ import com.example.umcCall.domain.member.dto.response.NotificationSettingRespons
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.exception.MemberErrorCode;
 import com.example.umcCall.domain.member.repository.MemberRepository;
+import com.example.umcCall.domain.notification.push.repository.PushTokenRepository;
+import com.example.umcCall.domain.notification.repository.ActivityNotificationRepository;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.example.umcCall.global.exception.BaseException;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,8 @@ public class MemberService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final CharacterService characterService;
     private final PresetImageRepository presetImageRepository;
+    private final ActivityNotificationRepository activityNotificationRepository;
+    private final PushTokenRepository pushTokenRepository;
 
     public MemberResponse getMyInfo(Long memberId) {
         Member member = findMember(memberId);
@@ -88,10 +92,13 @@ public class MemberService {
     public void withdraw(Long memberId) {
         Member member = findMember(memberId);
         characterService.deleteAllCharactersForWithdraw(memberId);
-        member.deactivate();
-        // 탈퇴 처리와 refreshToken DB 삭제
-        refreshTokenRepository.findByMemberId(memberId)
-                .ifPresent(refreshTokenRepository::delete);
+        // 회원 관련 데이터는 AI 서버와 무관하니 즉시 정리
+        activityNotificationRepository.deleteByMemberId(memberId);
+        pushTokenRepository.deleteByMemberId(memberId);
+        refreshTokenRepository.findByMemberId(memberId).ifPresent(refreshTokenRepository::delete);
+
+        // 회원 row 자체도 즉시 하드 삭제
+        memberRepository.delete(member);
     }
 
     private Member findMember(Long memberId) {
