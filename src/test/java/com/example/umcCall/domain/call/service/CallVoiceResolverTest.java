@@ -102,13 +102,25 @@ class CallVoiceResolverTest {
     void 모든_화자는_성별이_지정돼_있다() {
         for (TTSVoice voice : TTSVoice.values()) {
             assertThat(voice.gender()).as(voice.name()).isNotNull();
+            // ⚠ speakerId(CLOVA)는 현재 쓰이지 않지만 롤백 경로라 비어 있으면 안 된다.
             assertThat(voice.speakerId()).as(voice.name()).isNotBlank();
+        }
+    }
+
+    @Test
+    void 모든_화자에_Typecast_voiceId가_있다() {
+        // 통화가 실제로 넘기는 값이다. 비면 합성이 404로 떨어져 그 턴이 통째로 버려지는데,
+        // 폴백이 없는 경로라 조용히 "AI가 대답을 안 한다"로만 보인다.
+        for (TTSVoice voice : TTSVoice.values()) {
+            assertThat(voice.voiceId()).as(voice.name()).isNotBlank().startsWith("tc_");
         }
     }
 
     @Test
     void 화자ID는_중복되지_않는다() {
         // 같은 ID가 두 멤버에 붙으면 프리셋 매핑이 사실상 하나로 합쳐진다.
+        assertThat(Arrays.stream(TTSVoice.values()).map(TTSVoice::voiceId).distinct().count())
+                .isEqualTo(TTSVoice.values().length);
         assertThat(Arrays.stream(TTSVoice.values()).map(TTSVoice::speakerId).distinct().count())
                 .isEqualTo(TTSVoice.values().length);
     }

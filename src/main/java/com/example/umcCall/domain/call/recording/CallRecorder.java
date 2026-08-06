@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public final class CallRecorder {
 
-    /** 녹음 기준 샘플레이트. 사용자 업스트림(16kHz)을 원본 그대로 두고 AI(24kHz)를 여기 맞춘다. */
+    /** 녹음 기준 샘플레이트. 사용자 업스트림(16kHz)을 원본 그대로 두고 AI(Typecast 44.1kHz)를 여기 맞춘다. */
     public static final int SAMPLE_RATE = 16_000;
 
     private static final int FRAMES_PER_MS = SAMPLE_RATE / 1000;
@@ -64,7 +64,9 @@ public final class CallRecorder {
     }
 
     /**
-     * AI 대사 wav 한 조각(CLOVA Voice 24kHz)을 16kHz로 낮춰 타임라인에 얹는다.
+     * AI 대사 wav 한 조각(Typecast 44.1kHz)을 16kHz로 낮춰 타임라인에 얹는다.
+     * <p>레이트는 <b>wav 헤더에서 읽는다</b> — 그래서 TTS 벤더가 바뀌어도(2026-08-06 CLOVA 24kHz →
+     * Typecast 44.1kHz) 이 메서드는 손댈 게 없었다. 상수로 박아뒀다면 조용히 배속 재생이 됐을 자리다.
      * <p>한 턴이 문장 단위로 <b>여러 조각</b>이라(#117) 커서가 조각을 이어 붙인다 —
      * 클라이언트가 큐에 넣어 순서대로 재생하는 모습과 같은 배치가 된다.
      */

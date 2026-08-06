@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.umcCall.domain.call.client.ClovaSpeechClient;
 import com.example.umcCall.domain.call.client.ClovaSpeechProperties;
-import com.example.umcCall.domain.call.client.ClovaVoiceClient;
+import com.example.umcCall.domain.call.client.TypecastVoiceClient;
 import com.example.umcCall.domain.call.enums.CallEndReason;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.event.CallEndedEvent;
@@ -79,7 +79,7 @@ class CallAudioWebSocketHandlerTest {
     private static final TTSVoice CHARACTER_VOICE = TTSVoice.YEJI;
 
     @Mock private ClovaSpeechClient clovaSpeechClient;
-    @Mock private ClovaVoiceClient clovaVoiceClient;
+    @Mock private TypecastVoiceClient typecastVoiceClient;
     @Mock private CallConversationService callConversationService;
     @Mock private CallService callService;
     @Mock private CallHistoryService callHistoryService;
@@ -107,7 +107,7 @@ class CallAudioWebSocketHandlerTest {
         lenient().when(callSummaryService.generate(any()))
                 .thenReturn(CompletableFuture.completedFuture(null));
         handler = new CallAudioWebSocketHandler(
-                clovaSpeechClient, clovaVoiceClient, callConversationService, callService,
+                clovaSpeechClient, typecastVoiceClient, callConversationService, callService,
                 callHistoryService,
                 new ClovaSpeechProperties("clovaspeech-gw.ncloud.com", 50051, "secret", 700),
                 callRecordingService, callSummaryService, callVoiceResolver,
@@ -413,7 +413,7 @@ class CallAudioWebSocketHandlerTest {
 
         assertThat(replyStreamed.await(2, TimeUnit.SECONDS)).isTrue();
         // 합성 자체를 건너뛴다 — 어차피 못 내보낼 대사라 TTS 호출·비용이 통째로 낭비다.
-        verify(clovaVoiceClient, after(300).never()).synthesize(any(), any());
+        verify(typecastVoiceClient, after(300).never()).synthesize(any(), any());
         verify(session, never()).sendMessage(any(BinaryMessage.class));
         // 안 들린 대사는 이력·전사에 남기지 않는다(사용자 발화만 남는다).
         verify(callHistoryService, never()).appendHistory(any(), eq(CallSpeaker.AI), any());
@@ -424,7 +424,7 @@ class CallAudioWebSocketHandlerTest {
         WebSocketSession session = givenConnectedCall();
         StreamObserver<NestResponse> stt = captureSttObserver();
         givenAiStreams("정상 대사");
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1, 2, 3});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1, 2, 3});
 
         stt.onNext(finalResult("안녕"));
 
@@ -449,13 +449,13 @@ class CallAudioWebSocketHandlerTest {
             onChunk.accept("둘째 대사");
             return null;
         }).when(callConversationService).respondStream(any(), any(), any(), any());
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("안녕"));         // 턴1 — 끼어들기로 폐기된다
         stt.onNext(finalResult("아니 잠깐만"));   // 턴2 — 끼어든 발화 자체가 만든 턴
 
-        verify(clovaVoiceClient, timeout(2000)).synthesize(eq("둘째 대사"), any());
-        verify(clovaVoiceClient, never()).synthesize(eq("첫째 대사"), any());
+        verify(typecastVoiceClient, timeout(2000)).synthesize(eq("둘째 대사"), any());
+        verify(typecastVoiceClient, never()).synthesize(eq("첫째 대사"), any());
     }
 
     @Test
@@ -471,7 +471,7 @@ class CallAudioWebSocketHandlerTest {
             onChunk.accept("정상 대사");
             return null;
         }).when(callConversationService).respondStream(any(), any(), any(), any());
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("안녕"));
 
@@ -487,14 +487,14 @@ class CallAudioWebSocketHandlerTest {
         WebSocketSession session = givenConnectedCall();
         StreamObserver<NestResponse> stt = captureSttObserver();
         givenAiStreams("응, 나 방금 퇴근했어. ", "너는 뭐 하고 있었어?");
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("뭐 해?"));
 
         // wav가 문장 수만큼 나간다 — 프론트는 도착 순서대로 이어 재생한다.
         verify(session, timeout(2000).times(2)).sendMessage(any(BinaryMessage.class));
-        verify(clovaVoiceClient, timeout(2000)).synthesize(eq("응, 나 방금 퇴근했어."), any());
-        verify(clovaVoiceClient, timeout(2000)).synthesize(eq("너는 뭐 하고 있었어?"), any());
+        verify(typecastVoiceClient, timeout(2000)).synthesize(eq("응, 나 방금 퇴근했어."), any());
+        verify(typecastVoiceClient, timeout(2000)).synthesize(eq("너는 뭐 하고 있었어?"), any());
         // 전사·이력은 턴당 한 줄로 합친다(문장별로 쪼개면 통화 전문 화면이 잘게 갈라진다).
         verify(callHistoryService, timeout(2000))
                 .appendHistory(CALL_ID, CallSpeaker.AI, "응, 나 방금 퇴근했어. 너는 뭐 하고 있었어?");
@@ -507,12 +507,12 @@ class CallAudioWebSocketHandlerTest {
         givenConnectedCall();
         StreamObserver<NestResponse> stt = captureSttObserver();
         givenAiStreams("응, 나 여기 있어.");
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("어디야?"));
 
         // enum 이름이 아니라 CLOVA 화자 ID가 나가야 한다.
-        verify(clovaVoiceClient, timeout(2000)).synthesize(any(), eq(CHARACTER_VOICE.speakerId()));
+        verify(typecastVoiceClient, timeout(2000)).synthesize(any(), eq(CHARACTER_VOICE.voiceId()));
     }
 
     @Test
@@ -521,12 +521,12 @@ class CallAudioWebSocketHandlerTest {
         givenConnectedCall();
         StreamObserver<NestResponse> stt = captureSttObserver();
         givenAiStreams("응, 나 방금 퇴근했어. ", "너는 뭐 하고 있었어?");
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("뭐 해?"));
         stt.onNext(finalResult("그렇구나?"));
 
-        verify(clovaVoiceClient, timeout(2000).atLeast(3)).synthesize(any(), any());
+        verify(typecastVoiceClient, timeout(2000).atLeast(3)).synthesize(any(), any());
         verify(callVoiceResolver, times(1)).resolve(CHARACTER_ID);
     }
 
@@ -537,12 +537,12 @@ class CallAudioWebSocketHandlerTest {
         WebSocketSession session = givenConnectedCall();
         StreamObserver<NestResponse> stt = captureSttObserver();
         givenAiStreams("응, 오늘은 그냥 집에 있었어. ", "🙂");
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("뭐 해?"));
 
-        verify(clovaVoiceClient, timeout(2000)).synthesize(eq("응, 오늘은 그냥 집에 있었어."), any());
-        verify(clovaVoiceClient, never()).synthesize(eq("🙂"), any());
+        verify(typecastVoiceClient, timeout(2000)).synthesize(eq("응, 오늘은 그냥 집에 있었어."), any());
+        verify(typecastVoiceClient, never()).synthesize(eq("🙂"), any());
         // ⚠ 이모지는 소리로 안 나갔으니 이력·전사에도 안 남는다. 통화 전문은 <b>실제로 들린 것</b>의
         // 기록이다 — #122 리뷰에서 "원문 보존" 안을 검토했다가 이 이유로 기각했다(2026-08-03).
         verify(callHistoryService, timeout(2000))
@@ -587,7 +587,7 @@ class CallAudioWebSocketHandlerTest {
 
         stt.onNext(finalResult("뭐 해?"));
 
-        verify(clovaVoiceClient, after(500).never()).synthesize(any(), any());
+        verify(typecastVoiceClient, after(500).never()).synthesize(any(), any());
         // 확인이 speak()에만 있었다면 5조각을 전부 읽고 나서야 멈춘다.
         assertThat(consumed.get()).isZero();
     }
@@ -603,12 +603,12 @@ class CallAudioWebSocketHandlerTest {
             onChunk.accept("너는 뭐 하고 있었어?");     // 이 문장은 나가면 안 된다
             return null;
         }).when(callConversationService).respondStream(any(), any(), any(), any());
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("뭐 해?"));
 
         verify(session, timeout(2000).times(1)).sendMessage(any(BinaryMessage.class));
-        verify(clovaVoiceClient, never()).synthesize(eq("너는 뭐 하고 있었어?"), any());
+        verify(typecastVoiceClient, never()).synthesize(eq("너는 뭐 하고 있었어?"), any());
         // 들린 문장은 남긴다 — 안 들린 대사만 빼는 게 원칙이다(둘 다 빼면 AI가 자기 말을 잊는다).
         verify(callHistoryService, timeout(2000))
                 .appendHistory(CALL_ID, CallSpeaker.AI, "응, 나 방금 퇴근했어.");
@@ -667,7 +667,7 @@ class CallAudioWebSocketHandlerTest {
             onChunk.accept("너는 뭐 하고 있었어?");
             return null;
         }).when(callConversationService).respondStream(any(), any(), any(), any());
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("뭐 해?"));
 
@@ -675,7 +675,7 @@ class CallAudioWebSocketHandlerTest {
         assertThat(canceled).hasSize(1);
         assertThat(canceled.get(0).get("data").get("callId").asLong()).isEqualTo(CALL_ID);
         // 뒷문장은 폐기된다 — 트리거만 바뀌었을 뿐 1단계 취소는 그대로다.
-        verify(clovaVoiceClient, never()).synthesize(eq("너는 뭐 하고 있었어?"), any());
+        verify(typecastVoiceClient, never()).synthesize(eq("너는 뭐 하고 있었어?"), any());
         // 종료 통지가 아니다 — 통화는 그대로 이어진다.
         verify(session, never()).close(any());
     }
@@ -693,13 +693,13 @@ class CallAudioWebSocketHandlerTest {
             onChunk.accept("너는 뭐 하고 있었어?");
             return null;
         }).when(callConversationService).respondStream(any(), any(), any(), any());
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("뭐 해?"));
 
         assertThat(awaitControlsOfType(session, "AI_SPEECH_CANCELED")).isEmpty();
         // 대사가 끝까지 나갔다.
-        verify(clovaVoiceClient, timeout(2000)).synthesize(eq("너는 뭐 하고 있었어?"), any());
+        verify(typecastVoiceClient, timeout(2000)).synthesize(eq("너는 뭐 하고 있었어?"), any());
     }
 
     @Test
@@ -714,7 +714,7 @@ class CallAudioWebSocketHandlerTest {
             onChunk.accept("너는 뭐 하고 있었어?");
             return null;
         }).when(callConversationService).respondStream(any(), any(), any(), any());
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("뭐 해?"));
 
@@ -739,7 +739,7 @@ class CallAudioWebSocketHandlerTest {
             onChunk.accept("너는 뭐 하고 있었어?");
             return null;
         }).when(callConversationService).respondStream(any(), any(), any(), any());
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("뭐 해?"));
 
@@ -763,7 +763,7 @@ class CallAudioWebSocketHandlerTest {
             return null;
         }).when(session).sendMessage(any(BinaryMessage.class));
         givenAiStreams("응, 나 방금 퇴근했어. ", "너는 뭐 하고 있었어?");
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(new byte[] {1});
 
         stt.onNext(finalResult("뭐 해?"));
 
@@ -771,7 +771,7 @@ class CallAudioWebSocketHandlerTest {
         assertThat(canceled).hasSize(1);   // 통지 경로가 둘이어도 중복되지 않는다
         assertThat(canceled.get(0).get("data").get("callId").asLong()).isEqualTo(CALL_ID);
         // 뒷문장은 그대로 폐기된다 — 통지 경로가 늘어도 1단계 취소는 그대로다.
-        verify(clovaVoiceClient, never()).synthesize(eq("너는 뭐 하고 있었어?"), any());
+        verify(typecastVoiceClient, never()).synthesize(eq("너는 뭐 하고 있었어?"), any());
     }
 
     @Test
@@ -809,9 +809,12 @@ class CallAudioWebSocketHandlerTest {
         return buffer.array();
     }
 
-    /** CLOVA Voice가 주는 모양의 wav(24kHz 모노 16-bit). */
+    /**
+     * Typecast가 주는 모양의 wav(44.1kHz 모노 16-bit). {@code samples}는 <b>샘플 개수</b>라
+     * 44_100이면 1초다 — 녹음은 이걸 16kHz로 낮춰 타임라인에 얹는다.
+     */
     private static byte[] aiWav(short value, int samples) {
-        byte[] header = WavCodec.header(samples * 2, 24_000);
+        byte[] header = WavCodec.header(samples * 2, 44_100);
         return ByteBuffer.allocate(header.length + samples * 2)
                 .put(header).put(pcm(value, samples)).array();
     }
@@ -828,7 +831,7 @@ class CallAudioWebSocketHandlerTest {
         WebSocketSession session = givenConnectedCall();
         StreamObserver<NestResponse> stt = captureSttObserver();
         givenAiStreams("응, 나 방금 퇴근했어.");
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(aiWav((short) 3000, 24_000));
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(aiWav((short) 3000, 44_100));
 
         handler.handleBinaryMessage(session, new BinaryMessage(pcm((short) 1000, 80_000)));
         stt.onNext(finalResult("뭐 해?"));
@@ -848,7 +851,7 @@ class CallAudioWebSocketHandlerTest {
         WebSocketSession session = givenConnectedCall();
         StreamObserver<NestResponse> stt = captureSttObserver();
         givenAiStreams("이 대사는 전송에 실패한다.");
-        when(clovaVoiceClient.synthesize(any(), any())).thenReturn(aiWav((short) 3000, 24_000));
+        when(typecastVoiceClient.synthesize(any(), any())).thenReturn(aiWav((short) 3000, 44_100));
         doThrow(new IOException("소켓 끊김")).when(session).sendMessage(any(BinaryMessage.class));
 
         handler.handleBinaryMessage(session, new BinaryMessage(pcm((short) 1000, 80_000)));

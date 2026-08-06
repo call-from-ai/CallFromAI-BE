@@ -32,12 +32,27 @@ clova:
     secret-key: ${CLOVA_SPEECH_SECRET}
     # 턴 끝 감지: 이만큼(ms) 침묵하면 final(epdType=gap) 확정. 지연 vs 조기컷의 다이얼 — 실사용하며 튜닝.
     gap-threshold-ms: 700
+  # ⚠ 2026-08-06 TTS를 Typecast로 교체하며 비활성화. 지우지 않은 이유는 롤백이다 —
+  # 되살릴 땐 아래 주석을 풀고 typecast 블록을 지우면 된다(환경변수 두 개도 다시 필요하다).
+  # ⚠ 주석인 채로 두면 CLOVA_VOICE_* 환경변수가 없어도 기동한다 — 주석을 풀면 다시 필수가 된다.
+  # voice:
+  #   base-url: https://naveropenapi.apigw.ntruss.com
+  #   client-id: ${CLOVA_VOICE_CLIENT_ID}
+  #   client-secret: ${CLOVA_VOICE_CLIENT_SECRET}
+  #   format: wav
+  #   sampling-rate: 24000
+  #   connect-timeout-ms: 2000
+  #   read-timeout-ms: 10000
+
+typecast:
   voice:
-    base-url: https://naveropenapi.apigw.ntruss.com
-    client-id: ${CLOVA_VOICE_CLIENT_ID}
-    client-secret: ${CLOVA_VOICE_CLIENT_SECRET}
-    format: wav
-    sampling-rate: 24000
+    base-url: https://api.typecast.ai
+    api-key: ${TYPECAST_API_KEY}
+    model: ssfm-v30
+    # ISO 639-3. 통화는 한국어 고정 — 생략하면 짧은 대사에서 자동 감지가 오판할 수 있다.
+    language: kor
+    # ⚠ 샘플레이트는 설정이 없다. 표준 TTS는 44.1kHz 16-bit 모노 고정이다(요청으로 못 바꾼다).
+    audio-format: wav
     connect-timeout-ms: 2000
     read-timeout-ms: 10000
 
