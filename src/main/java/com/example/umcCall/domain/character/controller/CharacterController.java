@@ -72,6 +72,14 @@ public class CharacterController {
         return ApiResponse.onSuccess(characterService.getActiveCharacter(memberId));
     }
 
+    @Operation(summary = "캐릭터 상세 조회", description = "characterId로 특정 캐릭터의 상세 정보를 조회한다. 수정 화면 진입 시 사용한다.")
+    @GetMapping("/{characterId}")
+    public ApiResponse<CharacterResponse> getCharacter(
+            @AuthenticationPrincipal Long memberId,
+            @PathVariable Long characterId) {
+        return ApiResponse.onSuccess(characterService.getCharacter(memberId, characterId));
+    }
+
     // 내 캐릭터 목록 조회
     @Operation(summary = "내 캐릭터 목록 조회", description = "회원이 생성한 캐릭터 목록을 반환한다. 최대 5개라 페이지네이션은 없다.")
     @GetMapping
