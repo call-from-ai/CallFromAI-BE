@@ -1,6 +1,7 @@
 package com.example.umcCall.domain.call.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -38,6 +39,7 @@ import com.example.umcCall.domain.image.enums.TTSVoice;
 import com.example.umcCall.domain.call.ticket.WsTicketHandshakeInterceptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nbp.cdncp.nest.grpc.proto.v1.NestRequest;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
@@ -287,6 +289,63 @@ class CallAudioWebSocketHandlerTest {
         // 산출물이 영원히 안 끝나는데도 즉시 돌아와야 한다.
         assertThat(elapsedMs).isLessThan(ARTIFACT_WAIT_MS);
         // 그래도 시작은 한다 — 이 통화는 나중에 조회될 때 PROCESSING일 수 있다.
+        verify(callSummaryService).generate(CALL_ID);
+    }
+
+    // --- 정리 경로가 실패해도 상태 전이는 반드시 한다 (좀비 IN_PROGRESS 방지) -----------------------
+    //
+    // ⚠ 전이(finishCall)가 순서상 정리 작업 뒤에 있어서, 앞이 터지면 통째로 스킵됐다. 그러면 소켓이
+    // 죽은 통화가 IN_PROGRESS로 남아 그 관계의 재발신이 시간 상한(5분)까지 409로 막힌다.
+    // 2026-08-06 prod에서 실제로 발생했다(callId=35: 소켓 13:43:30 사망 → 마감 13:48:07).
+
+    @Test
+    void 산출물_생성이_실패해도_통화는_마감된다() {
+        WebSocketSession session = givenConnectedCall();
+        when(callSummaryService.generate(CALL_ID)).thenThrow(new IllegalStateException("요약 시작 실패"));
+
+        handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+
+        verify(callService).finish(CALL_ID);
+    }
+
+    @Test
+    void 서버가_마감한_경로도_산출물이_실패하면_통화를_마감한다() {
+        // terminateCall 경로. 여기선 예외가 요청 스레드까지 전파되면 끊기가 500이 된다.
+        WebSocketSession session = givenConnectedCall();
+        when(callSummaryService.generate(CALL_ID)).thenThrow(new IllegalStateException("요약 시작 실패"));
+
+        handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42));
+
+        verify(callService).finish(CALL_ID);
+    }
+
+    @Test
+    void 정리_실패가_끊기_응답으로_전파되지_않는다() {
+        // onCallEnded는 PATCH /calls/{id}/end의 요청 스레드에서 커밋 직후 동기 실행된다 —
+        // 여기서 예외가 새어 나가면 DB 마감은 커밋됐는데 사용자만 500을 본다.
+        WebSocketSession session = givenConnectedCall();
+        when(callSummaryService.generate(CALL_ID)).thenThrow(new IllegalStateException("요약 시작 실패"));
+
+        assertThatCode(() -> handler.onCallEnded(
+                new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42)))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 스트림_종료가_실패해도_통화는_마감된다() {
+        // 클라이언트 끊김 경로의 half-close(onCompleted)는 이미 닫힌 스트림에서 실제로 던진다.
+        // ⚠ 단계마다 따로 삼켜야 한다 — 한 catch로 묶으면 여기서 터질 때 산출물까지 같이 스킵된다.
+        WebSocketSession session = openSession();
+        @SuppressWarnings("unchecked")
+        StreamObserver<NestRequest> stream = mock(StreamObserver.class);
+        doThrow(new IllegalStateException("이미 닫힌 스트림")).when(stream).onCompleted();
+        when(clovaSpeechClient.openRecognizeStream(any())).thenReturn(stream);
+        handler.afterConnectionEstablished(session);
+
+        handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+
+        verify(callService).finish(CALL_ID);
+        // 스트림이 터져도 산출물 생성까지 이어져야 한다(단계별 삼키기의 증거).
         verify(callSummaryService).generate(CALL_ID);
     }
 
