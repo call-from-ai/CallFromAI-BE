@@ -146,7 +146,7 @@ public class ProactiveContactProcessor {
     }
 
     /**
-     * local Swagger 테스트 전용 claim. 시간 간격 정책은 우회하지만 활성 관계·삭제·enabled는 검증한다.
+     * 스케줄러 테스트용 claim. 시간 간격 정책은 우회하지만 활성 관계·삭제·enabled는 검증한다.
      */
     @Transactional
     public Claim forceClaimForDebug(Long scheduleId) {
@@ -154,7 +154,7 @@ public class ProactiveContactProcessor {
     }
 
     /**
-     * local Swagger 테스트 전용 통화 claim. 스케줄 정책과 통화 선택 확률은 우회한다.
+     * 스케줄러 테스트용 통화 claim. 스케줄 정책과 통화 선택 확률은 우회한다.
      */
     @Transactional
     public Claim forceCallClaimForDebug(Long scheduleId) {
@@ -267,7 +267,7 @@ public class ProactiveContactProcessor {
         return completeCall(claim, now, now.plusMinutes(10));
     }
 
-    /** local 강제 통화 처리. 생성 실패 시 같은 트랜잭션에서 디버그 호출 전 시각을 복구한다. */
+    /** 강제 통화 테스트 처리. 생성 실패 시 같은 트랜잭션에서 디버그 호출 전 시각을 복구한다. */
     @Transactional
     public boolean completeCallForDebug(Claim claim, LocalDateTime now,
                                         LocalDateTime previousNextCheckAt) {
@@ -296,7 +296,7 @@ public class ProactiveContactProcessor {
         return true;
     }
 
-    /** local 강제 통화 예외를 기록하고 디버그 호출 전 스케줄 시각을 한 트랜잭션에서 복구한다. */
+    /** 강제 통화 테스트 예외를 기록하고 디버그 호출 전 스케줄 시각을 한 트랜잭션에서 복구한다. */
     @Transactional
     public void recordDebugCallFailure(Claim claim, RuntimeException exception,
                                        LocalDateTime previousNextCheckAt) {
