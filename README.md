@@ -202,4 +202,4 @@ PR 제목은 `<Prefix>: <Description>` 양식을 준수하며, prefix는 Commit 
 
 ## 🗂️ ERD
 
-![img_2.png](img_2.png)
+![img_1.png](img_1.png)
