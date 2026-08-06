@@ -4,6 +4,7 @@ import com.example.umcCall.domain.ai.client.AiServerClient;
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatResponse;
 import com.example.umcCall.domain.ai.dto.AiProactiveRequest;
+import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.example.umcCall.domain.ai.exception.AiErrorCode;
 import com.example.umcCall.domain.ai.exception.AiServerException;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
@@ -201,6 +202,7 @@ public class ProactiveContactProcessor {
         AiProactiveRequest request = new AiProactiveRequest(
                 claim.requestId(),
                 relationship.getCharacter().getId(),
+                AiConversationChannel.CHAT,
                 PROACTIVE_SEED,
                 aiContactReason(schedule.getPendingContactReason()),
                 state.name(),
