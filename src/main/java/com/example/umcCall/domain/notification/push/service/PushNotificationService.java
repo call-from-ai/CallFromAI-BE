@@ -45,6 +45,25 @@ public class PushNotificationService {
     }
 
     /**
+     * [테스트용] 회원 알림설정(전체알림/방해금지)을 <b>무시</b>하고 등록된 모든 기기에 바로 발송한다.
+     * 유저가 스스로 요청하는 "내 기기가 푸시를 받나" 확인용이라 설정 판정을 건너뛴다.
+     * 발송 대상(등록된) 기기 수를 반환한다(0이면 등록된 토큰이 없다는 뜻). 무효 토큰은 함께 정리한다.
+     */
+    public int sendTest(Long memberId, PushMessage message) {
+        List<PushToken> tokens = pushTokenRepository.findByMemberId(memberId);
+        if (tokens.isEmpty()) {
+            return 0;   // 등록된 기기 없음 → 발송할 대상이 없음
+        }
+        List<String> tokenStrings = tokens.stream().map(PushToken::getToken).toList();
+
+        List<String> invalidTokens = fcmSender.send(tokenStrings, message);
+        if (!invalidTokens.isEmpty()) {
+            pushTokenRepository.deleteByTokenIn(invalidTokens);
+        }
+        return tokenStrings.size();
+    }
+
+    /**
      * 회원 단위 발송 허용 판정.
      * - 전체 알림 OFF면 모두 차단.
      * - 방해금지 시간대(회원이 설정한 start~end, 자정 넘김 지원)면 차단.
