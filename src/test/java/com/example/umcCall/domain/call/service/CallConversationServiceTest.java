@@ -2,6 +2,7 @@ package com.example.umcCall.domain.call.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,6 +13,7 @@ import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
 import com.example.umcCall.domain.ai.service.AiConversationService;
+import com.example.umcCall.domain.ai.service.AiRequestContextProvider;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.character.entity.CharacterAiProfile;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
@@ -21,6 +23,7 @@ import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -48,6 +51,7 @@ class CallConversationServiceTest {
     @Mock private RelationshipStatusRepository relationshipStatusRepository;
     @Mock private AiCharacterSnapshotMapper characterSnapshotMapper;
     @Mock private AiRelationshipSnapshotMapper relationshipSnapshotMapper;
+    @Mock private AiRequestContextProvider requestContextProvider;
     @Mock private AiConversationService aiConversationService;
 
     private CallConversationService service;
@@ -59,7 +63,7 @@ class CallConversationServiceTest {
         CallAiRequestAssembler assembler = new CallAiRequestAssembler(
                 characterRepository, characterAiProfileRepository,
                 relationshipRepository, relationshipStatusRepository,
-                characterSnapshotMapper, relationshipSnapshotMapper);
+                characterSnapshotMapper, relationshipSnapshotMapper, requestContextProvider);
         service = new CallConversationService(assembler, aiConversationService);
 
         when(characterRepository.findById(CHARACTER_ID))
@@ -70,6 +74,8 @@ class CallConversationServiceTest {
                 .thenReturn(Optional.of(mock(Relationship.class)));
         when(relationshipStatusRepository.findByRelationshipId(RELATIONSHIP_ID))
                 .thenReturn(Optional.of(mock(RelationshipStatus.class)));
+        when(requestContextProvider.create(nullable(Long.class))).thenReturn(new AiRequestContextProvider.Context(
+                "민준", "Asia/Seoul", OffsetDateTime.parse("2026-08-07T02:15:00+09:00")));
     }
 
     /** 통화가 실제로 쓰는 경로는 스트리밍뿐이다. 조각 소비는 이 검증의 관심사가 아니라 빈 소비자를 넘긴다. */
@@ -95,6 +101,9 @@ class CallConversationServiceTest {
                 .containsExactly("안녕", "안녕하세요");
         assertThat(sent.characterId()).isEqualTo(CHARACTER_ID);
         assertThat(sent.channel()).isEqualTo(AiConversationChannel.CALL);
+        assertThat(sent.userName()).isEqualTo("민준");
+        assertThat(sent.userTimeZone()).isEqualTo("Asia/Seoul");
+        assertThat(sent.localDateTime()).isNotNull();
         assertThat(sent.requestId()).isNotBlank(); // 멱등성 키
     }
 
