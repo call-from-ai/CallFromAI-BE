@@ -117,4 +117,11 @@ public class MemberService {
         member.updateDoNotDisturb(request.startTime(), request.endTime());
         return NotificationSettingResponse.from(member);
     }
+
+    @Transactional
+    public NotificationSettingResponse deleteDoNotDisturb(Long memberId) {
+        Member member = findMember(memberId);
+        member.updateDoNotDisturb(null, null);
+        return NotificationSettingResponse.from(member);
+    }
 }

@@ -95,4 +95,11 @@ public class MemberController {
             @RequestBody @Valid DoNotDisturbUpdateRequest request) {
         return ResponseEntity.ok(ApiResponse.onSuccess(memberService.updateDoNotDisturb(memberId, request)));
     }
+
+    @Operation(summary = "방해 금지 시간 삭제", description = "설정된 방해 금지 시간을 해제한다.")
+    @DeleteMapping("/me/notification-settings/do-not-disturb")
+    public ResponseEntity<ApiResponse<NotificationSettingResponse>> deleteDoNotDisturb(
+            @AuthenticationPrincipal Long memberId) {
+        return ResponseEntity.ok(ApiResponse.onSuccess(memberService.deleteDoNotDisturb(memberId)));
+    }
 }
