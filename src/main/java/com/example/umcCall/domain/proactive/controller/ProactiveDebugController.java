@@ -60,7 +60,7 @@ public class ProactiveDebugController {
             description = """
                     메인 캐릭터의 nextCheckAt을 현재 시각으로 바꿔 도래 상태로 만든다.
                     이 요청만으로 연락이 실행되지는 않는다. 이어서 process를 호출하거나 worker polling을 기다려야 하며,
-                    process 시 연락 간격, 미응답, 일일 한도 같은 정상 정책에 의해 다시 연기될 수 있다.
+                    process 시 연락 간격이나 미응답 같은 정상 정책에 의해 다시 연기될 수 있다.
                     """)
     @PostMapping("/{memberId}/force-due")
     public ApiResponse<ProactiveScheduleResponse> forceDue(
@@ -87,9 +87,10 @@ public class ProactiveDebugController {
     @Operation(
             summary = "정책을 우회해 선제 채팅 강제 발송",
             description = """
-                    채팅 전달 경로만 빠르게 검증한다. 연락 간격, 선호 시간, 일일 한도 및 행동 선택 정책을 우회해
+                    채팅 전달 경로만 빠르게 검증한다. 연락 간격, 선호 시간 및 행동 선택 정책을 우회해
                     CHAT claim을 만들고 AI 서버를 실제 호출한다. 성공하면 AI 메시지를 DB에 저장하고 SSE 또는 FCM으로 알린다.
                     enabled, 메인 관계, 캐릭터 삭제 여부와 기존 pending 요청은 검증한다.
+                    테스트 전후의 운영 스케줄 시각, 카운터, 미응답 및 오류 상태는 변경하지 않는다.
                     """)
     @PostMapping("/{memberId}/force-send")
     public ApiResponse<ProactiveProcessResponse> forceSend(
@@ -101,11 +102,11 @@ public class ProactiveDebugController {
     @Operation(
             summary = "정책을 우회해 선제 통화 강제 발신",
             description = """
-                    통화 착신 경로만 빠르게 검증한다. 연락 간격, 선호 시간, 일일 한도, 관계 상태, 미응답 상태와
+                    통화 착신 경로만 빠르게 검증한다. 연락 간격, 선호 시간, 관계 상태, 미응답 상태와
                     통화 선택 확률을 우회해 CALL claim을 만든다. 성공하면 AI 발신 RINGING 통화와 착신 푸시를 생성한다.
                     enabled, 메인 관계, 캐릭터 삭제 여부, 기존 pending 요청 및 진행 중인 통화는 검증한다.
-                    실패하면 테스트 전 nextCheckAt을 복구한다. 성공하면 실제 완료 경로와 동일하게 dailyContactCount와
-                    dailyCallCount를 증가시키고 다음 nextCheckAt을 계산한다. 착신 대기 통화 조회 API에서 생성된 통화를 확인할 수 있다.
+                    성공과 실패 모두 테스트 전 운영 스케줄 상태를 복구하며 카운터도 증가시키지 않는다.
+                    단, 실제 통화 중복을 막기 위해 진행 중인 통화 검증은 유지한다.
                     """)
     @PostMapping("/{memberId}/force-call")
     public ApiResponse<ProactiveProcessResponse> forceCall(

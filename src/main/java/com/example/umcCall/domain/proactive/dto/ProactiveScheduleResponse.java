@@ -7,7 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-@Schema(description = "캐릭터별 선제 연락 스케줄의 설정, 실행 시각, 미응답, 일일 한도 및 재시도 상태")
+@Schema(description = "캐릭터별 선제 연락 스케줄의 설정, 실행 시각, 미응답, 연락 횟수 및 재시도 상태")
 public record ProactiveScheduleResponse(
         @Schema(description = "선제 연락 스케줄 ID", example = "12")
         Long scheduleId,

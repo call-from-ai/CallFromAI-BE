@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 public class ProactiveContactPolicy {
 
     private static final Duration MINIMUM_COOLDOWN = Duration.ofMinutes(30);
-    private static final double CALL_PROBABILITY = 0.20;
+    private static final double CALL_PROBABILITY = 0.25;
 
     private final PreferredContactTimePolicy preferredTimePolicy;
 
@@ -38,9 +38,6 @@ public class ProactiveContactPolicy {
         if (context.optedOut()) return Decision.blocked("EXPLICIT_OPT_OUT");
         if (context.doNotDisturb()) return Decision.defer("DO_NOT_DISTURB", context.now().plusHours(1));
         if (context.activeSession()) return Decision.defer("ACTIVE_SESSION", context.now().plusMinutes(10));
-        if (context.dailyContactCount() >= context.dailyContactLimit()) {
-            return Decision.defer("DAILY_LIMIT_REACHED", context.now().toLocalDate().plusDays(1).atStartOfDay());
-        }
         if (context.pausedUntil() != null && context.now().isBefore(context.pausedUntil())) {
             return Decision.defer("PAUSED", context.pausedUntil());
         }
@@ -82,7 +79,7 @@ public class ProactiveContactPolicy {
     public LocalDateTime nextCandidate(LocalDateTime anchor, Double attachment,
                                        ProactiveRelationshipState state) {
         Context context = new Context(anchor, anchor, null, true, false, false, false,
-                0, 10, 0, 3, PreferTime.ANYTIME, AttachmentLevel.from(attachment), state,
+                PreferTime.ANYTIME, AttachmentLevel.from(attachment), state,
                 RecentResponse.POSITIVE, 0, false, false, false, false, null);
         return anchor.plus(contactInterval(context, ThreadLocalRandom.current().nextDouble()));
     }
@@ -117,7 +114,6 @@ public class ProactiveContactPolicy {
 
     private boolean canCall(Context context) {
         return context.callAllowed()
-                && context.dailyCallCount() < context.dailyCallLimit()
                 && context.recentResponse() == RecentResponse.POSITIVE
                 && context.relationshipState() == ProactiveRelationshipState.NORMAL
                 && !context.repeatedMissedCalls();
@@ -142,10 +138,6 @@ public class ProactiveContactPolicy {
             boolean optedOut,
             boolean doNotDisturb,
             boolean activeSession,
-            int dailyContactCount,
-            int dailyContactLimit,
-            int dailyCallCount,
-            int dailyCallLimit,
             PreferTime preferTime,
             AttachmentLevel attachmentLevel,
             ProactiveRelationshipState relationshipState,
