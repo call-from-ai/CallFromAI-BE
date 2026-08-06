@@ -196,16 +196,16 @@ public enum ChatErrorCode implements BaseErrorCode {
 직접 수정하지 않는다. 도메인 간 상호작용은 명확한 호출 지점을 통해 이뤄진다.
 
 | 도메인 | 담당 | 주요 테이블 | 책임 |
-|---|---|---|---|
+|---|----|---|---|
 | 인증 | 준혁 | (auth), member | 카카오 로그인, 토큰, 로그아웃, 회원 |
 | 회원 | 준혁 | member, term, member_term | 프로필, 약관 동의, 알림 설정 |
-| 캐릭터 | 용환 | character, character_trait | 온보딩, 캐릭터 생성/수정/삭제, 매력 |
+| 캐릭터 | 준혁 | character, character_trait | 온보딩, 캐릭터 생성/수정/삭제, 매력 |
 | 관계 | 현경 | relationship, relationship_status, emotion_log, chat_summary | 관계 상태, 감정, 호감도, 메인 연인, AI 대화 요약 |
 | 실시간/발신 | 현경 | live_status, outbound_schedule | AI 능동 발신 판단, 실시간 상태 |
 | 채팅 | 석민 | chat_room, chat_message, chat_photo | 채팅방·메시지·사진, SSE |
 | 통화 | 준우 | call, call_history | 통화(WebSocket), 기록 (AI 발신은 proactive 스케줄링이 트리거) |
 | 알림/푸시 | 석민 | push_token | FCM 토큰, 발송 판정 |
-| 알림 조회 | 용환 | activity_notification, system_notification, notification_setting | 인앱 알림 목록, 알림 설정 |
+| 알림 조회 | 준혁 | activity_notification, system_notification, notification_setting | 인앱 알림 목록, 알림 설정 |
 
 ### 도메인 간 협업 지점 (중요)
 - **채팅방 생성**: 캐릭터 생성(캐릭터 도메인) 시 채팅방도 함께 생성된다.
