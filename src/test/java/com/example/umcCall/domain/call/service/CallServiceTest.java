@@ -39,6 +39,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /** 착신 응답(accept/reject)·종료·스위퍼 마감과 상태 전이 위임 검증. 전이는 실제 {@link Call}로 확인한다. */
 @ExtendWith(MockitoExtension.class)
@@ -537,5 +539,19 @@ class CallServiceTest {
                 .isInstanceOf(CallException.class)
                 .extracting(e -> ((CallException) e).getErrorCode())
                 .isEqualTo(CallErrorCode.CALL_NOT_FOUND);
+    }
+
+    @Test
+    void finish는_새_트랜잭션에서_돈다() throws Exception {
+        // ⚠ finish는 CallEndedEvent의 AFTER_COMMIT 리스너에서도 불린다. 그 단계에선 트랜잭션 동기화가
+        // 아직 "활성"으로 보여, 기본 REQUIRED면 새 트랜잭션을 열지 않고 이미 커밋된 트랜잭션에 참여한다
+        // → 비관적 락 쿼리가 "Query requires transaction be in progress"로 터진다(2026-08-06 prod).
+        // 전파 속성은 프록시가 해석하므로 단위 테스트로는 행위 검증이 불가능하다 — 선언을 고정한다.
+        Transactional transactional = CallService.class
+                .getMethod("finish", Long.class)
+                .getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
     }
 }

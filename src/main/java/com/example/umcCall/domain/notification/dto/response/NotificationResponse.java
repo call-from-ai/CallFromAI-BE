@@ -12,9 +12,10 @@ public record NotificationResponse(
         boolean read,
         LocalDateTime createdAt,
         Long characterId,
+        String characterName,
         String characterImageUrl
 ) {
-    public static NotificationResponse from(ActivityNotification notification, Long characterId, String characterImageUrl) {
+    public static NotificationResponse from(ActivityNotification notification, Long characterId, String characterName, String characterImageUrl) {
         return new NotificationResponse(
                 notification.getId(),
                 notification.getType().name(),
@@ -23,6 +24,7 @@ public record NotificationResponse(
                 notification.isRead(),
                 notification.getCreatedAt(),
                 characterId,
+                characterName,
                 characterImageUrl
         );
     }

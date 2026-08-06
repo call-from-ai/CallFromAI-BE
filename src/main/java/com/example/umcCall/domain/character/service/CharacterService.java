@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.character.service;
 
+import com.example.umcCall.domain.ai.client.AiServerClient;
 import com.example.umcCall.domain.character.dto.request.CharacterCreateRequest;
 import com.example.umcCall.domain.character.dto.request.CharacterUpdateRequest;
 import com.example.umcCall.domain.character.dto.request.TraitRequest;
@@ -63,6 +64,8 @@ public class CharacterService {
     private final CharacterSyncTaskService syncTaskService;
     private final PresetImageRepository presetImageRepository;
     private final ProactiveScheduleCoordinator proactiveScheduleCoordinator;
+    private final AiServerClient aiServerClient;
+    private final CharacterHardDeleteService characterHardDeleteService;
 
 
     // 캐릭터 생성 (관계, 관계 통계, 채팅방 함께 생성) — 응답 바디 없음
@@ -271,13 +274,10 @@ public class CharacterService {
     public void deleteAllCharactersForWithdraw(Long memberId) {
         List<Relationship> relationships = relationshipRepository.findByMemberId(memberId);
         for (Relationship relationship : relationships) {
-            Character character = relationship.getCharacter();
+            Long characterId = relationship.getCharacter().getId();
 
-            character.markDeleted();
-            relationship.deactivate();
-            proactiveScheduleCoordinator.delete(relationship);
-            chatRoomService.archiveRoom(relationship.getId());
-            syncTaskService.enqueue(character.getId(), CharacterSyncOperation.DELETE);
+            aiServerClient.deleteCharacterData(characterId);   // 응답 기다림 (실패하면 예외 던져지고 트랜잭션 롤백)
+            characterHardDeleteService.purge(characterId);      // 성공 시 즉시 하드 삭제
         }
     }
     

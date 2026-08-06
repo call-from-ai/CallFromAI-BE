@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -249,7 +250,14 @@ public class CallService {
      * <p>PENDING(착신을 받았지만 스트림 개설이 실패한 경우)도 서버 측 사유라 CANCELED로 닫는다.
      * 이미 종료 상태면 no-op(정리 경로가 겹쳐도 안전). RINGING은 소켓을 열 수 없어 여기 도달하지 않는다.
      * <p>스위퍼의 PENDING 마감과 겹칠 수 있어 다른 전이 경로와 같이 락으로 집는다.
+     *
+     * <p>⚠ <b>{@code REQUIRES_NEW}가 필수다 — 기본 {@code REQUIRED}로 두면 끊기 경로에서 항상 터진다.</b>
+     * 이 메서드는 {@code CallEndedEvent}를 받는 {@code AFTER_COMMIT} 리스너에서도 불리는데, 그 단계에선
+     * 트랜잭션 동기화가 아직 "활성"으로 보여 {@code REQUIRED}가 새 트랜잭션을 열지 않고 <b>이미 커밋된</b>
+     * 트랜잭션에 참여한다 → 비관적 락 쿼리가 {@code "Query requires transaction be in progress"}로 터진다.
+     * (2026-08-06 prod 실측: 끊기로 끝난 통화 전부에서 발생 — 그 경로의 마감 안전망이 통째로 죽어 있었다.)
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void finish(Long callId) {
         Call call = callRepository.findByIdForUpdate(callId)
                 .orElseThrow(() -> new CallException(CallErrorCode.CALL_NOT_FOUND));

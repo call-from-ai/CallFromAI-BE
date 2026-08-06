@@ -628,16 +628,45 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         if (call == null) {
             return;
         }
-        call.worker().shutdownNow();
+        // ⚠ 바깥 catch는 마지막 방어선 — 무엇이 던져도 아래 finishCall이 스킵되면 통화가
+        // IN_PROGRESS로 남는다(#161). 근거는 terminateCall의 같은 블록에 적어뒀다.
         try {
-            call.stream().complete();
+            call.worker().shutdownNow();
+            try {
+                call.stream().complete();
+            } catch (RuntimeException e) {
+                log.warn("[Call] CLOVA 스트림 종료 실패. session={}", sessionId, e);
+            }
+            // 클라이언트가 먼저 끊은 경로다 — 기다려 줄 요청 스레드가 없으니 시작만 하고 버린다.
+            // (이 통화는 프론트가 나중에 조회할 때 PROCESSING일 수 있다)
+            finishArtifactsSafely(call);
         } catch (RuntimeException e) {
-            log.warn("[Call] CLOVA 스트림 종료 실패. session={}", sessionId, e);
+            log.error("[Call] 통화 정리 실패(마감은 계속한다). session={}", sessionId, e);
         }
-        // 클라이언트가 먼저 끊은 경로다 — 기다려 줄 요청 스레드가 없으니 시작만 하고 버린다.
-        // (이 통화는 프론트가 나중에 조회할 때 PROCESSING일 수 있다)
-        finishArtifacts(call);
         finishCall(call.ticket().callId());
+    }
+
+    /**
+     * {@link #finishArtifacts}를 best-effort로 부른다.
+     *
+     * <p>⚠ <b>산출물 생성 실패가 뒤따르는 상태 전이({@code finishCall})를 막지 않아야 한다.</b>
+     * 감싸지 않았을 때 실제로 이런 일이 났다(2026-08-06 prod): 소켓이 죽어 정리 경로를 탔는데
+     * 여기서 예외가 나 {@code finishCall}을 통째로 건너뛰었고, 통화가 {@code IN_PROGRESS}로 남아
+     * <b>그 관계의 재발신이 시간 상한 스위퍼가 걷을 때까지(최대 5분) 409로 막혔다</b>.
+     * {@code terminateCall} 경로에선 예외가 {@code onCallEnded}(AFTER_COMMIT 리스너)를 타고
+     * 요청 스레드까지 전파돼 <b>끊기 요청이 500</b>이 된다 — DB 마감은 이미 커밋된 뒤라 더 나쁘다.
+     *
+     * <p>⚠ <b>호출부에 바깥 catch가 있다고 이 단계별 catch를 지우지 말 것.</b> 바깥만 남기면 앞 단계가
+     * 터질 때 산출물 생성이 통째로 스킵돼 녹음·요약이 시작조차 안 되고 {@link CallArtifactRegistry}
+     * 등록도 빠진다 → 프론트의 {@code ?wait=true}가 기다릴 대상이 없어 영영 {@code PROCESSING}을 본다.
+     */
+    private void finishArtifactsSafely(ActiveCall call) {
+        try {
+            finishArtifacts(call);
+        } catch (RuntimeException e) {
+            log.error("[Call] 산출물 생성 시작 실패(통화는 마감한다). callId={}",
+                    call.ticket().callId(), e);
+        }
     }
 
     /**
@@ -694,21 +723,34 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
                                CallEndedEvent endNotice) {
         ActiveCall call = activeCalls.remove(session.getId());
         if (call != null) {
-            // 워커 스레드 자신이 부를 수도 있다(AI 턴 TTS 송신 실패 경로). shutdownNow는 기다리지 않으므로
-            // 자기 자신에게 인터럽트 플래그만 서고 그대로 진행된다 — 교착은 없다.
-            call.worker().shutdownNow();
-            call.stream().terminate(); // 이후 send()는 무시됨
-            // ⚠ 시작만 하고 기다리지 않는다 — 이 메서드는 WS 수신 스레드·사용자 REST 종료도 부른다.
-            // 기다리는 건 프론트의 조회 요청(GET /calls/{callId}?wait=true)이다.
-            finishArtifacts(call);
+            // ⚠ 바깥 catch는 마지막 방어선 — 무엇이 던져도 아래 마감이 스킵되면 안 된다(#161).
+            // ⚠ finally가 아니라 catch다: finally는 예외를 삼키지 않아 마감은 돌아도 예외가 밖으로
+            // 전파돼 onCallEnded(AFTER_COMMIT 리스너)를 타고 끊기 요청이 500이 된다 —
+            // #161의 증상 둘(좀비 IN_PROGRESS · 끊기 500) 중 하나가 그대로 남는다.
+            try {
+                // 워커 스레드 자신이 부를 수도 있다(AI 턴 TTS 송신 실패 경로). shutdownNow는 기다리지 않으므로
+                // 자기 자신에게 인터럽트 플래그만 서고 그대로 진행된다 — 교착은 없다.
+                call.worker().shutdownNow();
+                call.stream().terminate(); // 이후 send()는 무시됨
+                // ⚠ 시작만 하고 기다리지 않는다 — 이 메서드는 WS 수신 스레드·사용자 REST 종료도 부른다.
+                // 기다리는 건 프론트의 조회 요청(GET /calls/{callId}?wait=true)이다.
+                finishArtifactsSafely(call);
+            } catch (RuntimeException e) {
+                log.error("[Call] 통화 정리 실패(마감은 계속한다). session={}", session.getId(), e);
+            }
         }
         // 마감은 ActiveCall이 아니라 세션 티켓 기준 — 스트림 개설이 activeCalls.put 전에 실패해도(call==null)
         // 티켓의 callId로 DIALING을 CANCELED로 닫는다. (put 후 실패 경로도 동일하게 여기서 1회 마감)
         // completeCall과는 맵 원자 remove로 상호배타라 이중 마감이 없다.
+        // ⚠ 그래서 위 정리 블록 안으로 옮기면 안 된다 — 그 블록은 call!=null일 때만 돌아 이 경로가 빠진다.
         WsTicket ticket = (WsTicket) session.getAttributes()
                 .get(WsTicketHandshakeInterceptor.WS_TICKET_ATTRIBUTE);
         if (ticket != null) {
             finishCall(ticket.callId());
+        } else {
+            // 핸드셰이크 인터셉터가 항상 실어두므로 도달하지 않아야 한다. 조용히 지나가면 통화가
+            // IN_PROGRESS로 남는데 단서가 한 줄도 없다 — 좀비를 조사할 때 이 로그가 첫 갈림길이다.
+            log.warn("[Call] 티켓이 없어 통화를 마감하지 못했다. session={}", session.getId());
         }
         if (session.isOpen()) {
             // close 전에 이유를 통지한다 — 정상 종료는 CALL_ENDED, 비정상(SERVER_ERROR)은 ERROR.
@@ -895,7 +937,14 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             requestObserver.onCompleted();
         }
 
-        /** 비정상 종료 표시. onCompleted는 부르지 않고 이후 전송만 막는다. */
+        /**
+         * 비정상 종료 표시. onCompleted는 부르지 않고 이후 전송만 막는다.
+         *
+         * <p>⚠ <b>되도록 던지지 말 것.</b> {@code terminateCall}이 이걸 부른 뒤에 통화를 마감한다.
+         * 지금은 호출부의 바깥 {@code catch}가 마감을 지키지만(#161 리뷰 반영), 여기서 던지면
+         * <b>뒤따르는 산출물 생성이 스킵</b>돼 녹음·요약이 시작조차 안 된다. gRPC 호출 같은 걸
+         * 넣게 되면 <b>이 메서드 안에서 삼킬 것</b> — 지금은 플래그 대입뿐이라 던질 수 없다.
+         */
         synchronized void terminate() {
             terminated = true;
         }
