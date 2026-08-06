@@ -19,6 +19,8 @@ public interface ActivityNotificationRepository extends JpaRepository<ActivityNo
     boolean existsByMemberIdAndRelationshipIdAndTypeAndContent(
             Long memberId, Long relationshipId, NotificationType type, String content);
 
+    List<ActivityNotification> findByMemberIdAndReadFalse(Long memberId);
+
     List<ActivityNotification> findByTypeAndCreatedAtBetween(
             NotificationType type, LocalDateTime start, LocalDateTime end);
 
