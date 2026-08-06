@@ -173,6 +173,13 @@ public class CharacterService {
                 .toList();
     }
 
+    public CharacterResponse getCharacter(Long memberId, Long characterId) {
+        Relationship relationship = getOwnedRelationship(memberId, characterId);
+        Character character = relationship.getCharacter();
+        List<CharacterTrait> characterTraits = characterTraitRepository.findByCharacterIdOrderByPriorityAsc(character.getId());
+        return CharacterResponse.of(character, relationship, characterTraits, character.getImageUrl());
+    }
+
     // 캐릭터 수정
     @Transactional
     public void updateCharacter(Long memberId, Long characterId, CharacterUpdateRequest request) {
