@@ -20,6 +20,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -39,9 +41,22 @@ public class NotificationService {
     @Transactional(readOnly = true)
     public List<NotificationResponse> getNotifications(Long memberId) {
         LocalDateTime after = LocalDateTime.now().minusDays(VISIBLE_DAYS);
-        return notificationRepository.findByMemberIdAndCreatedAtAfterOrderByCreatedAtDesc(memberId, after)
-                .stream()
-                .map(NotificationResponse::from)
+        List<ActivityNotification> notifications = notificationRepository
+                .findByMemberIdAndCreatedAtAfterOrderByCreatedAtDesc(memberId, after);
+
+        Set<Long> relationshipIds = notifications.stream()
+                .map(ActivityNotification::getRelationshipId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<Long, Long> relationshipToCharacterId = relationshipRepository.findAllById(relationshipIds).stream()
+                .collect(Collectors.toMap(Relationship::getId, r -> r.getCharacter().getId()));
+
+        return notifications.stream()
+                .map(notification -> NotificationResponse.from(
+                        notification,
+                        relationshipToCharacterId.get(notification.getRelationshipId())
+                ))
                 .toList();
     }
 

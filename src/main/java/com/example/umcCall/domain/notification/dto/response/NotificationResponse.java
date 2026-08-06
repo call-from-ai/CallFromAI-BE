@@ -10,16 +10,18 @@ public record NotificationResponse(
         String title,
         String content,
         boolean read,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        Long characterId
 ) {
-    public static NotificationResponse from(ActivityNotification notification) {
+    public static NotificationResponse from(ActivityNotification notification, Long characterId) {
         return new NotificationResponse(
                 notification.getId(),
                 notification.getType().name(),
                 notification.getTitle(),
                 notification.getContent(),
                 notification.isRead(),
-                notification.getCreatedAt()
+                notification.getCreatedAt(),
+                characterId
         );
     }
 }
