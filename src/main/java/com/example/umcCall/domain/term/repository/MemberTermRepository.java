@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface MemberTermRepository extends JpaRepository<MemberTerm, Long> {
     Optional<MemberTerm> findByMember_IdAndTerm_Id(Long memberId, Long termId);
     List<MemberTerm> findByMember_Id(Long memberId);
+    void deleteByMemberId(Long memberId);
 }
