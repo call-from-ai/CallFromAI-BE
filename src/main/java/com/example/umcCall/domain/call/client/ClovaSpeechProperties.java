@@ -7,7 +7,7 @@ import org.springframework.validation.annotation.Validated;
 /**
  * CLOVA Speech(STT) gRPC 접속 설정. application.yml의 {@code clova.speech.*}에서 주입.
  * (secretKey는 환경변수 CLOVA_SPEECH_SECRET)
- * <p>TTS는 아예 다른 벤더(Typecast)라 별도다 — {@link TypecastVoiceProperties} 참고.
+ * <p>TTS는 벤더가 달라 설정도 별도다 — {@link TypecastVoiceProperties} 참고.
  *
  * @param gapThresholdMs 턴 끝 감지용 침묵 임계(ms). semanticEpd.gapThreshold로 CONFIG에 실려,
  *                       이만큼 침묵하면 final(epdType=gap)이 확정된다. 지연 vs 조기컷의 다이얼.

@@ -9,13 +9,8 @@ import java.nio.charset.StandardCharsets;
  * <b>TTS가 준 wav를 열어 PCM을 꺼내고</b>, <b>모아둔 PCM 앞에 붙일 헤더를 만든다</b>.
  *
  * <p>범용 코덱이 아니다: <b>PCM 16-bit 모노</b>만 받고 그 외는 예외다. 다운믹스·비트 변환을 넣지 않은 건
- * 실제 입력이 TTS 하나뿐이고 그 포맷이 벤더 쪽에 고정돼 있기 때문이다(Typecast 표준 TTS = 비압축 PCM
- * 16-bit 모노 44.1kHz, 2026-08-06 이전 CLOVA도 16-bit 모노였다) — 포맷이 바뀌면 조용히 뭉개지는 대신
- * <b>예외로 드러나는 게 낫다</b>.
- *
- * <p>⚠ <b>샘플레이트는 제약하지 않는다</b> — {@link #decode}가 헤더에서 읽어 그대로 돌려주고
- * 리샘플은 {@link PcmAudio#resampleTo}가 한다. 이 분리 덕에 TTS 벤더 교체(24kHz → 44.1kHz)에
- * 코덱이 영향을 받지 않았다.
+ * 실제 입력이 TTS 하나뿐이고 그 포맷이 벤더 쪽에 고정돼 있기 때문이다(Typecast 표준 TTS = 16-bit 모노
+ * 44.1kHz) — 포맷이 바뀌면 조용히 뭉개지는 대신 <b>예외로 드러나는 게 낫다</b>.
  */
 public final class WavCodec {
 

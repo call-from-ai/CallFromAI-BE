@@ -17,10 +17,9 @@ import org.springframework.web.client.RestClientException;
  * (스트리밍 아님 — 지연 완화는 호출부에서 문장 단위로 쪼개 여러 번 부르는 방식)
  * 반환한 wav는 헤더까지 그대로다. 서버는 변환하지 않고 프론트가 헤더로 스펙을 읽는다.
  *
- * <p><b>스트리밍 엔드포인트를 쓰지 않는 이유</b>: 우리 파이프라인은 이미 LLM SSE를 문장으로 잘라
- * 문장마다 이 클라이언트를 부른다(#117). 즉 조각 단위 전달은 호출부가 이미 하고 있고, TTS까지
- * 스트리밍으로 바꾸면 "조각 하나 = 완결 wav 하나"라는 다운스트림 계약(방식 A)이 깨진다.
- * 게다가 Typecast 스트리밍 wav는 32kHz라 표준(44.1kHz)과 샘플레이트도 다르다.
+ * <p><b>스트리밍 엔드포인트를 쓰지 않는 이유</b>: 호출부가 이미 LLM SSE를 문장으로 잘라 문장마다
+ * 부르므로 조각 단위 전달은 하고 있고, TTS까지 스트리밍으로 바꾸면 "조각 하나 = 완결 wav 하나"라는
+ * 다운스트림 계약이 깨진다. 스트리밍 wav는 32kHz라 표준(44.1kHz)과 레이트도 다르다.
  */
 @Slf4j
 @Component
@@ -48,8 +47,7 @@ public class TypecastVoiceClient {
      * 텍스트를 {@code voiceId} 목소리로 합성해 wav 바이트를 돌려준다. 실패 시 {@link BaseException}.
      * voiceId는 캐릭터마다 다르므로 설정이 아니라 호출부가 넘긴다.
      *
-     * <p>⚠ 돌아오는 wav는 <b>44.1kHz 16-bit 모노 고정</b>이다(요청으로 못 바꾼다).
-     * 화자를 바꿔도 이 스펙은 변하지 않으므로 CLOVA 시절의 "24000Hz 지원 화자만" 제약은 사라졌다.
+     * <p>돌아오는 wav는 화자와 무관하게 <b>44.1kHz 16-bit 모노 고정</b>이다.
      */
     public byte[] synthesize(String text, String voiceId) {
         SynthesisRequest request = new SynthesisRequest(
@@ -81,12 +79,11 @@ public class TypecastVoiceClient {
     }
 
     /**
-     * 합성 요청 본문. 필드가 snake_case라 {@code @JsonProperty}로 이름을 고정한다 —
-     * 전역 Jackson 네이밍 설정이 바뀌어도 이 계약은 흔들리지 않아야 한다.
+     * 합성 요청 본문. snake_case라 {@code @JsonProperty}로 이름을 고정한다 — 전역 Jackson 네이밍
+     * 설정이 바뀌어도 이 계약은 흔들리면 안 된다.
      *
-     * <p>{@code prompt}(감정)·{@code seed}·{@code output.volume} 등은 <b>일부러 안 보낸다</b>.
-     * 통화는 문장마다 따로 합성하므로 감정 프리셋을 걸면 문장 간 톤이 튀고, 기본값(normal)이
-     * 대화체에 가장 무난하다. 필요해지면 그때 얹는다.
+     * <p>{@code prompt}(감정)·{@code seed}·{@code output.volume}은 <b>일부러 안 보낸다</b> —
+     * 문장마다 따로 합성하므로 감정 프리셋을 걸면 문장 간 톤이 튄다.
      */
     private record SynthesisRequest(
             @JsonProperty("voice_id") String voiceId,
