@@ -1,10 +1,12 @@
 package com.example.umcCall.domain.ai.dto;
 
+import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import java.util.List;
 
 public record AiProactiveRequest(
         String requestId,
         Long characterId,
+        AiConversationChannel channel,
         String message,
         String contactReason,
         String relationshipState,
