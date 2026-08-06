@@ -50,7 +50,6 @@ public class NotificationService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        // Long -> Character로 변경
         Map<Long, Character> relationshipToCharacter = relationshipRepository.findAllById(relationshipIds).stream()
                 .collect(Collectors.toMap(Relationship::getId, Relationship::getCharacter));
 
@@ -58,10 +57,22 @@ public class NotificationService {
                 .map(notification -> {
                     Character character = relationshipToCharacter.get(notification.getRelationshipId());
                     Long characterId = character != null ? character.getId() : null;
-                    String characterImageUrl = character != null ? character.getImageUrl() : null;
-                    return NotificationResponse.from(notification, characterId, characterImageUrl);
+                    String characterName = character != null ? character.getFullName() : null;
+
+                    // 기념일은 캐릭터 이미지 대신 기념일 전용 이미지를 쓰므로 null 처리
+                    String characterImageUrl = (character != null && notification.getType() != NotificationType.ANNIVERSARY)
+                            ? character.getImageUrl()
+                            : null;
+
+                    return NotificationResponse.from(notification, characterId, characterName, characterImageUrl);
                 })
                 .toList();
+    }
+
+    @Transactional
+    public void markAllAsRead(Long memberId) {
+        List<ActivityNotification> unread = notificationRepository.findByMemberIdAndReadFalse(memberId);
+        unread.forEach(ActivityNotification::markAsRead);
     }
 
     // 부분 읽음 처리

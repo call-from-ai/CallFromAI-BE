@@ -15,6 +15,7 @@ import com.example.umcCall.domain.member.exception.MemberErrorCode;
 import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.domain.notification.push.repository.PushTokenRepository;
 import com.example.umcCall.domain.notification.repository.ActivityNotificationRepository;
+import com.example.umcCall.domain.term.repository.MemberTermRepository;
 import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.example.umcCall.global.exception.BaseException;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class MemberService {
     private final PresetImageRepository presetImageRepository;
     private final ActivityNotificationRepository activityNotificationRepository;
     private final PushTokenRepository pushTokenRepository;
+    private final MemberTermRepository memberTermRepository;
 
     public MemberResponse getMyInfo(Long memberId) {
         Member member = findMember(memberId);
@@ -93,6 +95,7 @@ public class MemberService {
         Member member = findMember(memberId);
         characterService.deleteAllCharactersForWithdraw(memberId);
         // 회원 관련 데이터는 AI 서버와 무관하니 즉시 정리
+        memberTermRepository.deleteByMemberId(memberId);
         activityNotificationRepository.deleteByMemberId(memberId);
         pushTokenRepository.deleteByMemberId(memberId);
         refreshTokenRepository.findByMemberId(memberId).ifPresent(refreshTokenRepository::delete);
