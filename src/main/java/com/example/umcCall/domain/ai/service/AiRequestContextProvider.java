@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 public class AiRequestContextProvider {
 
     private static final ZoneId DEFAULT_ZONE_ID = ZoneId.of("Asia/Seoul");
+    private static final String FALLBACK_USER_NAME = "너";
     private final MemberRepository memberRepository;
 
     public AiRequestContextProvider(MemberRepository memberRepository) {
@@ -40,7 +41,7 @@ public class AiRequestContextProvider {
         if (member.getLastName() != null && !member.getLastName().isBlank()) {
             return member.getLastName().strip();
         }
-        throw new IllegalStateException("온보딩 사용자 이름이 없습니다.");
+        return FALLBACK_USER_NAME;
     }
 
     public record Context(String userName, String userTimeZone, OffsetDateTime localDateTime) {

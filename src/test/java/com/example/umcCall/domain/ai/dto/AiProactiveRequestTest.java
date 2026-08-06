@@ -37,6 +37,6 @@ class AiProactiveRequestTest {
         assertThat(json).contains("\"channel\":\"CHAT\"");
         assertThat(json).contains("\"userName\":\"민준\"");
         assertThat(json).contains("\"userTimeZone\":\"Asia/Seoul\"");
-        assertThat(json).contains("\"localDateTime\":\"2026-08-07T02:15:00+09:00\"");
+        assertThat(json).contains("\"localDateTime\":\"2026-08-07T02:15+09:00\"");
     }
 }

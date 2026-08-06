@@ -1,6 +1,8 @@
 package com.example.umcCall.domain.ai.dto;
 
 import com.example.umcCall.domain.ai.enums.AiConversationChannel;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -14,6 +16,7 @@ public record AiProactiveRequest(
         String recentResponse,
         String userName,
         String userTimeZone,
+        @JsonSerialize(using = ToStringSerializer.class)
         OffsetDateTime localDateTime,
         AiCharacterSnapshot character,
         AiRelationshipSnapshot relationship,
