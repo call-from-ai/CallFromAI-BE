@@ -23,7 +23,6 @@ import com.example.umcCall.domain.relationship.repository.ChatSummaryRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import java.util.List;
 import java.util.Optional;
-import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -72,9 +71,7 @@ class ChatSummaryServiceTest {
                 .findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(10L, 2L))
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
-        when(chatMessageRepository
-                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
-                        any(Long.class), any(LocalDateTime.class)))
+        when(chatMessageRepository.findTopByChatRoomIdOrderByIdDesc(any(Long.class)))
                 .thenReturn(Optional.of(lastMessage));
         when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.of(cached));
 
@@ -105,15 +102,12 @@ class ChatSummaryServiceTest {
                 .findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(10L, 2L))
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
-        when(chatMessageRepository
-                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
-                        any(Long.class), any(LocalDateTime.class)))
+        when(chatMessageRepository.findTopByChatRoomIdOrderByIdDesc(any(Long.class)))
                 .thenReturn(Optional.of(lastMessage));
         when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.empty());
         when(memberRepository.findById(2L)).thenReturn(Optional.of(member));
         // 저장소는 최신순으로 반환하고, 서비스가 AI 요청 전에 시간순으로 뒤집는다.
-        when(chatMessageRepository.findRecentBefore(
-                any(Long.class), any(LocalDateTime.class), any(Pageable.class)))
+        when(chatMessageRepository.findRecent(any(Long.class), any(Pageable.class)))
                 .thenReturn(List.of(lastMessage, userMessage));
         when(aiServerClient.summarize(any()))
                 .thenReturn(new AiSummaryResponse(" 아이스티를 좋아해요. "));
@@ -154,14 +148,11 @@ class ChatSummaryServiceTest {
                 .findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(10L, 2L))
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
-        when(chatMessageRepository
-                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
-                        any(Long.class), any(LocalDateTime.class)))
+        when(chatMessageRepository.findTopByChatRoomIdOrderByIdDesc(any(Long.class)))
                 .thenReturn(Optional.of(lastMessage));
         when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.of(cached));
         when(memberRepository.findById(2L)).thenReturn(Optional.of(member));
-        when(chatMessageRepository.findRecentBefore(
-                any(Long.class), any(LocalDateTime.class), any(Pageable.class)))
+        when(chatMessageRepository.findRecent(any(Long.class), any(Pageable.class)))
                 .thenReturn(List.of(lastMessage));
         when(aiServerClient.summarize(any())).thenReturn(new AiSummaryResponse("새 요약"));
 
@@ -195,14 +186,11 @@ class ChatSummaryServiceTest {
                 .findByCharacterIdAndMemberIdAndCharacterDeletedAtIsNull(10L, 2L))
                 .thenReturn(Optional.of(relationship));
         when(chatRoomRepository.findByRelationshipId(1L)).thenReturn(Optional.of(room));
-        when(chatMessageRepository
-                .findTopByChatRoomIdAndCreatedAtBeforeOrderByIdDesc(
-                        any(Long.class), any(LocalDateTime.class)))
+        when(chatMessageRepository.findTopByChatRoomIdOrderByIdDesc(any(Long.class)))
                 .thenReturn(Optional.of(lastMessage));
         when(chatSummaryRepository.findByRelationshipId(1L)).thenReturn(Optional.of(cached));
         when(memberRepository.findById(2L)).thenReturn(Optional.of(member));
-        when(chatMessageRepository.findRecentBefore(
-                any(Long.class), any(LocalDateTime.class), any(Pageable.class)))
+        when(chatMessageRepository.findRecent(any(Long.class), any(Pageable.class)))
                 .thenReturn(List.of(lastMessage));
         when(aiServerClient.summarize(any())).thenReturn(new AiSummaryResponse("새 요약"));
 
