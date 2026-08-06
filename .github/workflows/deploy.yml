@@ -23,6 +23,13 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Firebase 서비스 계정 파일 생성
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          mkdir -p src/main/resources/firebase
+          echo "$FIREBASE_SERVICE_ACCOUNT_JSON" > src/main/resources/firebase/service-account.json
+
       - name: Build
         run: ./gradlew build -x test
 
