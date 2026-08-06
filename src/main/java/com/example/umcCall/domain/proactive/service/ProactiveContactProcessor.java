@@ -45,8 +45,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 public class ProactiveContactProcessor {
 
-    private static final int DAILY_CONTACT_LIMIT = 10;
-    private static final int DAILY_CALL_LIMIT = 3;
     private static final String PROACTIVE_SEED =
             "The user has not sent a new message. Send one short proactive check-in.";
 
@@ -117,10 +115,6 @@ public class ProactiveContactProcessor {
                 false,
                 false,
                 activeCall,
-                schedule.dailyCountOn(now.toLocalDate()),
-                DAILY_CONTACT_LIMIT,
-                schedule.dailyCallCountOn(now.toLocalDate()),
-                DAILY_CALL_LIMIT,
                 relationship.getCharacter().getPreferTime(),
                 AttachmentLevel.from(profile == null ? null : profile.getAttachment()),
                 state,
@@ -229,6 +223,28 @@ public class ProactiveContactProcessor {
         if (!claim.requestId().equals(schedule.getPendingRequestId())) return;
 
         Relationship relationship = schedule.getRelationship();
+        saveProactiveMessage(claim, reply, now, schedule, relationship);
+
+        CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElseThrow();
+        ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
+        LocalDateTime next = policy.nextCandidate(now, profile.getAttachment(), state);
+        schedule.complete(now, preferredTimePolicy.adjustCandidate(
+                relationship.getCharacter().getPreferTime(), next));
+    }
+
+    @Transactional
+    public void completeChatForDebug(Claim claim, String reply, LocalDateTime now,
+                                     LocalDateTime previousNextCheckAt, String previousLastError) {
+        ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(claim.scheduleId()).orElseThrow();
+        if (!claim.requestId().equals(schedule.getPendingRequestId())) return;
+
+        Relationship relationship = schedule.getRelationship();
+        saveProactiveMessage(claim, reply, now, schedule, relationship);
+        schedule.completeDebug(previousNextCheckAt, previousLastError);
+    }
+
+    private void saveProactiveMessage(Claim claim, String reply, LocalDateTime now,
+                                      ProactiveContactSchedule schedule, Relationship relationship) {
         ChatRoom room = chatRoomRepository.findByRelationshipId(relationship.getId()).orElseThrow();
         if (!messageRepository.existsByProactiveRequestId(claim.requestId())) {
             ChatMessage saved = messageRepository.save(ChatMessage.builder()
@@ -243,12 +259,6 @@ public class ProactiveContactProcessor {
             room.reveal();
             pushToClient(room, saved);
         }
-
-        CharacterAiProfile profile = profileRepository.findById(relationship.getCharacter().getId()).orElseThrow();
-        ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
-        LocalDateTime next = policy.nextCandidate(now, profile.getAttachment(), state);
-        schedule.complete(now, preferredTimePolicy.adjustCandidate(
-                relationship.getCharacter().getPreferTime(), next));
     }
 
     /**
@@ -271,9 +281,17 @@ public class ProactiveContactProcessor {
 
     /** 강제 통화 테스트 처리. 생성 실패 시 같은 트랜잭션에서 디버그 호출 전 시각을 복구한다. */
     @Transactional
-    public boolean completeCallForDebug(Claim claim, LocalDateTime now,
-                                        LocalDateTime previousNextCheckAt) {
-        return completeCall(claim, now, previousNextCheckAt);
+    public boolean completeCallForDebug(Claim claim, LocalDateTime previousNextCheckAt,
+                                        String previousLastError) {
+        ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(claim.scheduleId()).orElseThrow();
+        if (!claim.requestId().equals(schedule.getPendingRequestId())
+                || schedule.getPendingAction() != ProactiveAction.CALL) {
+            return false;
+        }
+
+        boolean created = immediateAiCallService.ring(schedule.getRelationship().getId());
+        schedule.completeDebug(previousNextCheckAt, previousLastError);
+        return created;
     }
 
     private boolean completeCall(Claim claim, LocalDateTime now,
@@ -300,11 +318,11 @@ public class ProactiveContactProcessor {
 
     /** 강제 통화 테스트 예외를 기록하고 디버그 호출 전 스케줄 시각을 한 트랜잭션에서 복구한다. */
     @Transactional
-    public void recordDebugCallFailure(Claim claim, RuntimeException exception,
-                                       LocalDateTime previousNextCheckAt) {
+    public void restoreAfterDebug(Claim claim, LocalDateTime previousNextCheckAt,
+                                  String previousLastError) {
         ProactiveContactSchedule schedule = scheduleRepository.findByIdForUpdate(claim.scheduleId()).orElse(null);
         if (schedule != null && claim.requestId().equals(schedule.getPendingRequestId())) {
-            schedule.recordDebugCallFailure(exception, previousNextCheckAt);
+            schedule.completeDebug(previousNextCheckAt, previousLastError);
         }
     }
 

@@ -86,11 +86,25 @@ public class ProactiveDebugService {
         coordinator.create(relationship);
         ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
                 .orElseThrow(() -> new IllegalStateException("Proactive schedule not found"));
+        LocalDateTime previousNextCheckAt = schedule.getNextCheckAt();
+        String previousLastError = schedule.getLastError();
         ProactiveContactProcessor.Claim claim = processor.forceClaimForDebug(schedule.getId());
         if (claim == null) {
             return ProactiveProcessResponse.skipped("DISABLED_OR_INACTIVE");
         }
-        return executeClaim(claim);
+        try {
+            String reply = processor.generate(claim);
+            if (reply == null) {
+                processor.restoreAfterDebug(claim, previousNextCheckAt, previousLastError);
+                return ProactiveProcessResponse.skipped("CLAIM_CANCELED");
+            }
+            processor.completeChatForDebug(
+                    claim, reply, LocalDateTime.now(), previousNextCheckAt, previousLastError);
+            return ProactiveProcessResponse.completed(claim.requestId());
+        } catch (RuntimeException exception) {
+            processor.restoreAfterDebug(claim, previousNextCheckAt, previousLastError);
+            throw exception;
+        }
     }
 
     public ProactiveProcessResponse forceCall(Long memberId) {
@@ -99,17 +113,18 @@ public class ProactiveDebugService {
         ProactiveContactSchedule schedule = scheduleRepository.findByRelationshipId(relationship.getId())
                 .orElseThrow(() -> new IllegalStateException("Proactive schedule not found"));
         LocalDateTime previousNextCheckAt = schedule.getNextCheckAt();
+        String previousLastError = schedule.getLastError();
         ProactiveContactProcessor.Claim claim = processor.forceCallClaimForDebug(schedule.getId());
         if (claim == null) {
             return ProactiveProcessResponse.skipped("DISABLED_INACTIVE_OR_PENDING");
         }
         try {
-            if (processor.completeCallForDebug(claim, LocalDateTime.now(), previousNextCheckAt)) {
+            if (processor.completeCallForDebug(claim, previousNextCheckAt, previousLastError)) {
                 return ProactiveProcessResponse.callRinging(claim.requestId());
             }
             return ProactiveProcessResponse.skipped("CALL_NOT_CREATED");
         } catch (RuntimeException exception) {
-            processor.recordDebugCallFailure(claim, exception, previousNextCheckAt);
+            processor.restoreAfterDebug(claim, previousNextCheckAt, previousLastError);
             throw exception;
         }
     }

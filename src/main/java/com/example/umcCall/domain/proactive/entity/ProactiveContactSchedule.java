@@ -156,12 +156,13 @@ public class ProactiveContactSchedule extends BaseTimeEntity {
         this.nextCheckAt = enabled ? nextCheckAt : null;
     }
 
-    public void recordDebugCallFailure(RuntimeException exception, LocalDateTime nextCheckAt) {
+    /**
+     * 테스트 발송이 운영 스케줄 상태에 영향을 주지 않도록 임시 claim만 제거하고 원래 상태를 복원한다.
+     */
+    public void completeDebug(LocalDateTime previousNextCheckAt, String previousLastError) {
         clearPending();
-        this.nextCheckAt = enabled ? nextCheckAt : null;
-        String message = exception.getMessage();
-        this.lastError = message == null ? exception.getClass().getSimpleName()
-                : message.substring(0, Math.min(message.length(), 1000));
+        this.nextCheckAt = enabled ? previousNextCheckAt : null;
+        this.lastError = previousLastError;
     }
 
     public void retry(RuntimeException exception, LocalDateTime now) {
