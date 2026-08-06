@@ -9,9 +9,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class PreferredContactTimePolicy {
 
-    static final LocalTime MORNING_START = LocalTime.of(6, 0);
-    static final LocalTime DAY_START = LocalTime.NOON;
-    static final LocalTime LATE_EVENING_START = LocalTime.of(18, 0);
+    static final LocalTime MORNING_START = LocalTime.of(8, 0);
+    static final LocalTime MORNING_END = LocalTime.NOON;
+    static final LocalTime DAY_START = LocalTime.of(13, 0);
+    static final LocalTime DAY_END = LocalTime.of(18, 0);
+    static final LocalTime LATE_EVENING_START = LocalTime.of(19, 0);
     private static final double PREFERRED_TIME_PROBABILITY = 0.70;
 
     public Result evaluate(PreferTime preferTime, LocalDateTime now) {
@@ -71,8 +73,8 @@ public class PreferredContactTimePolicy {
 
     private LocalTime endOf(PreferTime preferTime) {
         return switch (preferTime) {
-            case MORNING -> DAY_START;
-            case DAY -> LATE_EVENING_START;
+            case MORNING -> MORNING_END;
+            case DAY -> DAY_END;
             case LATE_EVENING -> LocalTime.MAX;
             case ANYTIME -> throw new IllegalArgumentException("ANYTIME has no end");
         };

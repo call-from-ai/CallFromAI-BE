@@ -9,6 +9,7 @@ import com.example.umcCall.domain.ai.exception.AiErrorCode;
 import com.example.umcCall.domain.ai.exception.AiServerException;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
+import com.example.umcCall.domain.ai.service.AiRequestContextProvider;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.service.ImmediateAiCallService;
@@ -60,6 +61,7 @@ public class ProactiveContactProcessor {
     private final RelationshipStateResolver stateResolver;
     private final AiCharacterSnapshotMapper characterSnapshotMapper;
     private final AiRelationshipSnapshotMapper relationshipSnapshotMapper;
+    private final AiRequestContextProvider requestContextProvider;
     private final AiServerClient aiServerClient;
     private final ChatMessageNotifier chatMessageNotifier;
 
@@ -193,6 +195,7 @@ public class ProactiveContactProcessor {
         ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
         RecentResponse response = schedule.getConsecutiveNoResponseCount() > 0
                 ? RecentResponse.NO_RESPONSE : RecentResponse.POSITIVE;
+        AiRequestContextProvider.Context requestContext = requestContextProvider.create(relationship.getMemberId());
         AiProactiveRequest request = new AiProactiveRequest(
                 claim.requestId(),
                 relationship.getCharacter().getId(),
@@ -201,6 +204,9 @@ public class ProactiveContactProcessor {
                 aiContactReason(schedule.getPendingContactReason()),
                 state.name(),
                 response.name(),
+                requestContext.userName(),
+                requestContext.userTimeZone(),
+                requestContext.localDateTime(),
                 characterSnapshotMapper.toSnapshot(relationship.getCharacter(), profile, relationship),
                 relationshipSnapshotMapper.toSnapshot(relationship, status),
                 history);
