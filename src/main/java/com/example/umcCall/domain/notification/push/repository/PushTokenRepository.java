@@ -21,4 +21,7 @@ public interface PushTokenRepository extends JpaRepository<PushToken, Long> {
     /** 발송 결과 무효로 판정된 죽은 토큰들을 일괄 정리한다. 발송(네트워크) 밖에서 짧은 자체 트랜잭션으로 실행된다. */
     @Transactional
     void deleteByTokenIn(Collection<String> tokens);
+
+    /** 회원 탈퇴 시 토큰 삭제 **/
+    void deleteByMemberId(Long memberId);
 }
