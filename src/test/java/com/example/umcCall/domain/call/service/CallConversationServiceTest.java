@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
+import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
 import com.example.umcCall.domain.ai.service.AiConversationService;
@@ -93,6 +94,7 @@ class CallConversationServiceTest {
                 .extracting(AiChatHistoryItem::content)
                 .containsExactly("안녕", "안녕하세요");
         assertThat(sent.characterId()).isEqualTo(CHARACTER_ID);
+        assertThat(sent.channel()).isEqualTo(AiConversationChannel.CALL);
         assertThat(sent.requestId()).isNotBlank(); // 멱등성 키
     }
 
