@@ -11,6 +11,7 @@ import com.example.umcCall.domain.call.exception.CallErrorCode;
 import com.example.umcCall.domain.call.exception.CallException;
 import com.example.umcCall.domain.call.repository.CallHistoryRepository;
 import com.example.umcCall.domain.call.repository.CallRepository;
+import com.example.umcCall.global.infra.s3.S3Uploader;
 import java.util.EnumSet;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class CallHistoryService {
     private final CallHistoryRepository callHistoryRepository;
     private final CallArtifactRegistry callArtifactRegistry;
     private final TransactionTemplate transactionTemplate;
+    private final S3Uploader s3Uploader;
 
     /** 목록에 노출할 통화 상태 = 종료된 것만. 진행 중(DIALING/RINGING/IN_PROGRESS)은 아직 기록이 아니라 제외한다. */
     private static final Set<CallStatus> TERMINAL_STATUSES = EnumSet.of(
@@ -102,8 +104,12 @@ public class CallHistoryService {
      * 지연 로딩(관계→회원)이 트랜잭션 안에서 끝나야 하고, 대기 구간과는 분리돼야 한다.
      */
     private CallDetailResponse readCallDetail(Long memberId, Long callId) {
-        return transactionTemplate.execute(status ->
-                CallDetailResponse.of(loadCompletedOwnedCall(memberId, callId)));
+        return transactionTemplate.execute(status -> {
+            Call call = loadCompletedOwnedCall(memberId, callId);
+            // 저장된 녹음 key를 유저가 재생할 수 있는 한시적 presigned URL로 바꾼다(녹음 없으면 null).
+            String audioUrl = call.getAudioUrl() == null ? null : s3Uploader.presignedGetUrl(call.getAudioUrl());
+            return CallDetailResponse.of(call, audioUrl);
+        });
     }
 
     /**

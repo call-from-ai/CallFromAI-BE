@@ -52,7 +52,7 @@ class RelationshipServiceTest {
         Long memberId = 1L;
         Character character = Character.builder()
                 .firstName("캐릭터이름")
-                .job(Job.EMPLOYED)
+                .job(Job.EMPLOYEE)
                 .preferTime(PreferTime.MORNING)
                 .build();
         ReflectionTestUtils.setField(character, "id", 10L);
@@ -85,7 +85,7 @@ class RelationshipServiceTest {
         Long memberId = 1L;
         Character character = Character.builder()
                 .firstName("수현")
-                .job(Job.EMPLOYED)
+                .job(Job.EMPLOYEE)
                 .preferTime(PreferTime.MORNING)
                 .build();
         ReflectionTestUtils.setField(character, "id", 10L);
@@ -116,7 +116,7 @@ class RelationshipServiceTest {
         Long memberId = 1L;
         Character character = Character.builder()
                 .firstName("수현")
-                .job(Job.EMPLOYED)
+                .job(Job.EMPLOYEE)
                 .preferTime(PreferTime.MORNING)
                 .build();
         ReflectionTestUtils.setField(character, "id", 10L);

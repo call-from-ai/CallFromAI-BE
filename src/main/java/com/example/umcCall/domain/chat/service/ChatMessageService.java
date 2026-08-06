@@ -72,13 +72,14 @@ public class ChatMessageService {
         // 다음 커서 = 이번 페이지에서 가장 오래된(마지막) 메시지 id (더 없으면 null)
         Long nextCursor = hasNext ? page.get(page.size() - 1).getId() : null;
 
-        // 이 페이지 메시지들의 사진 URL을 한 번에 조회해 map으로 준비(없으면 빈 map)
-        Map<Long, String> photoUrlByMessageId = loadPhotoUrls(page);
+        // 이 페이지 메시지들의 사진 key를 한 번에 조회해 map으로 준비(없으면 빈 map)
+        Map<Long, String> photoKeyByMessageId = loadPhotoUrls(page);
 
         // 과거순으로 뒤집어 응답 -> 위에서 아래, 순차적으로 전송하기 위해
         Collections.reverse(page);
+        // 저장된 사진 key를 유저가 볼 수 있는 URL(presigned)로 바꿔 담는다.
         List<ChatMessageResponse> content = page.stream()
-                .map(m -> ChatMessageResponse.from(m, photoUrlByMessageId.get(m.getId())))
+                .map(m -> ChatMessageResponse.from(m, presignPhoto(photoKeyByMessageId.get(m.getId()))))
                 .toList();
 
         return ChatMessageCursorResponse.of(content, nextCursor, hasNext);
@@ -101,32 +102,37 @@ public class ChatMessageService {
             throw new ChatException(ChatErrorCode.EMPTY_MESSAGE);
         }
 
-        // 이미지가 있으면 형식 검증 후 S3에 올린다
-        String photoUrl = null;
+        // 이미지가 있으면 형식 검증 후 S3에 올린다(반환값은 공개 URL이 아니라 객체 key)
+        String photoKey = null;
         if (hasImage) {
             validateImageType(image);
-            photoUrl = s3Uploader.upload(image, CHAT_PHOTO_DIR + "/" + chatRoomId);
+            photoKey = s3Uploader.upload(image, CHAT_PHOTO_DIR + "/" + chatRoomId);
         }
 
         // 원자적 DB 쓰기(메시지+사진+시각+이벤트)는 별도 빈의 트랜잭션에서 처리한다.
         // DB 저장이 실패하면 방금 올린 S3 객체가 고아로 남으므로, 보상 삭제 후 예외를 다시 던진다.
         try {
-            return chatMessageWriter.saveUserMessage(chatRoomId, memberId, content, photoUrl);
+            return chatMessageWriter.saveUserMessage(chatRoomId, memberId, content, photoKey);
         } catch (RuntimeException e) {
-            if (photoUrl != null) {
-                deleteQuietly(photoUrl);   // 업로드했던 사진 되돌리기(삭제 실패는 삼켜 원래 예외를 우선 전달)
+            if (photoKey != null) {
+                deleteQuietly(photoKey);   // 업로드했던 사진 되돌리기(삭제 실패는 삼켜 원래 예외를 우선 전달)
             }
             throw e;
         }
     }
 
     /** 보상 삭제. 삭제가 실패해도 원래 예외를 덮지 않도록 로깅만 하고 넘어간다. */
-    private void deleteQuietly(String photoUrl) {
+    private void deleteQuietly(String photoKey) {
         try {
-            s3Uploader.delete(photoUrl);
+            s3Uploader.delete(photoKey);
         } catch (Exception e) {
-            log.warn("업로드 롤백용 S3 삭제 실패(고아 객체가 남을 수 있음). url={}", photoUrl, e);
+            log.warn("업로드 롤백용 S3 삭제 실패(고아 객체가 남을 수 있음). key={}", photoKey, e);
         }
+    }
+
+    /** 저장된 사진 key를 유저가 볼 수 있는 한시적 서명 URL(presigned)로 바꾼다. 사진이 없으면 null. */
+    private String presignPhoto(String photoKey) {
+        return photoKey == null ? null : s3Uploader.presignedGetUrl(photoKey);
     }
 
     /**
