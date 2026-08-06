@@ -10,6 +10,7 @@ import com.example.umcCall.domain.notification.repository.ActivityNotificationRe
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.global.exception.BaseException;
+import com.example.umcCall.domain.character.entity.Character;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -49,14 +50,17 @@ public class NotificationService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        Map<Long, Long> relationshipToCharacterId = relationshipRepository.findAllById(relationshipIds).stream()
-                .collect(Collectors.toMap(Relationship::getId, r -> r.getCharacter().getId()));
+        // Long -> Character로 변경
+        Map<Long, Character> relationshipToCharacter = relationshipRepository.findAllById(relationshipIds).stream()
+                .collect(Collectors.toMap(Relationship::getId, Relationship::getCharacter));
 
         return notifications.stream()
-                .map(notification -> NotificationResponse.from(
-                        notification,
-                        relationshipToCharacterId.get(notification.getRelationshipId())
-                ))
+                .map(notification -> {
+                    Character character = relationshipToCharacter.get(notification.getRelationshipId());
+                    Long characterId = character != null ? character.getId() : null;
+                    String characterImageUrl = character != null ? character.getImageUrl() : null;
+                    return NotificationResponse.from(notification, characterId, characterImageUrl);
+                })
                 .toList();
     }
 
