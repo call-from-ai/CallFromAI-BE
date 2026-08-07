@@ -9,6 +9,7 @@ import com.example.umcCall.domain.ai.exception.AiErrorCode;
 import com.example.umcCall.domain.ai.exception.AiServerException;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
+import com.example.umcCall.domain.ai.service.AiRequestContextProvider;
 import com.example.umcCall.domain.call.enums.CallStatus;
 import com.example.umcCall.domain.call.repository.CallRepository;
 import com.example.umcCall.domain.call.service.ImmediateAiCallService;
@@ -60,6 +61,7 @@ public class ProactiveContactProcessor {
     private final RelationshipStateResolver stateResolver;
     private final AiCharacterSnapshotMapper characterSnapshotMapper;
     private final AiRelationshipSnapshotMapper relationshipSnapshotMapper;
+    private final AiRequestContextProvider requestContextProvider;
     private final AiServerClient aiServerClient;
     private final ChatMessageNotifier chatMessageNotifier;
 
@@ -185,7 +187,7 @@ public class ProactiveContactProcessor {
         List<AiChatHistoryItem> history = recent.stream()
                 .map(message -> new AiChatHistoryItem(
                         message.getSenderType() == SenderType.USER ? "user" : "assistant",
-                        message.getContent(),
+                        toHistoryContent(message),
                         message.getCreatedAt()))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         Collections.reverse(history);
@@ -193,6 +195,7 @@ public class ProactiveContactProcessor {
         ProactiveRelationshipState state = stateResolver.resolve(relationship.getEmotion());
         RecentResponse response = schedule.getConsecutiveNoResponseCount() > 0
                 ? RecentResponse.NO_RESPONSE : RecentResponse.POSITIVE;
+        AiRequestContextProvider.Context requestContext = requestContextProvider.create(relationship.getMemberId());
         AiProactiveRequest request = new AiProactiveRequest(
                 claim.requestId(),
                 relationship.getCharacter().getId(),
@@ -201,12 +204,25 @@ public class ProactiveContactProcessor {
                 aiContactReason(schedule.getPendingContactReason()),
                 state.name(),
                 response.name(),
+                requestContext.userName(),
+                requestContext.userTimeZone(),
+                requestContext.localDateTime(),
                 characterSnapshotMapper.toSnapshot(relationship.getCharacter(), profile, relationship),
                 relationshipSnapshotMapper.toSnapshot(relationship, status),
                 history);
 
         AiChatResponse aiResponse = aiServerClient.proactive(request);
         return aiResponse.reply();
+    }
+
+    private String toHistoryContent(ChatMessage message) {
+        String content = message.getContent();
+        if (content != null && !content.isBlank()) {
+            return content;
+        }
+        boolean hasImage = message.getMessageType() == MessageType.IMAGE
+                || message.getMessageType() == MessageType.TEXT_IMAGE;
+        return hasImage ? "[사진]" : "[내용 없음]";
     }
 
     /**

@@ -7,6 +7,7 @@ import com.example.umcCall.domain.ai.dto.AiRelationshipSnapshot;
 import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
+import com.example.umcCall.domain.ai.service.AiRequestContextProvider;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.character.entity.CharacterAiProfile;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
@@ -35,6 +36,7 @@ public class AiReplyGenerator {
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final AiCharacterSnapshotMapper characterSnapshotMapper;
     private final AiRelationshipSnapshotMapper relationshipSnapshotMapper;
+    private final AiRequestContextProvider requestContextProvider;
 
     /**
      * relationshipId + 유저 메시지 + 대화 이력으로 AI 서버 요청 DTO를 만든다.
@@ -51,10 +53,13 @@ public class AiReplyGenerator {
 
         AiCharacterSnapshot characterSnapshot = characterSnapshotMapper.toSnapshot(character, profile, relationship);
         AiRelationshipSnapshot relationshipSnapshot = relationshipSnapshotMapper.toSnapshot(relationship, status);
+        AiRequestContextProvider.Context requestContext = requestContextProvider.create(relationship.getMemberId());
 
         return new AiChatRequest(
                 UUID.randomUUID().toString(),   // 멱등성 키. 논리 요청마다 고유값(같은 값 재전송 시 AI 서버가 409)
-                character.getId(), AiConversationChannel.CHAT, userMessage,
+                character.getId(), AiConversationChannel.CHAT,
+                requestContext.userName(), requestContext.userTimeZone(), requestContext.localDateTime(),
+                userMessage,
                 characterSnapshot, relationshipSnapshot, history);
     }
 }

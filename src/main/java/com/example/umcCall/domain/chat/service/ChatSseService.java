@@ -1,6 +1,5 @@
 package com.example.umcCall.domain.chat.service;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
@@ -78,9 +77,15 @@ public class ChatSseService {
         synchronized (emitter) {
             try {
                 emitter.send(SseEmitter.event().name(eventName).data(data));
-            } catch (IOException e) {
-                // 전송 실패 = 끊긴 연결 → 에러로 완료 처리(→ 콜백에서 맵 제거)
-                emitter.completeWithError(e);
+            } catch (Exception e) {
+                // 전송 실패 = 끊겼거나 이미 완료된 연결. IOException(broken pipe)뿐 아니라
+                // IllegalStateException(이미 error로 완료된 emitter)도 나올 수 있어 Exception으로 폭넓게 잡는다.
+                // 여기서 예외를 밖으로 흘리면 호출부(AI 답장 생성 등)가 통째로 중단되므로 절대 전파하지 않는다.
+                try {
+                    emitter.completeWithError(e);   // 맵 제거 콜백 유도
+                } catch (Exception ignored) {
+                    // 이미 완료/에러난 emitter면 completeWithError도 던질 수 있다 → 무시한다.
+                }
             }
         }
     }

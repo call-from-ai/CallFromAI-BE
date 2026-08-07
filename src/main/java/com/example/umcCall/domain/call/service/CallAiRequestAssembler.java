@@ -5,6 +5,7 @@ import com.example.umcCall.domain.ai.dto.AiChatRequest;
 import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
+import com.example.umcCall.domain.ai.service.AiRequestContextProvider;
 import com.example.umcCall.domain.character.entity.Character;
 import com.example.umcCall.domain.character.entity.CharacterAiProfile;
 import com.example.umcCall.domain.character.repository.CharacterAiProfileRepository;
@@ -48,6 +49,7 @@ public class CallAiRequestAssembler {
     private final RelationshipStatusRepository relationshipStatusRepository;
     private final AiCharacterSnapshotMapper characterSnapshotMapper;
     private final AiRelationshipSnapshotMapper relationshipSnapshotMapper;
+    private final AiRequestContextProvider requestContextProvider;
 
     /**
      * 대화 로그를 AI 요청으로 만든다.
@@ -75,11 +77,15 @@ public class CallAiRequestAssembler {
         // (지연·비용). subList는 뷰지만 AiChatRequest 생성자가 List.copyOf로 복사하므로 안전하다.
         int from = Math.max(0, last - CONTEXT_HISTORY_SIZE);
         List<AiChatHistoryItem> history = conversation.subList(from, last);
+        AiRequestContextProvider.Context requestContext = requestContextProvider.create(relationship.getMemberId());
 
         return new AiChatRequest(
                 UUID.randomUUID().toString(), // 멱등성 키. 턴마다 고유값(같은 값 재전송 시 409).
                 characterId,
                 AiConversationChannel.CALL,
+                requestContext.userName(),
+                requestContext.userTimeZone(),
+                requestContext.localDateTime(),
                 message,
                 characterSnapshotMapper.toSnapshot(character, profile, relationship),
                 relationshipSnapshotMapper.toSnapshot(relationship, status),

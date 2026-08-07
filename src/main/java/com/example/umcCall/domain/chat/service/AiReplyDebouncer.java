@@ -209,7 +209,12 @@ public class AiReplyDebouncer {
 
         // 여기서부터 실제 AI 작업 시작 → "…" 입력중 표시 켜기.
         // 이 아래에서 무슨 일이 생기든(사진 못 받음/AI 실패/빈 답장) 반드시 message 또는 chat-error로 이 표시를 닫는다.
-        chatMessageNotifier.notifyLoading(room);
+        // 로딩 표시는 부가 신호일 뿐이다 — SSE가 끊겨 전송이 실패해도 AI 답장 생성까지 막으면 안 되므로 예외를 삼킨다.
+        try {
+            chatMessageNotifier.notifyLoading(room);
+        } catch (Exception e) {
+            log.warn("로딩 신호 전송 실패(무시하고 답장 생성 계속). roomId={}", room.getId(), e);
+        }
 
         // 이미지가 있으면 S3에서 원본 바이트를 다시 받아온다(전송 시점의 원본은 이미 사라졌다).
         byte[] imageBytes = null;
