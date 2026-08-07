@@ -1,6 +1,5 @@
 package com.example.umcCall.domain.chat.service;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
@@ -46,22 +45,16 @@ public class ChatSseService {
     }
 
     /**
-     * 유저가 현재 SSE로 접속(연결) 중인지 여부. 앱이 켜져 있어 라이브로 받을 수 있는지 판단하며,
-     * 채팅 배달 시 "접속 중이면 SSE / 아니면 FCM"을 가르는 데 쓰인다.
+     * 특정 유저에게 이벤트를 push하고 <b>실제 전송 성공 여부</b>를 반환한다.
+     * true = 살아있는 SSE 연결로 전송 성공(라이브 배달됨), false = 연결 없음 또는 죽은 연결로 실패.
+     * 호출부는 이 값으로 "SSE로 갔는지 / FCM으로 폴백할지"를 판단한다("맵에 있냐"만 보면 죽은 연결에서 씹힌다).
      */
-    public boolean isConnected(Long memberId) {
-        return emitters.containsKey(memberId);
-    }
-
-    /**
-     * 특정 유저에게 이벤트를 push
-     */
-    public void sendToMember(Long memberId, String eventName, Object data) {
+    public boolean sendToMember(Long memberId, String eventName, Object data) {
         SseEmitter emitter = emitters.get(memberId);
         if (emitter == null) {
-            return;
+            return false;
         }
-        sendTo(emitter, eventName, data);
+        return sendTo(emitter, eventName, data);
     }
 
     /**
@@ -72,15 +65,23 @@ public class ChatSseService {
         emitters.forEach((memberId, emitter) -> sendTo(emitter, "heartbeat", "ping"));
     }
 
-    private void sendTo(SseEmitter emitter, String eventName, Object data) {
+    private boolean sendTo(SseEmitter emitter, String eventName, Object data) {
         // heartbeat(스케줄러)·AI 답장(worker)·구독(요청 스레드)이 같은 emitter에 동시에 보낼 수 있다.
         // SseEmitter.send는 스레드 세이프하지 않으므로 emitter 단위로 직렬화한다(유저 간에는 병렬).
         synchronized (emitter) {
             try {
                 emitter.send(SseEmitter.event().name(eventName).data(data));
-            } catch (IOException e) {
-                // 전송 실패 = 끊긴 연결 → 에러로 완료 처리(→ 콜백에서 맵 제거)
-                emitter.completeWithError(e);
+                return true;   // 살아있는 연결로 전송 성공
+            } catch (Exception e) {
+                // 전송 실패 = 끊겼거나 이미 완료된 연결. IOException(broken pipe)뿐 아니라
+                // IllegalStateException(이미 error로 완료된 emitter)도 나올 수 있어 Exception으로 폭넓게 잡는다.
+                // 여기서 예외를 밖으로 흘리면 호출부(AI 답장 생성 등)가 통째로 중단되므로 절대 전파하지 않는다.
+                try {
+                    emitter.completeWithError(e);   // 맵 제거 콜백 유도
+                } catch (Exception ignored) {
+                    // 이미 완료/에러난 emitter면 completeWithError도 던질 수 있다 → 무시한다.
+                }
+                return false;   // 죽은 연결 → 실패. 호출부(notify)가 이 값을 보고 FCM으로 폴백한다.
             }
         }
     }

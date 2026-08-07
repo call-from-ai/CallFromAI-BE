@@ -10,9 +10,9 @@ public record PcmAudio(short[] samples, int sampleRate) {
     /**
      * 다른 샘플레이트로 변환한다(선형 보간). 같은 레이트면 그대로 돌려준다.
      *
-     * <p>통화 녹음에서 쓰는 유일한 경로는 <b>CLOVA Voice 24kHz → 녹음 기준 16kHz</b>다.
-     * 다운샘플 전에 로우패스를 걸지 않아 8kHz 위 성분이 접히는데(에일리어싱), 선형 보간 자체가 약한
-     * 로우패스라 음성에서는 귀로 구별되지 않는 수준이다 — 이 판단의 근거는 스펙이 아니라 <b>청취 확인</b>이다.
+     * <p>쓰는 경로는 <b>Typecast 44.1kHz → 녹음 기준 16kHz</b> 하나다.
+     * 실통화 녹음 청취 결과, 다운샘플 전에 로우패스를 걸지 않기로 했다.
+     * 8kHz 위 성분이 접히지만(에일리어싱) 선형 보간 자체가 약한 로우패스라 음성에선 귀로 구별되지 않는다
      */
     public PcmAudio resampleTo(int targetRate) {
         if (targetRate == sampleRate || samples.length == 0) {

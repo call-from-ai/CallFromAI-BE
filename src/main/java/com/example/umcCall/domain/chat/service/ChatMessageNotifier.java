@@ -40,12 +40,14 @@ public class ChatMessageNotifier {
 
     public void notify(ChatRoom room, ChatMessage message) {
         Long memberId = room.getMemberId();
-        if (chatSseService.isConnected(memberId)) {
-            chatSseService.sendToMember(memberId, EVENT_MESSAGE, ChatMessageResponse.from(message));
-            return;
+        // "연결됐냐"가 아니라 "SSE로 실제 전달됐냐"로 판단한다. 죽은 연결이 맵에 남아있어도(방을 막 나간 직후 등)
+        // 전송이 실패하면 false가 돌아와 아래 FCM으로 폴백된다 → 라이브·푸시 둘 다 씹히는 것을 막는다.
+        if (chatSseService.sendToMember(memberId, EVENT_MESSAGE, ChatMessageResponse.from(message))) {
+            return;   // SSE로 라이브 전달됨(= 유저가 채팅방에서 보는 중) → FCM 불필요
         }
+        // 미연결 또는 SSE 전송 실패(방 밖 / 죽은 연결) → FCM 폴백
         if (room.isMuted()) {
-            return;   // 앱 꺼짐 + 음소거 → 푸시 안 함
+            return;   // 음소거 → 푸시 안 함(음소거는 FCM만 차단)
         }
         pushNotificationService.send(memberId,
                 PushMessage.chat(room.getId(), resolveCharacterName(room.getRelationshipId()), preview(message)));

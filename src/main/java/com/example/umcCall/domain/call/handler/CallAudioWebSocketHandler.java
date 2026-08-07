@@ -3,7 +3,7 @@ package com.example.umcCall.domain.call.handler;
 import com.example.umcCall.domain.call.client.ClovaSpeechClient;
 import com.example.umcCall.domain.call.client.ClovaSpeechProperties;
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
-import com.example.umcCall.domain.call.client.ClovaVoiceClient;
+import com.example.umcCall.domain.call.client.TypecastVoiceClient;
 import com.example.umcCall.domain.call.dto.NestRecognizeResult;
 import com.example.umcCall.domain.call.enums.CallSpeaker;
 import com.example.umcCall.domain.call.recording.CallRecorder;
@@ -66,7 +66,7 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
     private final ClovaSpeechClient clovaSpeechClient;
-    private final ClovaVoiceClient clovaVoiceClient;
+    private final TypecastVoiceClient typecastVoiceClient;
     private final CallConversationService callConversationService;
     private final CallService callService;
     private final CallHistoryService callHistoryService;
@@ -92,7 +92,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
     private final ExecutorService controlNotifier = Executors.newSingleThreadExecutor();
 
     public CallAudioWebSocketHandler(ClovaSpeechClient clovaSpeechClient,
-                                     ClovaVoiceClient clovaVoiceClient,
+                                     TypecastVoiceClient typecastVoiceClient,
                                      CallConversationService callConversationService,
                                      CallService callService,
                                      CallHistoryService callHistoryService,
@@ -107,7 +107,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         this.callArtifactRegistry = callArtifactRegistry;
         this.bargeInProperties = bargeInProperties;
         this.clovaSpeechClient = clovaSpeechClient;
-        this.clovaVoiceClient = clovaVoiceClient;
+        this.typecastVoiceClient = typecastVoiceClient;
         this.callConversationService = callConversationService;
         this.callService = callService;
         this.callHistoryService = callHistoryService;
@@ -392,7 +392,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         private final long turnStartedAt;
         private final CallRecorder recorder;
         /** 이 통화 AI의 목소리(CLOVA 화자 ID). 연결 시 해석해 둔 값을 그대로 받는다. */
-        private final String speaker;
+        private final String voiceId;
         private final StringBuilder spoken = new StringBuilder();
         private boolean firstAudioSent;
 
@@ -405,7 +405,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             this.recorder = call.recorder();
             // ⚠ 연결 시 한 번 해석해 ActiveCall에 얼려둔 값을 그대로 쓴다 — 문장마다 조회하면 턴당
             // 문장 수만큼 DB가 나간다(계약 테스트 `화자는_연결_시_한_번만_조회한다`가 고정).
-            this.speaker = call.voice().speakerId();
+            this.voiceId = call.voice().voiceId();
         }
 
         /**
@@ -414,7 +414,8 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
          * 계속 스트림을 읽어봐야 워커가 묶여 <b>사용자가 방금 끼어들며 만든 다음 턴</b>이 밀린다.
          */
         private void speak(String sentence) {
-            // ⚠ 발음할 게 없는 조각(이모지·구두점만)은 CLOVA가 400을 준다("TN result is empty").
+            // ⚠ 발음할 게 없는 조각(이모지·구두점만)은 벤더가 거절한다(CLOVA는 400 "TN result is empty",
+            // Typecast는 422 "text not synthesizable"). 벤더가 바뀌어도 이 가드는 그대로 필요하다.
             // AI 대사가 이모지로 끝나면 flush 꼬리가 딱 이 모양이라 실전에서 매번 걸린다.
             // 턴을 접지 않고 이 조각만 건너뛴다 — 어차피 소리로 나갈 내용이 아니다.
             if (!isSpeakable(sentence)) {
@@ -428,7 +429,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             long llmMs = firstAudioSent ? -1 : elapsedMs(turnStartedAt);
 
             long ttsStartedAt = System.nanoTime();
-            byte[] wav = clovaVoiceClient.synthesize(sentence, speaker);
+            byte[] wav = typecastVoiceClient.synthesize(sentence, voiceId);
             long ttsMs = elapsedMs(ttsStartedAt);
 
             // 끼어들기 확인 ②: 합성 중에 말을 시작한 경우. 아직 전송 전이라 사용자에겐 애초에 들리지 않는다.
