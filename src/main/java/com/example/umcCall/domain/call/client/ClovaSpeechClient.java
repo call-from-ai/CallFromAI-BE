@@ -6,6 +6,7 @@ import com.nbp.cdncp.nest.grpc.proto.v1.NestServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
+import io.grpc.stub.ClientCallStreamObserver;
 import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.PostConstruct;
@@ -52,14 +53,20 @@ public class ClovaSpeechClient {
      * 세션 하나의 {@code recognize} 양방향 스트림을 연다.
      * 응답 옵저버를 넘기면 요청용 업스트림 옵저버가 반환된다.
      * 호출자는 {@code CONFIG 1회 → DATA N회 → onCompleted()} 순서로 보낸다.
+     *
+     * <p>반환형이 {@link ClientCallStreamObserver}인 것은 <b>{@code cancel()} 때문</b>이다 —
+     * 취소를 못 보내면 CLOVA가 스트림을 계속 붙잡아 채널 상한이 소진된다(#198).
+     * {@code recognize()}의 선언 타입은 {@code StreamObserver}지만 실제 구현체는 항상 이 타입이다
+     * ({@code ClientCalls.asyncBidiStreamingCall}의 반환값).
      */
-    public StreamObserver<NestRequest> openRecognizeStream(StreamObserver<NestResponse> responseObserver) {
+    public ClientCallStreamObserver<NestRequest> openRecognizeStream(
+            StreamObserver<NestResponse> responseObserver) {
         Metadata metadata = new Metadata();
         metadata.put(AUTHORIZATION, "Bearer " + properties.secretKey());
 
         NestServiceGrpc.NestServiceStub stub = NestServiceGrpc.newStub(channel)
                 .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata));
 
-        return stub.recognize(responseObserver);
+        return (ClientCallStreamObserver<NestRequest>) stub.recognize(responseObserver);
     }
 }
