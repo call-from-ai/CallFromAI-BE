@@ -1,5 +1,7 @@
 package com.example.umcCall.domain.ai.dto;
 
+import java.util.List;
+
 public record AiCharacterSnapshot(
         Long characterId,
         String name,
@@ -8,6 +10,7 @@ public record AiCharacterSnapshot(
         String lifeType,
         String preferTime,
         Integer romanceStyleScore,
+        List<String> keywords,
         TraitProfile traits
 ) {
     public record TraitProfile(
