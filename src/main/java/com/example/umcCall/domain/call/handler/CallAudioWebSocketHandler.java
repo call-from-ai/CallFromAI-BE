@@ -993,15 +993,29 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             }
         }
 
+        private boolean alreadyFinished() {
+            if (activeCalls.get(session.getId()) != null) {
+                return false;
+            }
+            log.debug("[Clova] 정리된 세션의 스트림 종료 통지 — 무시. session={}", session.getId());
+            return true;
+        }
+
         @Override
         public void onError(Throwable t) {
+            if (alreadyFinished()) {
+                return;
+            }
             log.error("[Clova] 스트림 오류 → WebSocket 종료. session={}", session.getId(), t);
             terminateCall(session, CloseStatus.SERVER_ERROR);
         }
 
         @Override
         public void onCompleted() {
-            // CLOVA가 스트림을 끝낸 경우(정상/선종료). 남은 맵 정리 + WebSocket 정리.
+            if (alreadyFinished()) {
+                return;
+            }
+            // CLOVA가 스스로 스트림을 끝낸 경우. 남은 맵 정리 + WebSocket 정리.
             log.info("[Clova] 스트림 완료 → WebSocket 정리. session={}", session.getId());
             terminateCall(session, CloseStatus.NORMAL);
         }

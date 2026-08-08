@@ -41,6 +41,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestRequest;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
+import io.grpc.Status;
 import io.grpc.stub.ClientCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
@@ -379,6 +380,45 @@ class CallAudioWebSocketHandlerTest {
 
         verify(stream).onCompleted();
         verify(stream, never()).cancel(any(), any());
+    }
+
+    @Test
+    void 우리가_취소한_뒤_도착한_onError는_오류로_처리하지_않는다() throws Exception {
+        // cancel()은 gRPC가 onError(CANCELLED)를 부르게 한다. 그걸 오류로 보면 정상 종료가
+        // 클라이언트엔 ERROR + close 1011로 보인다(CALL_ENDED와 경쟁).
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42));
+
+        stt.onError(Status.CANCELLED.asRuntimeException());
+
+        verify(session, never()).sendMessage(controlOfType("ERROR"));
+        verify(session, never()).close(CloseStatus.SERVER_ERROR);
+    }
+
+    @Test
+    void 정리된_세션의_onCompleted는_소켓을_다시_닫지_않는다() throws Exception {
+        // half-close 경로도 콜백이 뒤늦게 온다(실측: callId 12·25). 동작은 무해하지만
+        // 이미 끝난 통화에 "정리한다"는 로그가 찍혀 원인 추적을 헷갈리게 한다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+        handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42));
+
+        stt.onCompleted();
+
+        verify(session, times(1)).close(any(CloseStatus.class));
+    }
+
+    @Test
+    void 정리_전에_온_스트림_오류는_그대로_ERROR로_닫는다() throws Exception {
+        // 위 가드가 진짜 오류까지 삼키면 안 된다 — 스트림이 살아 있는 동안의 오류는 그대로 처리한다.
+        WebSocketSession session = givenConnectedCall();
+        StreamObserver<NestResponse> stt = captureSttObserver();
+
+        stt.onError(Status.RESOURCE_EXHAUSTED.asRuntimeException());
+
+        verify(session).sendMessage(controlOfType("ERROR"));
+        verify(session).close(CloseStatus.SERVER_ERROR);
     }
 
     @Test
