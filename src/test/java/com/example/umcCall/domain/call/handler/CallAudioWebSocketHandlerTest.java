@@ -41,6 +41,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestRequest;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
+import io.grpc.stub.ClientCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -131,7 +132,15 @@ class CallAudioWebSocketHandlerTest {
     @SuppressWarnings("unchecked")
     private void givenSttStreamOpens() {
         when(clovaSpeechClient.openRecognizeStream(any()))
-                .thenReturn(mock(StreamObserver.class));
+                .thenReturn(mock(ClientCallStreamObserver.class));
+    }
+
+    /** 개설된 요청 스트림 목을 돌려준다 — {@code cancel()}·{@code onCompleted()} 검증용. */
+    @SuppressWarnings("unchecked")
+    private ClientCallStreamObserver<NestRequest> givenSttStreamOpensWith() {
+        ClientCallStreamObserver<NestRequest> stream = mock(ClientCallStreamObserver.class);
+        when(clovaSpeechClient.openRecognizeStream(any())).thenReturn(stream);
+        return stream;
     }
 
     /** 세션에 나간 첫 텍스트 프레임을 JSON으로 파싱해 돌려준다. */
@@ -336,16 +345,53 @@ class CallAudioWebSocketHandlerTest {
         // 클라이언트 끊김 경로의 half-close(onCompleted)는 이미 닫힌 스트림에서 실제로 던진다.
         // ⚠ 단계마다 따로 삼켜야 한다 — 한 catch로 묶으면 여기서 터질 때 산출물까지 같이 스킵된다.
         WebSocketSession session = openSession();
-        @SuppressWarnings("unchecked")
-        StreamObserver<NestRequest> stream = mock(StreamObserver.class);
+        ClientCallStreamObserver<NestRequest> stream = givenSttStreamOpensWith();
         doThrow(new IllegalStateException("이미 닫힌 스트림")).when(stream).onCompleted();
-        when(clovaSpeechClient.openRecognizeStream(any())).thenReturn(stream);
         handler.afterConnectionEstablished(session);
 
         handler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
         verify(callService).finish(CALL_ID);
         // 스트림이 터져도 산출물 생성까지 이어져야 한다(단계별 삼키기의 증거).
+        verify(callSummaryService).generate(CALL_ID);
+    }
+
+    @Test
+    void 서버가_먼저_끝내는_경로는_CLOVA_스트림을_취소한다() {
+        // 플래그만 세우면 CLOVA는 스트림을 계속 붙잡아 채널 상한이 소진된다(#198).
+        ClientCallStreamObserver<NestRequest> stream = givenSttStreamOpensWith();
+        WebSocketSession session = openSession();
+        handler.afterConnectionEstablished(session);
+
+        handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42));
+
+        verify(stream).cancel(any(), any());
+    }
+
+    @Test
+    void 클라이언트가_먼저_끊은_경로는_취소가_아니라_half_close다() {
+        // 소켓이 죽어도 남은 인식 결과는 전사·요약에 쓰인다 — 그래서 이 경로만 정중히 닫는다.
+        ClientCallStreamObserver<NestRequest> stream = givenSttStreamOpensWith();
+        WebSocketSession session = openSession();
+        handler.afterConnectionEstablished(session);
+
+        handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+
+        verify(stream).onCompleted();
+        verify(stream, never()).cancel(any(), any());
+    }
+
+    @Test
+    void 스트림_취소가_실패해도_통화는_마감되고_산출물도_시작된다() {
+        // terminate()가 던지면 뒤따르는 산출물 생성이 스킵된다(#161) — 그래서 안에서 삼킨다.
+        ClientCallStreamObserver<NestRequest> stream = givenSttStreamOpensWith();
+        doThrow(new IllegalStateException("이미 종결된 스트림")).when(stream).cancel(any(), any());
+        WebSocketSession session = openSession();
+        handler.afterConnectionEstablished(session);
+
+        handler.onCallEnded(new CallEndedEvent(CALL_ID, CallEndReason.USER_ENDED, 42));
+
+        verify(callService).finish(CALL_ID);
         verify(callSummaryService).generate(CALL_ID);
     }
 
