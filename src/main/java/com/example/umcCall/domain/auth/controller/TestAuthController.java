@@ -3,7 +3,10 @@ package com.example.umcCall.domain.auth.controller;
 import com.example.umcCall.domain.auth.dto.response.TokenResponse;
 import com.example.umcCall.domain.auth.service.AuthService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
+import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
+import com.example.umcCall.global.exception.BaseException;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
@@ -30,8 +33,12 @@ public class TestAuthController {
     )
     @PostMapping("/test/auth/login")
     public ResponseEntity<ApiResponse<TokenResponse>> testLogin(
-            @RequestParam(defaultValue = "1") String socialUid
+            @Parameter(description = "테스트용 임의 식별자", required = true, example = "1")
+            @RequestParam(required = false) String socialUid
     ) {
+        if (socialUid == null || socialUid.isBlank()) {
+            throw new BaseException(GeneralErrorCode.MISSING_REQUEST_PARAMETER);
+        }
         TokenResponse tokenResponse = authService.testLogin(socialUid);
         return ResponseEntity.ok(ApiResponse.onSuccess(tokenResponse));
     }
