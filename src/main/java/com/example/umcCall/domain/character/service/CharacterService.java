@@ -74,6 +74,10 @@ public class CharacterService {
         // 동시 요청으로 인한 개수 초과/메인 중복 생성을 막기 위해 회원 행에 락을 건다
         Member member = lockMember(memberId);
 
+        if (!member.isOnboardingCompleted()) {
+            throw new BaseException(MemberErrorCode.MEMBER_INFO_NOT_REGISTERED);
+        }
+
         if (member.getCharacterCreatedAt() != null
                 && member.getCharacterCreatedAt().plusHours(24).isAfter(LocalDateTime.now())) {
             throw new BaseException(CharacterErrorCode.CHARACTER_RECREATE_TOO_SOON);

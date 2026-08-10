@@ -75,6 +75,9 @@ public class Member extends BaseTimeEntity {
     @Column(name = "do_not_disturb_end")
     private LocalTime doNotDisturbEnd;
 
+    @Column(name = "refresh_token", length = 500)
+    private String refreshToken;
+
     @Builder
     private Member(String socialUid, SocialType socialType) {
         this.socialUid = socialUid;
@@ -124,6 +127,10 @@ public class Member extends BaseTimeEntity {
     public void updateDoNotDisturb(LocalTime start, LocalTime end) {
         this.doNotDisturbStart = start;
         this.doNotDisturbEnd = end;
+    }
+
+    public void updateRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
     }
 }
 
