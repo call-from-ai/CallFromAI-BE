@@ -4,19 +4,17 @@ import com.example.umcCall.domain.proactive.dto.ProactiveProcessResponse;
 import com.example.umcCall.domain.proactive.dto.ProactiveScheduleResponse;
 import com.example.umcCall.domain.proactive.service.ProactiveDebugService;
 import com.example.umcCall.global.apiPayload.ApiResponse;
+import com.example.umcCall.global.security.TestAccessGuard;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import java.util.List;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+
+import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "테스트 - 선제 연락", description = """
-        선제 연락 스케줄러 테스트 API이다. 활성 프로필과 관계없이 등록되므로 배포 서버 Swagger에서도 사용할 수 있다.
+        선제 연락 스케줄러 테스트 API이다. 활성 프로필과 관계없이 등록되므로 X-Test-Secret 헤더를 입력하여 사용해야 한다.
         정상 정책 테스트는 상태 조회 → force-due → process → 상태 조회 순서로 진행한다.
         채팅 또는 통화 전달 경로만 빠르게 확인하려면 force-send 또는 force-call을 사용한다.
         force-send와 force-call은 실제 DB, AI 서버, SSE/FCM 또는 착신 푸시에 영향을 준다.
@@ -27,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProactiveDebugController {
 
     private final ProactiveDebugService debugService;
+    private final TestAccessGuard testAccessGuard;
 
     @Operation(
             summary = "현재 스케줄 상태 조회",
@@ -38,7 +37,9 @@ public class ProactiveDebugController {
     @GetMapping("/{memberId}")
     public ApiResponse<List<ProactiveScheduleResponse>> getStatus(
             @Parameter(description = "테스트할 회원 ID", example = "1")
-            @PathVariable Long memberId) {
+            @PathVariable Long memberId,
+            @RequestHeader(value = "X-Test-Secret", required = false) String testSecret) {
+        testAccessGuard.check(testSecret);
         return ApiResponse.onSuccess(debugService.getStatuses(memberId));
     }
 
@@ -51,7 +52,9 @@ public class ProactiveDebugController {
     @PostMapping("/{memberId}/reschedule")
     public ApiResponse<ProactiveScheduleResponse> reschedule(
             @Parameter(description = "테스트할 회원 ID", example = "1")
-            @PathVariable Long memberId) {
+            @PathVariable Long memberId,
+            @RequestHeader(value = "X-Test-Secret", required = false) String testSecret) {
+        testAccessGuard.check(testSecret);
         return ApiResponse.onSuccess(debugService.reschedule(memberId));
     }
 
@@ -65,7 +68,9 @@ public class ProactiveDebugController {
     @PostMapping("/{memberId}/force-due")
     public ApiResponse<ProactiveScheduleResponse> forceDue(
             @Parameter(description = "테스트할 회원 ID", example = "1")
-            @PathVariable Long memberId) {
+            @PathVariable Long memberId,
+            @RequestHeader(value = "X-Test-Secret", required = false) String testSecret) {
+        testAccessGuard.check(testSecret);
         return ApiResponse.onSuccess(debugService.forceDue(memberId));
     }
 
@@ -80,7 +85,9 @@ public class ProactiveDebugController {
     @PostMapping("/{memberId}/process")
     public ApiResponse<ProactiveProcessResponse> processNow(
             @Parameter(description = "테스트할 회원 ID", example = "1")
-            @PathVariable Long memberId) {
+            @PathVariable Long memberId,
+            @RequestHeader(value = "X-Test-Secret", required = false) String testSecret) {
+        testAccessGuard.check(testSecret);
         return ApiResponse.onSuccess(debugService.processNow(memberId));
     }
 
@@ -95,7 +102,9 @@ public class ProactiveDebugController {
     @PostMapping("/{memberId}/force-send")
     public ApiResponse<ProactiveProcessResponse> forceSend(
             @Parameter(description = "테스트할 회원 ID", example = "1")
-            @PathVariable Long memberId) {
+            @PathVariable Long memberId,
+            @RequestHeader(value = "X-Test-Secret", required = false) String testSecret) {
+        testAccessGuard.check(testSecret);
         return ApiResponse.onSuccess(debugService.forceSend(memberId));
     }
 
@@ -111,7 +120,9 @@ public class ProactiveDebugController {
     @PostMapping("/{memberId}/force-call")
     public ApiResponse<ProactiveProcessResponse> forceCall(
             @Parameter(description = "테스트할 회원 ID", example = "1")
-            @PathVariable Long memberId) {
+            @PathVariable Long memberId,
+            @RequestHeader(value = "X-Test-Secret", required = false) String testSecret) {
+        testAccessGuard.check(testSecret);
         return ApiResponse.onSuccess(debugService.forceCall(memberId));
     }
 }

@@ -25,6 +25,10 @@ jwt:
   access-token-expiration: 3600000
   refresh-token-expiration: 1209600000
 
+test:
+  access:
+    secret: ${TEST_ACCESS_SECRET:}
+
 clova:
   speech:
     host: clovaspeech-gw.ncloud.com

@@ -26,14 +26,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class CharacterCreateRequest {
 
-    @Schema(example = "김", description = "성(2자 이내)")
+    @Schema(example = "김", description = "성(10자 이내)")
     @NotBlank
-    @Size(max = 2)
+    @Size(max = 10)
     private String lastName;
 
-    @Schema(example = "유나", description = "이름(5자 이내)")
+    @Schema(example = "유나", description = "이름(10자 이내)")
     @NotBlank
-    @Size(max = 5)
+    @Size(max = 10)
     private String firstName;
 
     @Schema(example = "FEMALE", description = "성별: MALE(남성) 또는 FEMALE(여성)")

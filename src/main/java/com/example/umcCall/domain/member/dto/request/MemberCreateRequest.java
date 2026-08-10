@@ -13,12 +13,12 @@ import java.time.LocalDate;
 public record MemberCreateRequest(
         @Schema(example = "김", description = "성(2자 이내)")
         @NotBlank(message = "성은 필수입니다.")
-        @Size(max = 2, message = "성은 2자 이내로 입력해주세요.")
+        @Size(max = 10, message = "성은 10자 이내로 입력해주세요.")
         String lastName,
 
         @Schema(example = "민준", description = "이름(5자 이내)")
         @NotBlank(message = "이름은 필수입니다.")
-        @Size(max = 5, message = "이름은 5자 이내로 입력해주세요.")
+        @Size(max = 10, message = "이름은 10자 이내로 입력해주세요.")
         String firstName,
 
         @Schema(example = "https://callfromai-images.s3.ap-northeast-2.amazonaws.com/preset-images/male_1.png",
