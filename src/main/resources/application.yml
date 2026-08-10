@@ -27,7 +27,7 @@ jwt:
 
 test:
   access:
-    secret: ${TEST_ACCESS_SECRET:}
+    secret: ${TEST_ACCESS_SECRET}
 
 clova:
   speech:
