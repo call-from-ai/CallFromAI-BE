@@ -1,14 +1,10 @@
--- 전화왔어 약관 4종 INSERT (수동 실행용 원본 / prod 참고용)
+-- 전화왔어 약관 4종 초기 INSERT (운영 DB 최초 1회 실행용)
 --
--- ⚠ 로컬 개발에서는 이 파일을 직접 실행할 필요 없다 — TermSeeder(ApplicationRunner, @Profile("local"))가
---    앱 기동 시 term 테이블이 비어 있으면 자동으로 같은 데이터를 넣어준다.
--- ⚠ 이 파일은 DELETE FROM term; 을 포함해 "덮어쓰기" 방식이라, 반복 실행(예: 매 배포마다) 용도가 아니다.
---    member_term이 term_id를 참조하고 있으면 FK 에러가 날 수 있으니, 그 경우
---    DELETE FROM member_term; 을 먼저 실행하거나 UPDATE 방식으로 바꿔야 한다.
+-- ⚠ 운영 DB에 약관 초기 데이터를 넣기 위한 스크립트입니다.
+-- ⚠ member_term에 회원 약관 동의 데이터가 생성된 이후에는 재실행하지 않습니다.
+-- ⚠ 기존 약관 내용을 수정해야 하는 경우 이 파일을 재실행하지 말고 UPDATE 쿼리를 사용합니다.
 --
 -- 사용법: mysql -u umc_user -p callfromai < seed_term.sql
-
-DELETE FROM term;
 
 INSERT INTO term (title, content, is_required) VALUES ('전화왔어 서비스 이용약관', '# 전화왔어 서비스 이용약관
 

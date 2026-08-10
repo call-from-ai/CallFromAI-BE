@@ -4,7 +4,6 @@ import com.example.umcCall.domain.auth.client.KakaoApiClient;
 import com.example.umcCall.domain.auth.dto.response.KakaoUserResponse;
 import com.example.umcCall.domain.auth.dto.response.TokenResponse;
 import com.example.umcCall.domain.auth.exception.AuthErrorCode;
-import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.enums.SocialType;
 import com.example.umcCall.domain.member.exception.MemberErrorCode;

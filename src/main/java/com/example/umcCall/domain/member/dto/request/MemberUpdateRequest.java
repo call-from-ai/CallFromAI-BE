@@ -10,12 +10,12 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
 public record MemberUpdateRequest(
-        @Schema(example = "김", description = "성(2자 이내)")
+        @Schema(example = "김", description = "성(10자 이내)")
         @Size(max = 10, message = "성은 10자 이내로 입력해주세요.")
         @Pattern(regexp = ".*\\S.*", message = "성은 비어 있거나 공백으로만 구성될 수 없습니다.")
         String lastName,
 
-        @Schema(example = "민준", description = "이름(5자 이내)")
+        @Schema(example = "민준", description = "이름(10자 이내)")
         @Size(max = 10, message = "이름은 10자 이내로 입력해주세요.")
         @Pattern(regexp = ".*\\S.*", message = "이름은 비어 있거나 공백으로만 구성될 수 없습니다.")
         String firstName,
