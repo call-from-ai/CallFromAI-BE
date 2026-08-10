@@ -35,7 +35,7 @@ public class TestAuthController {
     @PostMapping("/test/auth/login")
     public ResponseEntity<ApiResponse<TokenResponse>> testLogin(
             @Parameter(description = "테스트용 임의 식별자", required = true, example = "1")
-            @RequestParam(required = false) String socialUid,
+            @RequestParam String socialUid,
 
             @Parameter(description = "운영 서버 테스트 API 접근 시크릿")
             @RequestHeader(value = "X-Test-Secret", required = false) String testSecret
