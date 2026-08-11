@@ -81,7 +81,7 @@ public class CharacterController {
     }
 
     // 내 캐릭터 목록 조회
-    @Operation(summary = "내 캐릭터 목록 조회", description = "회원이 생성한 캐릭터 목록을 반환한다. 최대 5개라 페이지네이션은 없다.")
+    @Operation(summary = "내 캐릭터 목록 조회", description = "회원이 생성한 캐릭터 목록을 반환한다.")
     @GetMapping
     public ApiResponse<List<CharacterSummaryResponse>> getMyCharacters(Authentication authentication) {
         Long memberId = (Long) authentication.getPrincipal();

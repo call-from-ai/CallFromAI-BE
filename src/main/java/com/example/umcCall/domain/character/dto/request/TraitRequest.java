@@ -26,8 +26,8 @@ public class TraitRequest {
             example = "1",
             description = "우선순위, 1부터 연속된 값"
     )
-    @NotNull
-    @Min(1)
-    @Max(5)
+    @NotNull(message = "우선순위는 필수입니다.")
+    @Min(value = 1, message = "우선순위는 1 이상이어야 합니다.")
+    @Max(value = 5, message = "우선순위는 5 이하여야 합니다.")
     private Integer priority;
 }

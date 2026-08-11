@@ -26,10 +26,10 @@ public class Member extends BaseTimeEntity {
     @Column(name = "member_id")
     private Long id;
 
-    @Column(name = "last_name", length = 2)
+    @Column(name = "last_name", length = 10)
     private String lastName;
 
-    @Column(name = "first_name", length = 5)
+    @Column(name = "first_name", length = 10)
     private String firstName;
 
     @Column(name = "image_url", length = 2048)
@@ -60,7 +60,6 @@ public class Member extends BaseTimeEntity {
     @Column(name = "call_ticket_balance", nullable = false)
     private int callTicketBalance;
 
-
     @Column(name = "character_created_at")
     private LocalDateTime characterCreatedAt;
 
@@ -75,6 +74,9 @@ public class Member extends BaseTimeEntity {
 
     @Column(name = "do_not_disturb_end")
     private LocalTime doNotDisturbEnd;
+
+    @Column(name = "refresh_token", length = 500)
+    private String refreshToken;
 
     @Builder
     private Member(String socialUid, SocialType socialType) {
@@ -97,11 +99,8 @@ public class Member extends BaseTimeEntity {
                 && !lastName.isBlank()
                 && firstName != null
                 && !firstName.isBlank()
-                && imageUrl != null
-                && !imageUrl.isBlank()
                 && gender != null
                 && birth != null
-                && mbti != null
                 && job != null;
     }
 
@@ -128,6 +127,10 @@ public class Member extends BaseTimeEntity {
     public void updateDoNotDisturb(LocalTime start, LocalTime end) {
         this.doNotDisturbStart = start;
         this.doNotDisturbEnd = end;
+    }
+
+    public void updateRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
     }
 }
 

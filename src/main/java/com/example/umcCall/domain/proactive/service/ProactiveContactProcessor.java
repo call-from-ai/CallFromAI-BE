@@ -207,6 +207,7 @@ public class ProactiveContactProcessor {
                 requestContext.userName(),
                 requestContext.userTimeZone(),
                 requestContext.localDateTime(),
+                requestContext.user(),
                 characterSnapshotMapper.toSnapshot(relationship.getCharacter(), profile, relationship),
                 relationshipSnapshotMapper.toSnapshot(relationship, status),
                 history);

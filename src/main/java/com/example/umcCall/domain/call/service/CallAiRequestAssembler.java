@@ -86,6 +86,7 @@ public class CallAiRequestAssembler {
                 requestContext.userName(),
                 requestContext.userTimeZone(),
                 requestContext.localDateTime(),
+                requestContext.user(),
                 message,
                 characterSnapshotMapper.toSnapshot(character, profile, relationship),
                 relationshipSnapshotMapper.toSnapshot(relationship, status),
