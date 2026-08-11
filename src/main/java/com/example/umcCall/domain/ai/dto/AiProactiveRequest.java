@@ -18,6 +18,7 @@ public record AiProactiveRequest(
         String userTimeZone,
         @JsonSerialize(using = ToStringSerializer.class)
         OffsetDateTime localDateTime,
+        AiUserSnapshot user,
         AiCharacterSnapshot character,
         AiRelationshipSnapshot relationship,
         List<AiChatHistoryItem> history

@@ -18,6 +18,7 @@ public record AiChatRequest(
         String userTimeZone,
         @JsonSerialize(using = ToStringSerializer.class)
         OffsetDateTime localDateTime,
+        AiUserSnapshot user,
         String message,
         AiCharacterSnapshot character,
         AiRelationshipSnapshot relationship,

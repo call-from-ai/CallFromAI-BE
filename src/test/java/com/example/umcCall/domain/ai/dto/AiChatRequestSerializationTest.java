@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,7 @@ class AiChatRequestSerializationTest {
                 "민준",
                 "Asia/Seoul",
                 OffsetDateTime.parse("2026-08-06T21:29:18.716127+09:00"),
+                new AiUserSnapshot(LocalDate.of(2000, 1, 1), "MALE", "EMPLOYEE", "INTJ"),
                 "지금 몇 시야?",
                 null,
                 null,
@@ -34,5 +36,9 @@ class AiChatRequestSerializationTest {
         assertThat(json).contains("\"userTimeZone\":\"Asia/Seoul\"");
         assertThat(json).contains(
                 "\"localDateTime\":\"2026-08-06T21:29:18.716127+09:00\"");
+        assertThat(json).contains("\"birth\":\"2000-01-01\"");
+        assertThat(json).contains("\"gender\":\"MALE\"");
+        assertThat(json).contains("\"job\":\"EMPLOYEE\"");
+        assertThat(json).contains("\"mbti\":\"INTJ\"");
     }
 }

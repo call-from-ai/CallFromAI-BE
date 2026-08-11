@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.umcCall.domain.ai.dto.AiChatHistoryItem;
 import com.example.umcCall.domain.ai.dto.AiChatRequest;
+import com.example.umcCall.domain.ai.dto.AiUserSnapshot;
 import com.example.umcCall.domain.ai.enums.AiConversationChannel;
 import com.example.umcCall.domain.ai.mapper.AiCharacterSnapshotMapper;
 import com.example.umcCall.domain.ai.mapper.AiRelationshipSnapshotMapper;
@@ -22,6 +23,7 @@ import com.example.umcCall.domain.relationship.entity.Relationship;
 import com.example.umcCall.domain.relationship.entity.RelationshipStatus;
 import com.example.umcCall.domain.relationship.repository.RelationshipRepository;
 import com.example.umcCall.domain.relationship.repository.RelationshipStatusRepository;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -75,7 +77,8 @@ class CallConversationServiceTest {
         when(relationshipStatusRepository.findByRelationshipId(RELATIONSHIP_ID))
                 .thenReturn(Optional.of(mock(RelationshipStatus.class)));
         when(requestContextProvider.create(nullable(Long.class))).thenReturn(new AiRequestContextProvider.Context(
-                "민준", "Asia/Seoul", OffsetDateTime.parse("2026-08-07T02:15:00+09:00")));
+                "민준", "Asia/Seoul", OffsetDateTime.parse("2026-08-07T02:15:00+09:00"),
+                new AiUserSnapshot(LocalDate.of(2000, 1, 1), "MALE", "EMPLOYEE", "INTJ")));
     }
 
     /** 통화가 실제로 쓰는 경로는 스트리밍뿐이다. 조각 소비는 이 검증의 관심사가 아니라 빈 소비자를 넘긴다. */
