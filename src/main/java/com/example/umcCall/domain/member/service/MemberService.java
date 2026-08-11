@@ -1,6 +1,5 @@
 package com.example.umcCall.domain.member.service;
 
-import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
 import com.example.umcCall.domain.character.service.CharacterService;
 import com.example.umcCall.domain.image.enums.Gender;
 import com.example.umcCall.domain.image.repository.PresetImageRepository;
@@ -27,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberService {
 
     private final MemberRepository memberRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
     private final CharacterService characterService;
     private final PresetImageRepository presetImageRepository;
     private final ActivityNotificationRepository activityNotificationRepository;
@@ -47,13 +45,18 @@ public class MemberService {
             throw new BaseException(MemberErrorCode.MEMBER_INFO_ALREADY_REGISTERED);
         }
 
-        if (request.gender() != null && request.imageUrl() != null
-                && !presetImageRepository.existsByGenderAndImageUrl(request.gender(), request.imageUrl())) {
+        // imageUrl은 String이라 ""가 와도 Jackson이 null로 바꿔주지 않는다.
+        // 여기서 직접 blank를 null로 취급해야 "사진 선택 안 함"과 "빈 문자열"이 같게 처리된다.
+        String imageUrl = (request.imageUrl() == null || request.imageUrl().isBlank()) ? null : request.imageUrl();
+
+        if (request.gender() != null && imageUrl != null
+                && !presetImageRepository.existsByGenderAndImageUrl(request.gender(), imageUrl)) {
             throw new BaseException(MemberErrorCode.INVALID_PRESET_IMAGE);
         }
 
+
         member.updateProfile(
-                request.lastName(), request.firstName(), request.imageUrl(),
+                request.lastName(), request.firstName(), imageUrl,
                 request.gender(), request.birth(), request.mbti(), request.job()
         );
 
@@ -70,13 +73,15 @@ public class MemberService {
         }
 
         // 부분 업데이트라 요청에 없는 필드는 기존 값을 같이 고려해서 검증
+        String requestImageUrl = (request.imageUrl() == null || request.imageUrl().isBlank())
+                ? null : request.imageUrl();
 
         boolean imageOrGenderChanged =
-                request.imageUrl() != null || request.gender() != null;
+                requestImageUrl != null || request.gender() != null;
 
         if (imageOrGenderChanged) {
             Gender genderToValidate = request.gender() != null ? request.gender() : member.getGender();
-            String imageUrlToValidate = request.imageUrl() != null ? request.imageUrl() : member.getImageUrl();
+            String imageUrlToValidate = requestImageUrl != null ? requestImageUrl : member.getImageUrl();
 
             if (genderToValidate != null && imageUrlToValidate != null
                     && !presetImageRepository.existsByGenderAndImageUrl(genderToValidate, imageUrlToValidate)) {
@@ -84,7 +89,7 @@ public class MemberService {
             }
         }
         member.updateProfile(
-                request.lastName(), request.firstName(), request.imageUrl(),
+                request.lastName(), request.firstName(), requestImageUrl,
                 request.gender(), request.birth(), request.mbti(), request.job()
         );
         return MemberResponse.from(member);
@@ -98,7 +103,6 @@ public class MemberService {
         memberTermRepository.deleteByMemberId(memberId);
         activityNotificationRepository.deleteByMemberId(memberId);
         pushTokenRepository.deleteByMemberId(memberId);
-        refreshTokenRepository.findByMemberId(memberId).ifPresent(refreshTokenRepository::delete);
 
         // 회원 row 자체도 즉시 하드 삭제
         memberRepository.delete(member);

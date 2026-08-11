@@ -3,15 +3,12 @@ package com.example.umcCall.domain.auth.service;
 import com.example.umcCall.domain.auth.client.KakaoApiClient;
 import com.example.umcCall.domain.auth.dto.response.KakaoUserResponse;
 import com.example.umcCall.domain.auth.dto.response.TokenResponse;
-import com.example.umcCall.domain.auth.entity.RefreshToken;
 import com.example.umcCall.domain.auth.exception.AuthErrorCode;
-import com.example.umcCall.domain.auth.repository.RefreshTokenRepository;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.enums.SocialType;
 import com.example.umcCall.domain.member.exception.MemberErrorCode;
 import com.example.umcCall.domain.member.repository.MemberRepository;
 import com.example.umcCall.domain.term.service.TermService;
-import com.example.umcCall.global.apiPayload.code.GeneralErrorCode;
 import com.example.umcCall.global.exception.BaseException;
 import com.example.umcCall.global.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +22,6 @@ public class AuthService {
     private final KakaoApiClient kakaoApiClient;
     private final MemberRepository memberRepository;
     private final JwtProvider jwtProvider;
-    private final RefreshTokenRepository refreshTokenRepository;
     private final TermService termService;
 
     @Transactional
@@ -46,15 +42,12 @@ public class AuthService {
         jwtProvider.validateRefreshToken(refreshToken);
         Long memberId = jwtProvider.getMemberId(refreshToken);
 
-        RefreshToken saved = refreshTokenRepository.findByMemberId(memberId)
-                .orElseThrow(() -> new BaseException(AuthErrorCode.INVALID_TOKEN));
-
-        if (!saved.getToken().equals(refreshToken)) {
-            throw new BaseException(AuthErrorCode.INVALID_TOKEN);
-        }
-
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new BaseException(MemberErrorCode.MEMBER_NOT_FOUND));
+
+        if (member.getRefreshToken() == null || !member.getRefreshToken().equals(refreshToken)) {
+            throw new BaseException(AuthErrorCode.INVALID_TOKEN);
+        }
 
         return issueTokens(member);
     }
@@ -71,8 +64,8 @@ public class AuthService {
 
     @Transactional
     public void logout(Long memberId) {
-        refreshTokenRepository.findByMemberId(memberId)
-                .ifPresent(refreshTokenRepository::delete);
+        memberRepository.findById(memberId)
+                .ifPresent(member -> member.updateRefreshToken(null));
     }
 
     private TokenResponse issueTokens(Member member) {
@@ -80,10 +73,7 @@ public class AuthService {
         String accessToken = jwtProvider.createAccessToken(memberId);
         String refreshToken = jwtProvider.createRefreshToken(memberId);
 
-        RefreshToken tokenEntity = refreshTokenRepository.findByMemberId(memberId)
-                .orElse(new RefreshToken(memberId, refreshToken));
-        tokenEntity.updateToken(refreshToken);
-        refreshTokenRepository.save(tokenEntity);
+        member.updateRefreshToken(refreshToken);
 
         boolean needsOnboarding = !member.isOnboardingCompleted();
         boolean needsTermsAgreement = !termService.hasAgreedAllRequiredTerms(memberId);
