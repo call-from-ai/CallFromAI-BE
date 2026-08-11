@@ -10,11 +10,13 @@ public class CharacterCreateResponse {
 
     private Long characterId;
     private String name;
+    private String imageUrl;
 
     public static CharacterCreateResponse from(Character character) {
         return CharacterCreateResponse.builder()
                 .characterId(character.getId())
                 .name(character.getFirstName())
+                .imageUrl(character.getImageUrl())
                 .build();
     }
 }

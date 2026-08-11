@@ -27,6 +27,7 @@ import com.nbp.cdncp.nest.grpc.proto.v1.NestData;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestRequest;
 import com.nbp.cdncp.nest.grpc.proto.v1.NestResponse;
 import com.nbp.cdncp.nest.grpc.proto.v1.RequestType;
+import io.grpc.stub.ClientCallStreamObserver;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
@@ -157,7 +158,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
 
         try {
-            StreamObserver<NestRequest> requestObserver =
+            ClientCallStreamObserver<NestRequest> requestObserver =
                     clovaSpeechClient.openRecognizeStream(new ClovaResponseObserver(session));
             SttStream stream = new SttStream(requestObserver);
 
@@ -713,7 +714,7 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
 
     /**
      * <b>서버가 먼저</b> 통화를 끝낸다 — {@link #completeCall}과 달리 소켓이 살아 있어 우리가 닫고,
-     * CLOVA엔 half-close 없이 스트림을 버린다. 원인/로그는 호출부에서 남긴다.
+     * CLOVA엔 half-close 대신 <b>취소</b>를 보낸다({@link SttStream#terminate()}). 원인/로그는 호출부에서 남긴다.
      * 재개설(투명 복원)은 범위 밖 — 닫아서 클라이언트가 재연결하게 둔다.
      *
      * @param endNotice 정상 종료 통지({@code CALL_ENDED}) 내용. {@code null}이면 통지하지 않는다 —
@@ -914,10 +915,10 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
      */
     private static final class SttStream {
 
-        private final StreamObserver<NestRequest> requestObserver;
+        private final ClientCallStreamObserver<NestRequest> requestObserver;
         private boolean terminated = false;
 
-        private SttStream(StreamObserver<NestRequest> requestObserver) {
+        private SttStream(ClientCallStreamObserver<NestRequest> requestObserver) {
             this.requestObserver = requestObserver;
         }
 
@@ -939,15 +940,22 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
 
         /**
-         * 비정상 종료 표시. onCompleted는 부르지 않고 이후 전송만 막는다.
+         * 비정상 종료. 받을 결과가 없으므로 half-close 대신 <b>취소</b>를 보낸다.
          *
-         * <p>⚠ <b>되도록 던지지 말 것.</b> {@code terminateCall}이 이걸 부른 뒤에 통화를 마감한다.
-         * 지금은 호출부의 바깥 {@code catch}가 마감을 지키지만(#161 리뷰 반영), 여기서 던지면
-         * <b>뒤따르는 산출물 생성이 스킵</b>돼 녹음·요약이 시작조차 안 된다. gRPC 호출 같은 걸
-         * 넣게 되면 <b>이 메서드 안에서 삼킬 것</b> — 지금은 플래그 대입뿐이라 던질 수 없다.
+         * <p>⚠ <b>{@code cancel()}을 빼지 말 것</b> — 플래그만 세우면 CLOVA는 통화가 끝난 걸 모른 채
+         * 스트림을 붙잡고, 채널 상한이 차면 통화가 개설조차 안 된다(#198, prod 17통화 만에 소진).
+         * <p>⚠ 예외는 여기서 삼킨다 — 던지면 뒤따르는 산출물 생성이 스킵된다(#161).
          */
         synchronized void terminate() {
+            if (terminated) {
+                return;
+            }
             terminated = true;
+            try {
+                requestObserver.cancel("call terminated", null);
+            } catch (RuntimeException e) {
+                log.warn("[Clova] 스트림 취소 실패(통화 마감은 계속한다).", e);
+            }
         }
     }
 
@@ -985,15 +993,29 @@ public class CallAudioWebSocketHandler extends AbstractWebSocketHandler {
             }
         }
 
+        private boolean alreadyFinished() {
+            if (activeCalls.get(session.getId()) != null) {
+                return false;
+            }
+            log.debug("[Clova] 정리된 세션의 스트림 종료 통지 — 무시. session={}", session.getId());
+            return true;
+        }
+
         @Override
         public void onError(Throwable t) {
+            if (alreadyFinished()) {
+                return;
+            }
             log.error("[Clova] 스트림 오류 → WebSocket 종료. session={}", session.getId(), t);
             terminateCall(session, CloseStatus.SERVER_ERROR);
         }
 
         @Override
         public void onCompleted() {
-            // CLOVA가 스트림을 끝낸 경우(정상/선종료). 남은 맵 정리 + WebSocket 정리.
+            if (alreadyFinished()) {
+                return;
+            }
+            // CLOVA가 스스로 스트림을 끝낸 경우. 남은 맵 정리 + WebSocket 정리.
             log.info("[Clova] 스트림 완료 → WebSocket 정리. session={}", session.getId());
             terminateCall(session, CloseStatus.NORMAL);
         }
