@@ -28,8 +28,7 @@ public class AuthController {
 
     @Operation(summary = "카카오 로그인", description = """
                     안드로이드에서 전달받은 카카오 액세스 토큰으로 카카오 사용자 정보를 조회한다.
-                    로그인 성공 시 JWT Access Token과 Refresh Token을 발급하며,
-                    온보딩 필요 여부를 needsOnboarding 값으로 반환한다.
+                    로그인 성공 시 JWT Access Token과 Refresh Token을 발급한다.
                     """)
     @PostMapping("/kakao")
     public ResponseEntity<ApiResponse<TokenResponse>> kakaoLogin(@Valid @RequestBody KakaoLoginRequest request) {
@@ -55,7 +54,7 @@ public class AuthController {
             summary = "로그아웃",
             description = """
                     인증된 회원의 Refresh Token을 DB에서 삭제 처리한다.
-                    카카오 SDK 로그아웃 및 기기에 저장된 토큰 삭제는 안드로이드에서 처리한다.  
+                    카카오 SDK 로그아웃 및 기기에 저장된 토큰 삭제는 안드로이드에서 처리한다.
                     """
     )
     @PostMapping("/logout")
