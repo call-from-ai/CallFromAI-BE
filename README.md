@@ -33,7 +33,7 @@
 - **AWS S3**
   - 채팅 사진·통화 녹음 저장 및 presigned URL 서빙
 - **Swagger (springdoc-openapi)**
-  - API 문서 자동화
+  - API 문서
 - **배포 환경** : GitHub Actions(CI/CD) → AWS EC2 (Ubuntu, systemd)
 
 ---

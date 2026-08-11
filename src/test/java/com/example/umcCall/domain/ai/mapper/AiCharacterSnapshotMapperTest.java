@@ -12,6 +12,7 @@ import com.example.umcCall.domain.character.enums.PreferTime;
 import com.example.umcCall.domain.character.enums.SpeechStyle;
 import com.example.umcCall.domain.character.enums.Trait;
 import com.example.umcCall.domain.character.repository.CharacterTraitRepository;
+import com.example.umcCall.domain.image.enums.Gender;
 import com.example.umcCall.domain.relationship.entity.Relationship;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,9 @@ class AiCharacterSnapshotMapperTest {
 
         when(character.getId()).thenReturn(1L);
         when(character.getFullName()).thenReturn("김다정");
+        when(character.getAge()).thenReturn(25);
+        when(character.getGender()).thenReturn(Gender.FEMALE);
+        when(character.getMbti()).thenReturn("ENFP");
         when(character.getJob()).thenReturn(Job.EMPLOYEE);
         when(character.getPreferTime()).thenReturn(PreferTime.LATE_EVENING);
         when(profile.getLifeType()).thenReturn("BALANCED");
@@ -55,6 +59,9 @@ class AiCharacterSnapshotMapperTest {
 
         assertThat(snapshot.keywords())
                 .containsExactly("고민을 잘 들어주는", "장난기 많은", "표현을 많이 하는");
+        assertThat(snapshot.age()).isEqualTo(25);
+        assertThat(snapshot.gender()).isEqualTo("FEMALE");
+        assertThat(snapshot.mbti()).isEqualTo("ENFP");
         assertThat(snapshot.traits().humor()).isEqualTo(7);
         assertThat(snapshot.traits().calculationVersion()).isEqualTo(2);
     }

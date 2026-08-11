@@ -35,6 +35,7 @@ public class AiRequestContextProvider {
                 OffsetDateTime.now(DEFAULT_ZONE_ID),
                 new AiUserSnapshot(
                         member.getBirth(),
+                        member.getGender() == null ? null : member.getGender().name(),
                         member.getJob() == null ? null : member.getJob().name(),
                         member.getMbti() == null ? null : member.getMbti().name()));
     }
