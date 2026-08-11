@@ -5,6 +5,8 @@ import java.util.List;
 public record AiCharacterSnapshot(
         Long characterId,
         String name,
+        Integer age,
+        String mbti,
         String responseStyle,
         String job,
         String lifeType,

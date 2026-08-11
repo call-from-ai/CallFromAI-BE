@@ -31,6 +31,8 @@ public class AiCharacterSnapshotMapper {
         return new AiCharacterSnapshot(
                 character.getId(),
                 character.getFullName(),
+                character.getAge(),
+                character.getMbti(),
                 relationship.getSpeechStyle().name(),
                 character.getJob().name(),
                 profile.getLifeType(),

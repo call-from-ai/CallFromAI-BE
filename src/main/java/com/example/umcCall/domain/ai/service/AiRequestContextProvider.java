@@ -1,5 +1,6 @@
 package com.example.umcCall.domain.ai.service;
 
+import com.example.umcCall.domain.ai.dto.AiUserSnapshot;
 import com.example.umcCall.domain.member.entity.Member;
 import com.example.umcCall.domain.member.repository.MemberRepository;
 import java.time.OffsetDateTime;
@@ -31,7 +32,11 @@ public class AiRequestContextProvider {
         return new Context(
                 resolveUserName(member),
                 DEFAULT_ZONE_ID.getId(),
-                OffsetDateTime.now(DEFAULT_ZONE_ID));
+                OffsetDateTime.now(DEFAULT_ZONE_ID),
+                new AiUserSnapshot(
+                        member.getBirth(),
+                        member.getJob() == null ? null : member.getJob().name(),
+                        member.getMbti() == null ? null : member.getMbti().name()));
     }
 
     private String resolveUserName(Member member) {
@@ -44,6 +49,7 @@ public class AiRequestContextProvider {
         return FALLBACK_USER_NAME;
     }
 
-    public record Context(String userName, String userTimeZone, OffsetDateTime localDateTime) {
+    public record Context(String userName, String userTimeZone, OffsetDateTime localDateTime,
+                          AiUserSnapshot user) {
     }
 }

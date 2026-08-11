@@ -59,6 +59,7 @@ public class AiReplyGenerator {
                 UUID.randomUUID().toString(),   // 멱등성 키. 논리 요청마다 고유값(같은 값 재전송 시 AI 서버가 409)
                 character.getId(), AiConversationChannel.CHAT,
                 requestContext.userName(), requestContext.userTimeZone(), requestContext.localDateTime(),
+                requestContext.user(),
                 userMessage,
                 characterSnapshot, relationshipSnapshot, history);
     }
