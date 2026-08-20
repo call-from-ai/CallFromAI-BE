@@ -40,9 +40,10 @@ public class AiServerClient {
 
     private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Api-Key";
 
-    /** SSE 이벤트 이름(AI 서버 {@code ChatService.sendMessageStream} 기준). meta/done은 통화가 쓰지 않는다. */
+    /** SSE 이벤트 이름(AI 서버 {@code ChatService.sendMessageStream} 기준). done은 정상 종료 검증에 사용한다. */
     private static final String CHUNK_EVENT = "chunk";
     private static final String ERROR_EVENT = "error";
+    private static final String DONE_EVENT = "done";
 
     private final RestClient restClient;
     /**
@@ -143,9 +144,11 @@ public class AiServerClient {
      * <p>{@code readLine()}은 다음 줄이 올 때까지 블로킹한다 — 통화 워커(통화당 단일 스레드)가 어차피
      * 응답을 기다리던 자리라 스레드 모델은 그대로다. 응답을 통째로 버퍼링하지 않는 게 이 메서드의 존재 이유다.
      */
-    private void readEventStream(InputStream body, Consumer<String> onChunk) throws IOException {
+    void readEventStream(InputStream body, Consumer<String> onChunk) throws IOException {
         BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8));
         String eventName = null;
+        int chunkCount = 0;
+        boolean doneReceived = false;
         String line;
         while ((line = reader.readLine()) != null) {
             if (line.isEmpty()) {
@@ -153,31 +156,58 @@ public class AiServerClient {
             } else if (line.startsWith("event:")) {
                 eventName = line.substring("event:".length()).trim();
             } else if (line.startsWith("data:")) {
-                handleEvent(eventName, line.substring("data:".length()).trim(), onChunk);
+                EventResult result = handleEvent(
+                        eventName, line.substring("data:".length()).trim(), onChunk);
+                if (result == EventResult.CHUNK) {
+                    chunkCount++;
+                } else if (result == EventResult.DONE) {
+                    doneReceived = true;
+                    break;
+                }
             }
             // id:/retry:/주석(:)은 AI 서버가 보내지 않는다. 와도 무시하는 게 SSE 규약이다.
         }
+
+        if (!doneReceived) {
+            log.error("AI 채팅 스트림 비정상 종료. done 없이 EOF. chunkCount={}", chunkCount);
+            throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
+        }
+        if (chunkCount == 0) {
+            log.error("AI 채팅 스트림 빈 응답. done은 수신했지만 유효한 chunk가 없음.");
+            throw new AiServerException(AiErrorCode.EMPTY_AI_RESPONSE);
+        }
     }
 
-    /** 이벤트 하나를 처리한다. 통화가 쓰는 건 {@code chunk}뿐이고, {@code meta}/{@code done}은 통계·메타라 버린다. */
-    private void handleEvent(String eventName, String data, Consumer<String> onChunk) {
+    /** 이벤트 하나를 처리하고 스트림 완결성 검증에 필요한 결과를 돌려준다. {@code meta} 등은 무시한다. */
+    private EventResult handleEvent(String eventName, String data, Consumer<String> onChunk) {
         if (ERROR_EVENT.equals(eventName)) {
             // ⚠ 여기까지 HTTP는 200이다. 이 분기가 없으면 실패가 "짧은 응답"으로 조용히 성공 처리된다.
             log.error("AI 채팅 스트림 오류 이벤트. body={}", data);
             throw new AiServerException(AiErrorCode.AI_SERVER_ERROR);
         }
+        if (DONE_EVENT.equals(eventName)) {
+            return EventResult.DONE;
+        }
         if (!CHUNK_EVENT.equals(eventName)) {
-            return;
+            return EventResult.IGNORED;
         }
         try {
             JsonNode text = objectMapper.readTree(data).path("text");
             if (text.isTextual() && !text.asText().isEmpty()) {
                 onChunk.accept(text.asText());
+                return EventResult.CHUNK;
             }
         } catch (JsonProcessingException exception) {
             // 조각 하나가 깨졌다고 이미 말하기 시작한 턴을 통째로 버리진 않는다 — 그 조각만 건너뛴다.
             log.warn("AI 채팅 스트림 chunk 파싱 실패(건너뜀). data={}", data, exception);
         }
+        return EventResult.IGNORED;
+    }
+
+    private enum EventResult {
+        CHUNK,
+        DONE,
+        IGNORED
     }
 
     public AiChatResponse proactive(AiProactiveRequest request) {
