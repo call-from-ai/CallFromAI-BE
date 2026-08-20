@@ -196,7 +196,7 @@ PR 제목은 `<Prefix>: <Description>` 양식을 준수하며, prefix는 Commit 
 
 ## ⭐ 서버 아키텍처 다이어그램
 
-![img.png](img.png)
+![img_2.png](img_2.png)
 
 <br>
 
