@@ -79,7 +79,7 @@ public class CharacterService {
         }
 
         if (member.getCharacterCreatedAt() != null
-                && member.getCharacterCreatedAt().plusHours(24).isAfter(LocalDateTime.now())) {
+                && member.getCharacterCreatedAt().plusMinutes(2).isAfter(LocalDateTime.now())) {
             throw new BaseException(CharacterErrorCode.CHARACTER_RECREATE_TOO_SOON);
         }
 
@@ -243,7 +243,7 @@ public class CharacterService {
                 .ifPresent(current -> {
                     LocalDateTime becameMainAt = current.getBecameMainAt();
                     if (becameMainAt != null
-                            && becameMainAt.plusDays(MIN_ACTIVATE_INTERVAL_DAYS).isAfter(LocalDateTime.now())) {
+                            && becameMainAt.plusMinutes(3).isAfter(LocalDateTime.now())) {
                         throw new BaseException(CharacterErrorCode.ACTIVE_CHARACTER_CHANGE_TOO_SOON);
                     }
                     current.deactivate();
